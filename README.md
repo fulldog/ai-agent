@@ -92,7 +92,3 @@ Invoke-RestMethod -Method POST -Uri http://localhost:18090/api/v1/conversations 
 # POST /api/v1/chat/completions/stream
 ```
 
-## 与 `agent/` 的差异
-
-- 本项目：zap、PostgreSQL + pgvector、API Key、Prometheus、Eino DeepSeek
-- `agent/`：自定义日志、SQLite、JWT 多租户、文档复核管理后台
