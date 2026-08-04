@@ -102,6 +102,7 @@ go run ./cmd/server -config configs/config.yaml
 | [docs/API.md](docs/API.md) | REST / SSE 接口说明 |
 | [docs/openapi.yaml](docs/openapi.yaml) | **OpenAPI 3.0（可直接导入 Apifox）** |
 | [docs/EXTRACT.md](docs/EXTRACT.md) | PDF/Word/图片 OCR 与本机依赖 |
+| [docs/AGENT_TOOLS.md](docs/AGENT_TOOLS.md) | **Agent 工具规范**（新增 Tool、中文描述、注册清单） |
 | [docs/POSTGRES.md](docs/POSTGRES.md) | PostgreSQL + pgvector 安装与 DATABASE_URL |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | 表结构 / 向量列与索引 |
 | [configs/config.example.yaml](configs/config.example.yaml) | 配置样例 |
@@ -116,7 +117,7 @@ go run ./cmd/server -config configs/config.yaml
 | 日志 | zap |
 | DB / 向量 | PostgreSQL + pgvector |
 | LLM | DeepSeek（Eino ChatModel + 服务层 HTTP 流式/工具循环） |
-| Agent | Tool Calling（`knowledge_search`、`current_time`） |
+| Agent | Tool Calling（`knowledge_search`、`current_time`、`calculator`） |
 | Embedding | OpenAI 兼容（默认 Ollama） |
 | 鉴权 | `X-API-Key` |
 | 监控 | Prometheus `/metrics` |

@@ -23,7 +23,7 @@ tags:
   - name: Chat
     description: 多轮对话（同步 / SSE）
   - name: Agent
-    description: Tool Calling Agent
+    description: Tool Calling Agent（工具规范见 docs/AGENT_TOOLS.md）
   - name: Corpus
     description: 语料库与文档索引
   - name: RAG
@@ -308,6 +308,7 @@ paths:
               tools:
                 - knowledge_search
                 - current_time
+                - calculator
               rag:
                 corpus_id: "00000000-0000-0000-0000-000000000002"
                 top_k: 5
@@ -913,7 +914,7 @@ components:
           type: array
           items:
             type: string
-            enum: [knowledge_search, current_time]
+            enum: [knowledge_search, current_time, calculator]
         rag:
           $ref: "#/components/schemas/AgentRAGOptions"
 

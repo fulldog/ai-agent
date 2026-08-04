@@ -1,7 +1,7 @@
 # AI Agent 项目规划书
 
 > 模块：`github.com/webapp/go-app/ai-agent`  
-> 关联文档：[API.md](./API.md)、[DB_SCHEMA.md](./DB_SCHEMA.md)、[README.md](../README.md)
+> 关联文档：[API.md](./API.md)、[AGENT_TOOLS.md](./AGENT_TOOLS.md)、[DB_SCHEMA.md](./DB_SCHEMA.md)、[README.md](../README.md)
 
 ---
 
@@ -23,7 +23,7 @@
 | 能力 | 说明 |
 |------|------|
 | A 流式对话 | 会话/消息落库；DeepSeek `stream`；SSE 输出 |
-| B Tool Calling Agent | 函数调用循环；内置 `knowledge_search`、`current_time` |
+| B Tool Calling Agent | 函数调用循环；内置 `knowledge_search`、`current_time`、`calculator` |
 | C RAG | 语料上传、分块、Embedding、pgvector TopK |
 | 鉴权 | `X-API-Key` |
 | 日志 | HTTP + LLM + Agent 步骤完整记录 |
@@ -147,7 +147,7 @@ flowchart TB
 
 - `POST /api/v1/agent/runs/stream`
 - Eino ADK `Runner` + `ChatModelAgent`（或等价 ReAct Agent）；`max_steps` 等走配置
-- 内置工具：`knowledge_search`（RAG）、`current_time`
+- 内置工具：`knowledge_search`（RAG）、`current_time`、`calculator`（包路径 `internal/service/agent/tools`）
 - SSE 事件：`tool_call`、`tool_result`、`delta`、`done`、`error`
 - Callback：写 `agent_runs` / `agent_steps`、zap、Prometheus
 

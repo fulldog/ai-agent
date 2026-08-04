@@ -150,6 +150,8 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ## 5. Agent
 
+工具名、中文描述约定、**如何新增 Tool** 见 [AGENT_TOOLS.md](./AGENT_TOOLS.md)。
+
 ### POST `/api/v1/agent/runs`
 
 同步 Agent 运行（适合短任务）。
@@ -160,7 +162,7 @@ Prometheus 文本格式指标。默认无需 API Key。
   "input": "帮我查知识库里关于 SLA 的说明",
   "model": "deepseek-v4-flash",
   "max_steps": 8,
-  "tools": ["knowledge_search", "current_time"],
+  "tools": ["knowledge_search", "current_time", "calculator"],
   "rag": {
     "corpus_id": "uuid",
     "top_k": 5

@@ -48,6 +48,7 @@ agent:
   default_tools:
     - knowledge_search
     - current_time
+    - calculator
 
 # 文档解析：pdf/docx 文本提取；图片与扫描版 PDF 走 OCR（需本机安装工具，Linux/Windows 均可）
 ocr:

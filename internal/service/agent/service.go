@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/metrics"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
@@ -23,14 +23,21 @@ type Event struct {
 }
 
 type Service struct {
-	db  *gorm.DB
-	cfg *config.Config
-	llm *llm.Client
-	rag *rag.Service
+	db       *gorm.DB
+	cfg      *config.Config
+	llm      *llm.Client
+	rag      *rag.Service
+	registry *tools.Registry
 }
 
 func New(db *gorm.DB, cfg *config.Config, llmClient *llm.Client, ragSvc *rag.Service) *Service {
-	return &Service{db: db, cfg: cfg, llm: llmClient, rag: ragSvc}
+	return &Service{
+		db:       db,
+		cfg:      cfg,
+		llm:      llmClient,
+		rag:      ragSvc,
+		registry: tools.Default(),
+	}
 }
 
 type RunInput struct {
@@ -75,9 +82,9 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	if modelName == "" {
 		modelName = s.cfg.LLM.DefaultModel
 	}
-	tools := in.Tools
-	if len(tools) == 0 {
-		tools = s.cfg.Agent.DefaultTools
+	toolNames := in.Tools
+	if len(toolNames) == 0 {
+		toolNames = s.cfg.Agent.DefaultTools
 	}
 
 	run := &model.AgentRun{
@@ -92,10 +99,16 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	}
 
 	msgs := []llm.Message{
-		{Role: "system", Content: "You are a helpful AI agent. Use tools when needed to answer accurately."},
+		{Role: "system", Content: "你是有用的 AI 助手。需要准确信息时请调用工具，并根据工具结果作答。"},
 		{Role: "user", Content: in.Input},
 	}
-	toolSpecs := s.toolSpecs(tools)
+	toolSpecs := s.registry.Specs(toolNames)
+	toolEnv := &tools.Env{
+		CorpusID:    in.CorpusID,
+		TopK:        in.TopK,
+		DefaultTopK: s.cfg.RAG.TopK,
+		RAG:         s.rag,
+	}
 	promptTokens, completionTokens := 0, 0
 	stepIndex := 0
 	final := ""
@@ -172,7 +185,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 					"id": tc.ID, "name": tc.Function.Name, "arguments": tc.Function.Arguments,
 				}})
 			}
-			result, toolErr := s.execTool(ctx, tc.Function.Name, tc.Function.Arguments, in.CorpusID, in.TopK)
+			result, toolErr := s.registry.Exec(ctx, tc.Function.Name, tc.Function.Arguments, toolEnv)
 			toolStatus := "ok"
 			if toolErr != nil {
 				toolStatus = "error"
@@ -197,7 +210,6 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	}
 
 	if final == "" && len(msgs) > 0 {
-		// last assistant content fallback
 		for i := len(msgs) - 1; i >= 0; i-- {
 			if msgs[i].Role == "assistant" && msgs[i].Content != "" {
 				final = msgs[i].Content
@@ -218,76 +230,4 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		RunID: run.ID, Output: final, StepCount: stepIndex,
 		PromptTokens: promptTokens, CompletionTokens: completionTokens, Status: "succeeded",
 	}, nil
-}
-
-func (s *Service) toolSpecs(names []string) []llm.ToolSpec {
-	all := map[string]llm.ToolSpec{
-		"knowledge_search": {
-			Type: "function",
-			Function: llm.ToolSpecFunc{
-				Name:        "knowledge_search",
-				Description: "Search the knowledge base (RAG) for relevant passages",
-				Parameters: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"query": map[string]any{"type": "string", "description": "search query"},
-					},
-					"required": []string{"query"},
-				},
-			},
-		},
-		"current_time": {
-			Type: "function",
-			Function: llm.ToolSpecFunc{
-				Name:        "current_time",
-				Description: "Get the current server time in RFC3339",
-				Parameters: map[string]any{
-					"type":       "object",
-					"properties": map[string]any{},
-				},
-			},
-		},
-	}
-	var out []llm.ToolSpec
-	for _, n := range names {
-		if spec, ok := all[n]; ok {
-			out = append(out, spec)
-		}
-	}
-	return out
-}
-
-func (s *Service) execTool(ctx context.Context, name, args string, corpusID *uuid.UUID, topK int) (string, error) {
-	switch name {
-	case "current_time":
-		return time.Now().Format(time.RFC3339), nil
-	case "knowledge_search":
-		var p struct {
-			Query string `json:"query"`
-		}
-		_ = json.Unmarshal([]byte(args), &p)
-		if strings.TrimSpace(p.Query) == "" {
-			return "", fmt.Errorf("query is required")
-		}
-		if corpusID == nil {
-			return "", fmt.Errorf("corpus_id is required for knowledge_search")
-		}
-		if topK <= 0 {
-			topK = s.cfg.RAG.TopK
-		}
-		hits, err := s.rag.Search(ctx, *corpusID, p.Query, topK)
-		if err != nil {
-			return "", err
-		}
-		if len(hits) == 0 {
-			return "no results", nil
-		}
-		var b strings.Builder
-		for i, h := range hits {
-			b.WriteString(fmt.Sprintf("[%d] (distance=%.4f) %s\n", i+1, h.Score, h.Content))
-		}
-		return b.String(), nil
-	default:
-		return "", fmt.Errorf("unknown tool: %s", name)
-	}
 }

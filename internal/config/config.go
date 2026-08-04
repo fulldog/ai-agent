@@ -141,7 +141,7 @@ func defaultConfig() *Config {
 		},
 		Agent: AgentConfig{
 			MaxSteps:     8,
-			DefaultTools: []string{"knowledge_search", "current_time"},
+			DefaultTools: []string{"knowledge_search", "current_time", "calculator"},
 		},
 		OCR: OCRConfig{
 			Enabled:        true,
