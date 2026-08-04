@@ -1,0 +1,12 @@
+configs/config.yaml
+*.exe
+*.test
+*.out
+bin/
+dist/
+logs/
+.idea/
+.vscode/
+*.log
+.env
+vendor/

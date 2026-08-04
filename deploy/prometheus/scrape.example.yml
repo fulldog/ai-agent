@@ -1,0 +1,20 @@
+# Prometheus scrape 示例片段（合并进你的 prometheus.yml）
+# 目标：ai-agent 默认监听 :18090，指标路径 /metrics
+
+scrape_configs:
+  - job_name: ai-agent
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "127.0.0.1:18090"
+        labels:
+          service: ai-agent
+          env: local
+
+# 建议告警思路（第一期仅清单，不强制 Alertmanager 配置）：
+# - HTTP 5xx 比率过高：rate(ai_agent_http_requests_total{status=~"5.."}[5m])
+# - LLM P99 延迟：histogram_quantile(0.99, rate(ai_agent_llm_request_duration_seconds_bucket[5m]))
+# - Agent 失败率：rate(ai_agent_agent_runs_total{status="failed"}[5m])
+# - RAG 错误增多：rate(ai_agent_rag_search_total{status="error"}[5m])
