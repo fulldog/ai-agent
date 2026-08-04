@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
-	"github.com/webapp/go-app/ai-agent/internal/model"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -88,33 +87,34 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
 			zap.String("path_template", pathTemplate),
+			zap.String("body", bodyStr),
 			zap.Int("status", c.Writer.Status()),
 			zap.Duration("latency", latency),
 			zap.Any("api_key_id", apiKeyID),
 			zap.Bool("stream", stream),
 			zap.Int("bytes_out_preview", bw.buf.Len()),
 		)
-
-		if !cfg.RequestLog.Enabled || db == nil {
-			return
-		}
-		keyID, _ := apiKeyID.(string)
-		row := model.RequestLog{
-			RequestID:       reqID,
-			APIKeyID:        keyID,
-			Method:          c.Request.Method,
-			Path:            c.Request.URL.Path,
-			PathTemplate:    pathTemplate,
-			Status:          c.Writer.Status(),
-			LatencyMs:       latency.Milliseconds(),
-			RequestBody:     bodyStr,
-			ResponsePreview: truncate(bw.buf.String(), cfg.Log.BodyPreviewMax),
-			Stream:          stream,
-			SSEEventCount:   bw.sseCount,
-		}
-		if err := db.Create(&row).Error; err != nil {
-			log.Warn("persist request_log failed", zap.Error(err), zap.String("request_id", reqID))
-		}
+		return
+		//if !cfg.RequestLog.Enabled || db == nil {
+		//	return
+		//}
+		//keyID, _ := apiKeyID.(string)
+		//row := model.RequestLog{
+		//	RequestID:       reqID,
+		//	APIKeyID:        keyID,
+		//	Method:          c.Request.Method,
+		//	Path:            c.Request.URL.Path,
+		//	PathTemplate:    pathTemplate,
+		//	Status:          c.Writer.Status(),
+		//	LatencyMs:       latency.Milliseconds(),
+		//	RequestBody:     bodyStr,
+		//	ResponsePreview: truncate(bw.buf.String(), cfg.Log.BodyPreviewMax),
+		//	Stream:          stream,
+		//	SSEEventCount:   bw.sseCount,
+		//}
+		//if err := db.Create(&row).Error; err != nil {
+		//	log.Warn("persist request_log failed", zap.Error(err), zap.String("request_id", reqID))
+		//}
 	}
 }
 

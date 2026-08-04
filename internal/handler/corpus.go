@@ -7,10 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
+	"github.com/webapp/go-app/ai-agent/pkg/extract"
 )
 
 type CorpusHandler struct {
-	Corpus *corpus.Service
+	Corpus  *corpus.Service
+	Extract *extract.Extractor
 }
 
 func (h *CorpusHandler) Create(c *gin.Context) {
@@ -80,6 +82,10 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "bad_request", "file required")
 			return
 		}
+		if !extract.IsSupportedExtension(file.Filename) {
+			writeError(c, http.StatusBadRequest, "bad_request", "unsupported file type (txt/md/pdf/docx/png/jpg/jpeg/webp/bmp/tif/gif)")
+			return
+		}
 		f, err := file.Open()
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
@@ -91,9 +97,17 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
-		title = file.Filename
+		title = extract.GuessName(file.Filename)
 		source = file.Filename
-		content = string(b)
+		if h.Extract == nil {
+			writeError(c, http.StatusInternalServerError, "internal_error", "extractor not configured")
+			return
+		}
+		content, err = h.Extract.FromBytes(file.Filename, b)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
 	} else {
 		var req struct {
 			Title   string `json:"title"`

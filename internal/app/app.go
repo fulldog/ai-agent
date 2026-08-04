@@ -9,21 +9,23 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
+	"github.com/webapp/go-app/ai-agent/pkg/extract"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type App struct {
-	Config *config.Config
-	DB     *gorm.DB
-	Log    *zap.Logger
-	LLM    *llm.Client
-	Embed  *embed.Client
-	RAG    *rag.Service
-	Corpus *corpus.Service
-	Chat   *chat.Service
-	Agent  *agent.Service
-	Eino   *eino.Runtime
+	Config  *config.Config
+	DB      *gorm.DB
+	Log     *zap.Logger
+	LLM     *llm.Client
+	Embed   *embed.Client
+	RAG     *rag.Service
+	Corpus  *corpus.Service
+	Chat    *chat.Service
+	Agent   *agent.Service
+	Eino    *eino.Runtime
+	Extract *extract.Extractor
 }
 
 func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
@@ -36,16 +38,25 @@ func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
 	corpusSvc := corpus.New(db, cfg, embedClient)
 	chatSvc := chat.New(db, cfg, rt.Client, ragSvc)
 	agentSvc := agent.New(db, cfg, rt.Client, ragSvc)
+	extractor := extract.New(extract.OCRConfig{
+		Enabled:        cfg.OCR.Enabled,
+		TesseractPath:  cfg.OCR.TesseractPath,
+		Languages:      cfg.OCR.Languages,
+		PDFToPPMPath:   cfg.OCR.PDFToPPMPath,
+		MinPDFTextLen:  cfg.OCR.MinPDFTextLen,
+		TimeoutSeconds: cfg.OCR.TimeoutSeconds,
+	})
 	return &App{
-		Config: cfg,
-		DB:     db,
-		Log:    log,
-		LLM:    rt.Client,
-		Embed:  embedClient,
-		RAG:    ragSvc,
-		Corpus: corpusSvc,
-		Chat:   chatSvc,
-		Agent:  agentSvc,
-		Eino:   rt,
+		Config:  cfg,
+		DB:      db,
+		Log:     log,
+		LLM:     rt.Client,
+		Embed:   embedClient,
+		RAG:     ragSvc,
+		Corpus:  corpusSvc,
+		Chat:    chatSvc,
+		Agent:   agentSvc,
+		Eino:    rt,
+		Extract: extractor,
 	}, nil
 }

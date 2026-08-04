@@ -49,6 +49,17 @@ agent:
     - knowledge_search
     - current_time
 
+# 文档解析：pdf/docx 文本提取；图片与扫描版 PDF 走 OCR（需本机安装工具，Linux/Windows 均可）
+ocr:
+  enabled: true
+  # Linux: tesseract 或 /usr/bin/tesseract；Windows 可写绝对路径如 C:\Program Files\Tesseract-OCR\tesseract.exe
+  tesseract_path: tesseract
+  languages: chi_sim+eng             # 需安装对应 tessdata（中文 chi_sim）
+  # Linux: pdftoppm（apt: poppler-utils）；Windows 可写 pdftoppm.exe 绝对路径
+  pdftoppm_path: pdftoppm
+  min_pdf_text_len: 40               # PDF 文本少于此长度时尝试 OCR
+  timeout_seconds: 180
+
 log:
   level: info # debug | info | warn | error
   # json | console

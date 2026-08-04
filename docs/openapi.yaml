@@ -1,0 +1,1150 @@
+openapi: 3.0.3
+info:
+  title: AI Agent API
+  description: |
+    Go AI Agent 后端接口（Gin + DeepSeek + PostgreSQL/pgvector）。
+
+    - 业务接口需 Header：`X-API-Key`
+    - 可选 Header：`X-Request-ID`（缺省由服务端生成）
+    - 流式接口返回 `text/event-stream`（SSE）
+  version: 1.0.0
+  contact:
+    name: ai-agent
+
+servers:
+  - url: http://localhost:18090
+    description: 本地开发
+
+tags:
+  - name: System
+    description: 健康检查与监控
+  - name: Conversations
+    description: 会话管理
+  - name: Chat
+    description: 多轮对话（同步 / SSE）
+  - name: Agent
+    description: Tool Calling Agent
+  - name: Corpus
+    description: 语料库与文档索引
+  - name: RAG
+    description: 向量检索调试
+  - name: Logs
+    description: 请求日志查询
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: 健康检查
+      description: 无需 API Key。返回服务与数据库状态。
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: 正常
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                db: up
+        "503":
+          description: 数据库不可用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /metrics:
+    get:
+      tags: [System]
+      summary: Prometheus 指标
+      description: |
+        默认无需 API Key。若服务端 `metrics.protect=true`，需 admin API Key。
+      operationId: getMetrics
+      security: []
+      responses:
+        "200":
+          description: Prometheus 文本格式
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP ai_agent_http_requests_total Total HTTP requests
+                  ai_agent_http_requests_total{method="GET",path_template="/health",status="200"} 1
+
+  /api/v1/conversations:
+    post:
+      tags: [Conversations]
+      summary: 创建会话
+      operationId: createConversation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationRequest"
+            example:
+              title: demo
+              system_prompt: You are a helpful assistant.
+              corpus_id: "00000000-0000-0000-0000-000000000001"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [Conversations]
+      summary: 会话列表
+      operationId: listConversations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Conversation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/conversations/{id}:
+    get:
+      tags: [Conversations]
+      summary: 会话详情
+      operationId: getConversation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Conversations]
+      summary: 删除会话
+      operationId: deleteConversation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "204":
+          description: 已删除
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/conversations/{id}/messages:
+    get:
+      tags: [Conversations]
+      summary: 会话消息列表
+      operationId: listMessages
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+      responses:
+        "200":
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/chat/completions:
+    post:
+      tags: [Chat]
+      summary: 同步聊天补全
+      operationId: chatCompletions
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+            example:
+              conversation_id: "00000000-0000-0000-0000-000000000001"
+              message: 你好
+              model: deepseek-v4-flash
+              temperature: 0.7
+              max_tokens: 2048
+              rag:
+                enabled: true
+                corpus_id: "00000000-0000-0000-0000-000000000002"
+                top_k: 5
+      responses:
+        "200":
+          description: 补全结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chat/completions/stream:
+    post:
+      tags: [Chat]
+      summary: SSE 流式聊天补全
+      description: |
+        请求体同同步接口。响应为 SSE：
+        - `event: delta` data: `{"content":"..."}`
+        - `event: done` data: `{"status":"ok"}`
+        - `event: error` data: `{"message":"..."}`
+      operationId: chatCompletionsStream
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          description: SSE 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: delta
+                  data: {"content":"你"}
+
+                  event: done
+                  data: {"status":"ok"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/agent/runs:
+    post:
+      tags: [Agent]
+      summary: 同步运行 Agent
+      operationId: agentRun
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRunRequest"
+            example:
+              conversation_id: "00000000-0000-0000-0000-000000000001"
+              input: 帮我查知识库里关于 SLA 的说明
+              model: deepseek-v4-flash
+              max_steps: 8
+              tools:
+                - knowledge_search
+                - current_time
+              rag:
+                corpus_id: "00000000-0000-0000-0000-000000000002"
+                top_k: 5
+      responses:
+        "200":
+          description: 运行结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/agent/runs/stream:
+    post:
+      tags: [Agent]
+      summary: SSE 流式运行 Agent
+      description: |
+        SSE 事件：`tool_call`、`tool_result`、`delta`、`done`、`error`。
+      operationId: agentRunStream
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRunRequest"
+      responses:
+        "200":
+          description: SSE 事件流
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/agent/runs/{id}:
+    get:
+      tags: [Agent]
+      summary: 查询 Agent 运行详情
+      operationId: getAgentRun
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 运行记录与步骤
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRunDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/corpora:
+    post:
+      tags: [Corpus]
+      summary: 创建语料库
+      operationId: createCorpus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCorpusRequest"
+            example:
+              name: product-docs
+              description: 产品文档
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Corpus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      tags: [Corpus]
+      summary: 语料库列表
+      operationId: listCorpora
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Corpus"
+
+  /api/v1/corpora/{id}:
+    get:
+      tags: [Corpus]
+      summary: 语料库详情
+      operationId: getCorpus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Corpus"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Corpus]
+      summary: 删除语料库
+      operationId: deleteCorpus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "204":
+          description: 已删除
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/corpora/{id}/documents:
+    post:
+      tags: [Corpus]
+      summary: 上传/写入文档并索引
+      description: |
+        支持 JSON 正文，或 `multipart/form-data` 上传 `file`。
+
+        文件类型：
+        - 文本：txt/md/csv/json/html…
+        - Word：docx（不支持旧版 doc）
+        - PDF：优先提取文字；扫描件走 OCR（需 tesseract + pdftoppm）
+        - 图片：png/jpg/jpeg/webp/bmp/tif/gif（Tesseract OCR）
+
+        详见 docs/EXTRACT.md。
+      operationId: addDocument
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddDocumentJSONRequest"
+            example:
+              title: sla.md
+              content: "# SLA\n响应时间 5 分钟"
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: 文档已创建（可能仍为 indexed/failed）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      tags: [Corpus]
+      summary: 文档列表
+      operationId: listDocuments
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Document"
+
+  /api/v1/corpora/{id}/documents/{doc_id}:
+    delete:
+      tags: [Corpus]
+      summary: 删除文档
+      operationId: deleteDocument
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+        - name: doc_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: 已删除
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/corpora/{id}/reindex:
+    post:
+      tags: [Corpus]
+      summary: 重建语料向量索引
+      operationId: reindexCorpus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 重建完成
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/rag/search:
+    post:
+      tags: [RAG]
+      summary: 向量检索调试
+      operationId: ragSearch
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RAGSearchRequest"
+            example:
+              corpus_id: "00000000-0000-0000-0000-000000000002"
+              query: SLA 响应时间
+              top_k: 5
+      responses:
+        "200":
+          description: 检索结果（score 为距离，越小越相似）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RAGSearchResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/logs/requests:
+    get:
+      tags: [Logs]
+      summary: 请求日志列表
+      operationId: listRequestLogs
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: request_id
+          in: query
+          schema:
+            type: string
+        - name: conversation_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: agent_run_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          description: RFC3339
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: RFC3339
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RequestLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/logs/requests/{id}:
+    get:
+      tags: [Logs]
+      summary: 请求日志详情
+      operationId: getRequestLog
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestLog"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: 配置中的业务 API Key（示例 change-me-api-key）
+
+  parameters:
+    RequestIdHeader:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: 可选；缺省由服务端生成
+    UUIDPathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: 鉴权失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: 内部错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: unauthorized
+            message:
+              type: string
+              example: invalid api key
+        request_id:
+          type: string
+          format: uuid
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        db:
+          type: string
+          enum: [up, down]
+
+    Usage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        system_prompt:
+          type: string
+        corpus_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        system_prompt:
+          type: string
+        corpus_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+        tool_call_id:
+          type: string
+        tool_calls_json:
+          type: string
+        token_prompt:
+          type: integer
+          nullable: true
+        token_completion:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ChatRAGOptions:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        corpus_id:
+          type: string
+          format: uuid
+        top_k:
+          type: integer
+          default: 5
+
+    ChatCompletionRequest:
+      type: object
+      required: [conversation_id, message]
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+        model:
+          type: string
+          example: deepseek-v4-flash
+        temperature:
+          type: number
+          format: float
+        max_tokens:
+          type: integer
+        rag:
+          $ref: "#/components/schemas/ChatRAGOptions"
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        message_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        usage:
+          $ref: "#/components/schemas/Usage"
+
+    AgentRAGOptions:
+      type: object
+      properties:
+        corpus_id:
+          type: string
+          format: uuid
+        top_k:
+          type: integer
+
+    AgentRunRequest:
+      type: object
+      required: [input]
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+        input:
+          type: string
+        model:
+          type: string
+        max_steps:
+          type: integer
+          default: 8
+        tools:
+          type: array
+          items:
+            type: string
+            enum: [knowledge_search, current_time]
+        rag:
+          $ref: "#/components/schemas/AgentRAGOptions"
+
+    AgentRunResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        output:
+          type: string
+        status:
+          type: string
+        step_count:
+          type: integer
+        usage:
+          $ref: "#/components/schemas/Usage"
+
+    AgentRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+        input:
+          type: string
+        output:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+        max_steps:
+          type: integer
+        step_count:
+          type: integer
+        error_message:
+          type: string
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AgentStep:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        step_index:
+          type: integer
+        kind:
+          type: string
+        tool_name:
+          type: string
+        input_json:
+          type: string
+        output_text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AgentRunDetailResponse:
+      type: object
+      properties:
+        run:
+          $ref: "#/components/schemas/AgentRun"
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentStep"
+
+    CreateCorpusRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    Corpus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        embed_model:
+          type: string
+        embed_dim:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AddDocumentJSONRequest:
+      type: object
+      required: [content]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        corpus_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        source:
+          type: string
+        content_hash:
+          type: string
+        status:
+          type: string
+          enum: [pending, indexed, failed]
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RAGSearchRequest:
+      type: object
+      required: [corpus_id, query]
+      properties:
+        corpus_id:
+          type: string
+          format: uuid
+        query:
+          type: string
+        top_k:
+          type: integer
+          default: 5
+
+    RAGSearchHit:
+      type: object
+      properties:
+        chunk_id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        score:
+          type: number
+          format: double
+          description: pgvector 距离，越小越相似
+        metadata:
+          type: string
+
+    RAGSearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/RAGSearchHit"
+
+    RequestLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+        api_key_id:
+          type: string
+        method:
+          type: string
+        path:
+          type: string
+        path_template:
+          type: string
+        status:
+          type: integer
+        latency_ms:
+          type: integer
+          format: int64
+        request_body:
+          type: string
+        response_preview:
+          type: string
+        stream:
+          type: boolean
+        sse_event_count:
+          type: integer
+        conversation_id:
+          type: string
+          format: uuid
+          nullable: true
+        agent_run_id:
+          type: string
+          format: uuid
+          nullable: true
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time

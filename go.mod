@@ -5,8 +5,10 @@ go 1.25.5
 require (
 	github.com/cloudwego/eino v0.7.13
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.7
+	github.com/fumiama/go-docx v0.0.0-20250506085032-0c30fd09304b
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/prometheus/client_golang v1.20.5
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1

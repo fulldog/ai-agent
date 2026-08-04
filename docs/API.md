@@ -2,7 +2,8 @@
 
 > Base URL：`http://localhost:18090`  
 > API 前缀：`/api/v1`  
-> 关联：[PROJECT_PLAN.md](./PROJECT_PLAN.md)、[DB_SCHEMA.md](./DB_SCHEMA.md)
+> 关联：[PROJECT_PLAN.md](./PROJECT_PLAN.md)、[DB_SCHEMA.md](./DB_SCHEMA.md)  
+> **Apifox 导入**：[openapi.yaml](./openapi.yaml)（OpenAPI 3.0）→ Apifox「导入」→ 「OpenAPI」选择该文件
 
 ---
 
@@ -220,7 +221,14 @@ data: {"status":"ok","run_id":"uuid"}
 
 ### POST `/api/v1/corpora/:id/documents`
 
-上传文档。`multipart/form-data`：`file`（txt/md/pdf 等，实现阶段定支持格式），或 JSON：
+上传文档。`multipart/form-data`：`file`，支持：
+
+- 文本：txt/md/…
+- Word：docx
+- PDF：文字层提取；扫描件 OCR
+- 图片：png/jpg/…（OCR）
+
+或 JSON：
 
 ```json
 {
@@ -229,7 +237,8 @@ data: {"status":"ok","run_id":"uuid"}
 }
 ```
 
-服务端：分块 → Embedding → 写入 `chunks`。
+服务端：解析/OCR → 分块 → Embedding → 写入 `chunks`。  
+OCR 依赖说明见 [EXTRACT.md](./EXTRACT.md)。
 
 ### GET `/api/v1/corpora/:id/documents`
 

@@ -16,7 +16,7 @@
 - 完整请求日志（zap + PostgreSQL）
 - Prometheus 监控（`/metrics`）
 
-与仓库内现有 [`agent/`](../../agent/)（Gin + SQLite + JWT 多租户文档复核平台）**并列、互不依赖**；默认端口 `:18090`。
+默认端口 `:18090`。
 
 ### 1.1 第一期范围
 
@@ -31,9 +31,9 @@
 
 ### 1.2 第一期不做
 
-- 多租户、JWT、管理后台页面、文档复核规则引擎
+- 多租户隔离、JWT 用户体系、管理后台 UI
 - 自建 Grafana / Alertmanager 部署（仅提供 scrape 示例与建议告警清单）
-- Python/TS 侧 LangChain / LangGraph / CrewAI / OpenClaw
+- Python/TS 侧 LangChain / LangGraph / CrewAI 等编排框架
 
 ---
 
@@ -238,12 +238,3 @@ ai-agent/
 | **M5** | 日志查询、用量统计、告警清单、测试与 README；清理 M2 遗留 LLM 路径 |
 
 **编码顺序**：严格按 M1 → M5 推进；本仓库当前仅完成 M0。
-
----
-
-## 7. 与现有 `agent/` 的关系
-
-- 独立模块、独立 PostgreSQL schema、独立端口 `:18090`
-- 可借鉴 SSE 与会话落库思路
-- 不复制 SQLite、自定义 logger、JWT 多租户、文档复核
-- 差异：zap、PostgreSQL + pgvector、API Key、Prometheus、M4 Eino ADK

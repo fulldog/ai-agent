@@ -43,7 +43,7 @@ func Setup(application *app.App) *gin.Engine {
 	convH := &handler.ConversationHandler{Chat: application.Chat}
 	chatH := &handler.ChatHandler{Chat: application.Chat}
 	agentH := &handler.AgentHandler{Agent: application.Agent}
-	corpusH := &handler.CorpusHandler{Corpus: application.Corpus}
+	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, Extract: application.Extract}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
 

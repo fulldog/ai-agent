@@ -16,6 +16,7 @@ type Config struct {
 	Embed      EmbedConfig      `yaml:"embed"`
 	RAG        RAGConfig        `yaml:"rag"`
 	Agent      AgentConfig      `yaml:"agent"`
+	OCR        OCRConfig        `yaml:"ocr"`
 	Log        LogConfig        `yaml:"log"`
 	Metrics    MetricsConfig    `yaml:"metrics"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
@@ -63,6 +64,16 @@ type RAGConfig struct {
 type AgentConfig struct {
 	MaxSteps     int      `yaml:"max_steps"`
 	DefaultTools []string `yaml:"default_tools"`
+}
+
+// OCRConfig controls document OCR (images / scanned PDF).
+type OCRConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	TesseractPath  string `yaml:"tesseract_path"`
+	Languages      string `yaml:"languages"`
+	PDFToPPMPath   string `yaml:"pdftoppm_path"`
+	MinPDFTextLen  int    `yaml:"min_pdf_text_len"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 type LogConfig struct {
@@ -131,6 +142,14 @@ func defaultConfig() *Config {
 		Agent: AgentConfig{
 			MaxSteps:     8,
 			DefaultTools: []string{"knowledge_search", "current_time"},
+		},
+		OCR: OCRConfig{
+			Enabled:        true,
+			TesseractPath:  "tesseract",
+			Languages:      "chi_sim+eng",
+			PDFToPPMPath:   "pdftoppm",
+			MinPDFTextLen:  40,
+			TimeoutSeconds: 180,
 		},
 		Log: LogConfig{
 			Level:          "info",
@@ -217,6 +236,21 @@ func (c *Config) normalize() {
 	}
 	if c.Agent.MaxSteps <= 0 {
 		c.Agent.MaxSteps = 8
+	}
+	if strings.TrimSpace(c.OCR.TesseractPath) == "" {
+		c.OCR.TesseractPath = "tesseract"
+	}
+	if strings.TrimSpace(c.OCR.Languages) == "" {
+		c.OCR.Languages = "chi_sim+eng"
+	}
+	if strings.TrimSpace(c.OCR.PDFToPPMPath) == "" {
+		c.OCR.PDFToPPMPath = "pdftoppm"
+	}
+	if c.OCR.MinPDFTextLen <= 0 {
+		c.OCR.MinPDFTextLen = 40
+	}
+	if c.OCR.TimeoutSeconds <= 0 {
+		c.OCR.TimeoutSeconds = 180
 	}
 }
 

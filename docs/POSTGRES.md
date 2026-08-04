@@ -1,6 +1,7 @@
-# PostgreSQL + pgvector 安装与配置（Windows）
+# PostgreSQL + pgvector 安装与配置
 
 > 适用本项目 `ai-agent`。PostgreSQL Community 与 pgvector 均为免费开源。  
+> **Linux / Windows 均可**；下文先给 Linux 速查，再详述 Windows。  
 > 关联：[DB_SCHEMA.md](./DB_SCHEMA.md)、[README.md](../README.md)、[`configs/config.example.yaml`](../configs/config.example.yaml)
 
 ---
@@ -28,9 +29,38 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ---
 
-## 2. 安装 PostgreSQL（Windows）
+## 2. Linux 速查（生产常用）
 
-### 2.1 图形安装（推荐）
+以 Debian/Ubuntu 为例（版本号按发行版调整）：
+
+```bash
+# PostgreSQL（示例：16）
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib
+
+# pgvector：优先用发行版包（名称因版本而异）
+# Ubuntu 24.04+ 常见：
+sudo apt install -y postgresql-16-pgvector
+# 若无对应包，按官方文档源码编译：https://github.com/pgvector/pgvector#installation
+
+sudo -u postgres psql <<'SQL'
+CREATE USER ai_agent WITH PASSWORD 'ai_agent_dev';
+CREATE DATABASE ai_agent OWNER ai_agent;
+\c ai_agent
+CREATE EXTENSION IF NOT EXISTS vector;
+GRANT ALL ON SCHEMA public TO ai_agent;
+SQL
+
+export DATABASE_URL='postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable'
+```
+
+RHEL/Rocky：用 `dnf install postgresql-server` + 对应 `pgvector` 包，或源码编译扩展。连接串格式与 Windows 相同。
+
+---
+
+## 3. 安装 PostgreSQL（Windows）
+
+### 3.1 图形安装（推荐）
 
 1. 打开下载页：[PostgreSQL Windows 安装包（EDB）](https://www.postgresql.org/download/windows/)
 2. 安装 **PostgreSQL 16** 或 **17**（x64）
@@ -42,7 +72,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
    - Stack Builder 可跳过
 4. 安装完成后确认服务已启动（服务名类似 `postgresql-x64-17`）
 
-### 2.2 winget 安装（可选）
+### 3.2 winget 安装（可选）
 
 ```powershell
 winget install --id PostgreSQL.PostgreSQL.17 -e --accept-package-agreements --accept-source-agreements
@@ -58,7 +88,7 @@ psql --version
 
 建议将上述 `bin` 永久加入系统环境变量 PATH。
 
-### 2.3 验证
+### 3.3 验证
 
 ```powershell
 psql -U postgres -h 127.0.0.1 -p 5432 -c "SELECT version();"
@@ -68,11 +98,11 @@ psql -U postgres -h 127.0.0.1 -p 5432 -c "SELECT version();"
 
 ---
 
-## 3. 安装 pgvector（Windows）
+## 4. 安装 pgvector（Windows）
 
 官方扩展：[pgvector](https://github.com/pgvector/pgvector)。Windows 需编译安装（需与已装 PostgreSQL 主版本一致）。
 
-### 3.1 前置条件
+### 4.1 前置条件
 
 - 已安装对应版本的 PostgreSQL（含开发头文件，官方安装包一般自带）
 - [Visual Studio 2022](https://visualstudio.microsoft.com/)（含「使用 C++ 的桌面开发」）或 Build Tools
@@ -80,7 +110,7 @@ psql -U postgres -h 127.0.0.1 -p 5432 -c "SELECT version();"
 
 在 **x64 Native Tools Command Prompt for VS 2022**（或已加载 VS 环境的 PowerShell）中操作。
 
-### 3.2 编译安装
+### 4.2 编译安装
 
 ```powershell
 # 1) 设置 PostgreSQL 路径（按本机版本修改）
@@ -101,7 +131,7 @@ nmake /F Makefile.win install
 - `$env:PGROOT\share\extension\vector.control`
 - `$env:PGROOT\lib\vector.dll`
 
-### 3.3 验证扩展文件
+### 4.3 验证扩展文件
 
 ```powershell
 Test-Path "$env:PGROOT\share\extension\vector.control"
@@ -110,7 +140,7 @@ Test-Path "$env:PGROOT\lib\vector.dll"
 
 均为 `True` 即安装到位。
 
-### 3.4 在数据库中启用
+### 4.4 在数据库中启用
 
 见下一节创建库后执行：
 
@@ -121,7 +151,7 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 
 ---
 
-## 4. 创建业务库与用户
+## 5. 创建业务库与用户
 
 使用超级用户执行（PowerShell）：
 
@@ -156,9 +186,9 @@ Remove-Item Env:PGPASSWORD
 
 ---
 
-## 5. 配置 DATABASE_URL（本项目）
+## 6. 配置 DATABASE_URL（本项目）
 
-### 5.1 连接串格式
+### 6.1 连接串格式
 
 ```text
 postgres://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=disable
@@ -172,15 +202,22 @@ postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable
 
 > 密码含特殊字符时需 [URL 编码](https://developer.mozilla.org/en-US/docs/Glossary/Percent-encoding)（如 `@` → `%40`）。
 
-### 5.2 方式 A：环境变量（推荐）
+### 6.2 方式 A：环境变量（推荐）
 
 优先级：`DATABASE_URL` > `PG_DSN` > `configs/config.yaml` 中的 `database.dsn`。
 
+```bash
+# Linux / macOS
+export DATABASE_URL='postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable'
+# 可选写入 ~/.bashrc 或 systemd Environment=
+```
+
 ```powershell
+# Windows PowerShell
 $env:DATABASE_URL = "postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable"
 ```
 
-可选长期写入用户环境变量：
+Windows 可选长期写入用户环境变量：
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable(
@@ -192,9 +229,15 @@ $env:DATABASE_URL = "postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?ss
 
 新开终端后生效。
 
-### 5.3 方式 B：配置文件
+### 6.3 方式 B：配置文件
+
+```bash
+# Linux / macOS
+cp configs/config.example.yaml configs/config.yaml
+```
 
 ```powershell
+# Windows
 cd c:\webapp\go-app\ai-agent
 copy configs\config.example.yaml configs\config.yaml
 ```
@@ -211,9 +254,18 @@ database:
 
 `configs/config.yaml` 已在 `.gitignore` 中，勿把真实密码提交到仓库。
 
-### 5.4 启动应用验证
+### 6.4 启动应用验证
+
+```bash
+# Linux / macOS
+export DATABASE_URL='postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable'
+export DEEPSEEK_API_KEY='sk-...'   # 可选；未设置时跳过 ChatModel
+go run ./cmd/server -config configs/config.yaml
+curl -s http://localhost:18090/health
+```
 
 ```powershell
+# Windows
 $env:PATH = "D:\gosdk\go1.25.5\bin;" + $env:PATH
 $env:GOROOT = "D:\gosdk\go1.25.5"
 $env:DATABASE_URL = "postgres://ai_agent:ai_agent_dev@127.0.0.1:5432/ai_agent?sslmode=disable"
@@ -235,7 +287,7 @@ Invoke-RestMethod http://127.0.0.1:18090/health
 
 ---
 
-## 6. 向量索引（可选）
+## 7. 向量索引（可选）
 
 数据量较小时可不建索引；语料增多后建议在库中执行（与配置 `rag.vector_index` 一致）：
 
@@ -255,7 +307,7 @@ WITH (m = 16, ef_construction = 64);
 
 ---
 
-## 7. 常见问题
+## 8. 常见问题
 
 | 现象 | 处理 |
 |------|------|
@@ -269,7 +321,7 @@ WITH (m = 16, ef_construction = 64);
 
 ---
 
-## 8. 清单（安装自检）
+## 9. 清单（安装自检）
 
 - [ ] PostgreSQL 服务运行中，`psql --version` 正常  
 - [ ] `vector.control` / `vector.dll` 已安装到 `$PGROOT`  
