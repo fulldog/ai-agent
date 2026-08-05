@@ -255,16 +255,15 @@ tesseract page-1.png stdout -l chi_sim+eng --psm 3 --oem 3
 
 ### 文件抽取缓存
 
-上传文件会：
+上传分析时按 **`provider`** 分流（不用 `extract_backend`）：
 
-1. 计算内容 SHA256，查表 `file_extractions`（`is_deleted=0`）
-2. 命中则直接读已保存的 `.txt`，跳过 OCR
-3. 未命中则抽取，并将**原始文件**与**抽取文本**写入 `storage.attachments_dir` 下 `YYYY/MM/DD/`
-4. 表单/JSON 参数 `force_reread=true`：旧记录 `is_deleted=1`（`updated_at` 更新），新建关联；旧文件保留
-
-配置：
+1. 算 SHA256；读缓存用读锁，强刷/抽取用写锁（`TryLock`，抢不到 →「文档正在识别中」；进程内，无 DB 锁）
+2. 未强制且已有可读 txt → 缓存命中
+3. `provider=qwen`：上传通义 → 用 file_id 对话；异步写 txt；**新记录成功后再软删旧行**
+4. `provider=kimi`：上传并取正文 → 对话 + 落库
+5. 其他：本机 OCR → 落库
 
 ```yaml
-storage:
-  attachments_dir: attachments
+extract:
+  timeout_seconds: 180
 ```

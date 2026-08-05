@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -216,17 +217,27 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 			writeError(c, http.StatusInternalServerError, "internal_error", "fileextract not configured")
 			return chat.AnalyzeInput{}, false
 		}
-		resolved, err := h.FileExtract.Resolve(c.Request.Context(), file.Filename, b, force)
+		resolved, err := h.FileExtract.Prepare(c.Request.Context(), fileextract.PrepareInput{
+			Filename: file.Filename, Data: b, Force: force, Provider: in.Provider,
+		})
 		if err != nil {
+			if errors.Is(err, fileextract.ErrBusy) {
+				writeError(c, http.StatusConflict, "busy", err.Error())
+				return chat.AnalyzeInput{}, false
+			}
 			writeError(c, http.StatusBadRequest, "bad_request", "extract failed: "+err.Error())
 			return chat.AnalyzeInput{}, false
 		}
 		in.FileName = file.Filename
 		in.FileText = resolved.Text
+		in.RemoteFileID = resolved.RemoteFileID
+		in.FileMode = resolved.Mode
 		in.ContentHash = resolved.ContentHash
 		in.CacheHit = resolved.CacheHit
 		id := resolved.ExtractionID
 		in.ExtractionID = &id
+		in.ExtractBackend = resolved.ExtractBackend
+		in.ChatModelHint = resolved.ChatModelHint
 		return in, true
 	}
 
@@ -295,6 +306,9 @@ func analyzeResponse(res *chat.AnalyzeResult) gin.H {
 	}
 	if res.ExtractionID != nil {
 		out["extraction_id"] = res.ExtractionID
+	}
+	if res.ExtractBackend != "" {
+		out["extract_backend"] = res.ExtractBackend
 	}
 	if res.Data != nil {
 		out["data"] = res.Data

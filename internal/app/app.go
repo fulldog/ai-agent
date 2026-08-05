@@ -20,6 +20,7 @@ type App struct {
 	DB          *gorm.DB
 	Log         *zap.Logger // 应用日志：info→info 文件，error→error 文件
 	AccessLog   *zap.Logger // HTTP access 分类
+	LLMLog      *zap.Logger // 大模型完整 prompt/回复 → llm 文件
 	LLM         *llm.Client
 	LLMPool     *llm.Pool
 	Embed       *embed.Client
@@ -32,9 +33,12 @@ type App struct {
 	FileExtract *fileextract.Service
 }
 
-func New(cfg *config.Config, db *gorm.DB, log, accessLog *zap.Logger) (*App, error) {
+func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*App, error) {
 	if accessLog == nil {
 		accessLog = log
+	}
+	if llmLog == nil {
+		llmLog = zap.NewNop()
 	}
 	rt, err := eino.NewRuntime(cfg)
 	if err != nil {
@@ -43,8 +47,8 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog *zap.Logger) (*App, err
 	embedClient := embed.NewClient(cfg.Embed.BaseURL, cfg.Embed.APIKey, cfg.Embed.Model, cfg.Embed.Dimensions)
 	ragSvc := rag.New(db, embedClient)
 	corpusSvc := corpus.New(db, cfg, embedClient)
-	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc)
-	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc)
+	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog)
+	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:           cfg.OCR.Enabled,
 		TesseractPath:     cfg.OCR.TesseractPath,
@@ -59,12 +63,13 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog *zap.Logger) (*App, err
 		PDFToPPMGray:      cfg.OCR.PDFToPPMGray,
 		CollapseCJKSpaces: cfg.OCR.CollapseCJKSpaces,
 	})
-	fileExtractSvc := fileextract.New(db, extractor, cfg.Storage.AttachmentsDir)
+	fileExtractSvc := fileextract.New(db, extractor, cfg.Storage.AttachmentsDir, cfg)
 	return &App{
 		Config:      cfg,
 		DB:          db,
 		Log:         log,
 		AccessLog:   accessLog,
+		LLMLog:      llmLog,
 		LLM:         rt.Client,
 		LLMPool:     rt.Pool,
 		Embed:       embedClient,

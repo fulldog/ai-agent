@@ -207,12 +207,21 @@ curl -X POST http://localhost:18090/api/v1/chat/analyze \
 | `file` | 是 | pdf/docx/txt/图片等 |
 | `fields` | 与 message 二选一 | 抽取字段列表（JSON 数组或逗号分隔）；有则自动要求 JSON |
 | `message` | 与 fields 二选一 | 自定义问题 |
-| `force_reread` | 否 | `true`/`1`：强制重新抽取（软删旧缓存记录，保留旧文件，新建关联） |
-| `response_format` | 否 | `json`：只返回 JSON；有 `fields` 时默认开启 |
-| `provider` / `model` | 否 | 厂商与模型 |
+| `force_reread` | 否 | `true`：强制重新识别；**成功后**才软删旧缓存 |
+| `provider` / `model` | 否 | 对话厂商与模型。`qwen`/`kimi` 走云端传文件；`deepseek` 等走本机读文件 |
 | `conversation_id` | 否 | 有则写入会话；无则一次性 |
 
-成功响应额外字段：`cache_hit`、`content_hash`、`extraction_id`（multipart 上传时）。
+成功响应额外字段：`cache_hit`、`content_hash`、`extraction_id`、`extract_backend`（multipart 上传时）。
+
+**识别方式（由 `provider` 决定，不再使用 extract_backend）：**
+
+| provider | 行为 |
+|----------|------|
+| `qwen` | 上传到通义 → 用 `file_id` 直接对话（默认 `qwen-long`）→ **异步**拉正文写库 |
+| `kimi` | 上传到 Kimi → 拉正文 → 对话 + 落库 |
+| `deepseek` 等 | 本机 OCR/解析 → 正文塞进 prompt 对话 |
+
+同一文件强刷/抽取时若写锁被占用，返回 HTTP 409：`文档正在识别中`（进程内读写锁）。
 
 同一文件（内容 SHA256 相同）再次上传且未传 `force_reread` 时，直接使用上次抽取文本，跳过 OCR。原始文件与抽取 txt 保存在 `attachments/YYYY/MM/DD/`（见 [DB_SCHEMA.md](./DB_SCHEMA.md) `file_extractions`）。
 

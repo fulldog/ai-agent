@@ -14,6 +14,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -28,15 +29,20 @@ type Service struct {
 	pool     *llm.Pool
 	rag      *rag.Service
 	registry *tools.Registry
+	llmLog   *zap.Logger // 完整 prompt/回复 → logs/llm-*.log
 }
 
-func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service) *Service {
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger) *Service {
+	if llmLog == nil {
+		llmLog = zap.NewNop()
+	}
 	return &Service{
 		db:       db,
 		cfg:      cfg,
 		pool:     pool,
 		rag:      ragSvc,
 		registry: tools.Default(),
+		llmLog:   llmLog,
 	}
 }
 
@@ -158,11 +164,24 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			promptTokens += pt
 			completionTokens += ct
 		}
-		llmog.Save(s.db, &model.LLMCallLog{
+		respContent := ""
+		finishReason := ""
+		var toolCalls any
+		reqMsgs := append([]llm.Message(nil), msgs...)
+		if resp != nil {
+			respContent = resp.Content
+			finishReason = resp.FinishReason
+			if len(resp.ToolCalls) > 0 {
+				toolCalls = resp.ToolCalls
+			}
+		}
+		llmog.Save(s.db, s.llmLog, &model.LLMCallLog{
 			RequestID: in.RequestID, ConversationID: in.ConversationID, AgentRunID: &run.ID,
 			Provider: providerName, Model: modelName, Stream: in.Stream, Status: status,
 			PromptTokens: pt, CompletionTokens: ct, LatencyMs: time.Since(start).Milliseconds(),
 			RequestSummary: fmt.Sprintf("agent_step=%d tools=%d", step, len(toolSpecs)), ErrorMessage: errMsg,
+		}, &llmog.Payload{
+			Messages: reqMsgs, Response: respContent, ToolCalls: toolCalls, FinishReason: finishReason,
 		})
 		if err != nil {
 			return fail(err)

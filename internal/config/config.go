@@ -17,6 +17,7 @@ type Config struct {
 	RAG        RAGConfig        `yaml:"rag"`
 	Agent      AgentConfig      `yaml:"agent"`
 	OCR        OCRConfig        `yaml:"ocr"`
+	Extract    ExtractConfig    `yaml:"extract"`
 	Storage    StorageConfig    `yaml:"storage"`
 	Log        LogConfig        `yaml:"log"`
 	Metrics    MetricsConfig    `yaml:"metrics"`
@@ -97,6 +98,13 @@ type OCRConfig struct {
 // StorageConfig 本地附件与抽取文本落盘。
 type StorageConfig struct {
 	AttachmentsDir string `yaml:"attachments_dir"` // 默认 attachments；按 YYYY/MM/DD 分子目录
+}
+
+// ExtractConfig 文档抽取后端：local 本机 OCR；kimi/qwen 云端 Files。
+type ExtractConfig struct {
+	Backend        string `yaml:"backend"`        // local | kimi | qwen
+	FallbackLocal  bool   `yaml:"fallback_local"` // 云端失败时回退本机
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 }
 
 type LogConfig struct {
@@ -201,6 +209,11 @@ func defaultConfig() *Config {
 		},
 		Storage: StorageConfig{
 			AttachmentsDir: "attachments",
+		},
+		Extract: ExtractConfig{
+			Backend:        "local",
+			FallbackLocal:  false,
+			TimeoutSeconds: 180,
 		},
 		Log: LogConfig{
 			Level:          "info",
@@ -354,6 +367,19 @@ func (c *Config) normalize() {
 	}
 	if strings.TrimSpace(c.Storage.AttachmentsDir) == "" {
 		c.Storage.AttachmentsDir = "attachments"
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Extract.Backend)) {
+	case "moonshot":
+		c.Extract.Backend = "kimi"
+	case "dashscope":
+		c.Extract.Backend = "qwen"
+	case "kimi", "qwen", "local":
+		c.Extract.Backend = strings.ToLower(strings.TrimSpace(c.Extract.Backend))
+	default:
+		c.Extract.Backend = "local"
+	}
+	if c.Extract.TimeoutSeconds <= 0 {
+		c.Extract.TimeoutSeconds = 180
 	}
 
 	c.normalizeLLMProviders()

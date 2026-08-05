@@ -24,11 +24,12 @@ type Options struct {
 	AlsoStdout bool // also write to stdout; pro/release should be false
 }
 
-// Bundle 按类别拆分日志文件：access / info / error。
+// Bundle 按类别拆分日志文件：access / info / error / llm。
 type Bundle struct {
 	Access *zap.Logger // HTTP 访问日志 → logs/access-YYYY-MM-DD.log
 	Info   *zap.Logger // 业务 info/warn/debug、SQL → logs/info-*.log
 	Error  *zap.Logger // error 及以上 → logs/error-*.log
+	LLM    *zap.Logger // 大模型完整 prompt/回复 → logs/llm-*.log（与 llm_call_logs.id 关联）
 	App    *zap.Logger // 应用默认：info 级进 info 文件，error 级进 error 文件
 }
 
@@ -45,6 +46,7 @@ func NewBundle(opt Options) (*Bundle, error) {
 	accessWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "access", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
 	infoWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "info", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
 	errorWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "error", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
+	llmWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "llm", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
 
 	accessCores := []zapcore.Core{zapcore.NewCore(encoder, accessWS, lvl)}
 	infoFileCore := zapcore.NewCore(encoder, infoWS, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
@@ -57,6 +59,8 @@ func NewBundle(opt Options) (*Bundle, error) {
 	errorToInfoCore := zapcore.NewCore(encoder, infoWS, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
 		return l >= zapcore.ErrorLevel
 	}))
+	// 完整 prompt/回复体积大，仅写 llm 文件，不 tee 到 stdout
+	llmCores := []zapcore.Core{zapcore.NewCore(encoder, llmWS, lvl)}
 
 	infoCores := []zapcore.Core{infoFileCore}
 	errorCores := []zapcore.Core{errorFileCore}
@@ -79,6 +83,7 @@ func NewBundle(opt Options) (*Bundle, error) {
 		Access: zap.New(zapcore.NewTee(accessCores...), opts...).With(zap.String("category", "access")),
 		Info:   zap.New(zapcore.NewTee(infoCores...), opts...).With(zap.String("category", "info")),
 		Error:  zap.New(zapcore.NewTee(errorCores...), opts...).With(zap.String("category", "error")),
+		LLM:    zap.New(zapcore.NewTee(llmCores...), opts...).With(zap.String("category", "llm")),
 		App:    zap.New(zapcore.NewTee(appCores...), opts...),
 	}
 	return b, nil

@@ -89,15 +89,20 @@ ocr:
 storage:
   attachments_dir: attachments
 
+# 文档抽取（可选）：超时等；是否云端上传由请求的 provider 决定（qwen/kimi 云端，deepseek 本机）
+extract:
+  timeout_seconds: 180
+  # fallback_local / backend 已废弃：请用 provider 选择能力
+
 log:
   level: info # debug | info | warn | error
   # json | console
   encoding: json
   # 请求体/响应预览最大字符数
   body_preview_max: 4096
-  # 分类日志目录：access-日期.log / info-日期.log / error-日期.log（含 SQL）
+  # 分类日志目录：access / info（含 SQL）/ error / llm（完整 prompt/回复，llm_call_id=库表 id）
   dir: logs
-  filename: ai-agent # 兼容旧配置，分类后文件名以 access|info|error 为前缀
+  filename: ai-agent # 兼容旧配置，分类后文件名以 access|info|error|llm 为前缀
   max_size_mb: 100
   max_backups: 30
   max_age_days: 30

@@ -135,8 +135,10 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | ext | TEXT | 扩展名 |
 | size_bytes | BIGINT | 原始字节数 |
 | source_path | TEXT | 原始文件相对路径（如 `attachments/2026/08/05/{id}_source.pdf`） |
-| text_path | TEXT | 抽取文本相对路径（如 `attachments/2026/08/05/{id}.txt`） |
+| text_path | TEXT | 抽取文本相对路径（可空；无正文则不落盘） |
 | text_chars | INT | 抽取字符数 |
+| extract_backend | TEXT | `local` / `kimi` / `qwen` |
+| remote_file_id | TEXT | 云端文件 ID（可空） |
 | status | TEXT | `ready` / `failed` |
 | error_message | TEXT | 失败原因 |
 | is_deleted | SMALLINT 默认 0 | 软删除：`0` 有效，`1` 已删 |
@@ -146,6 +148,8 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 索引：`(content_hash, is_deleted)`。查询当前缓存：`content_hash = ? AND is_deleted = 0 AND status = 'ready'`。
 
 落盘根目录配置：`storage.attachments_dir`（默认 `attachments`），子目录按 `YYYY/MM/DD`。
+
+抽取后端见配置 `extract.backend`：`local`（本机 OCR）/ `kimi` / `qwen`（云端 Files）。**有正文才写 txt**；`text_path` 空或文件丢失时下次命中强制重抽（优先读 `source_path`）。
 
 ### 3.5 chunks（文档分块与向量表）
 
@@ -261,11 +265,13 @@ LIMIT $3;
 | prompt_tokens | INT | prompt token 数 |
 | completion_tokens | INT | completion token 数 |
 | latency_ms | INT | 耗时毫秒 |
-| request_summary | TEXT | 请求摘要（消息条数、tools 等，不存密钥） |
+| request_summary | TEXT | 请求摘要（消息条数、tools 等，不存完整正文） |
 | error_message | TEXT NULL | 错误信息 |
 | created_at | TIMESTAMPTZ | 创建时间 |
 
 索引：`(created_at DESC)`、`(request_id)`。
+
+完整 prompt / 模型回复不入库，写在文本日志 `logs/llm-YYYY-MM-DD.log`（JSON 字段 `messages`、`response`）。关联方式：日志字段 `llm_call_id` = 本表 `id`，另含 `request_id`。
 
 ### 3.10 token_usage（可选，M5）
 

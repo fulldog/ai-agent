@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -80,6 +82,7 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 	var cacheHit bool
 	var contentHash string
 	var extractionID *uuid.UUID
+	var extractBackend string
 
 	if len(ct) >= 19 && ct[:19] == "multipart/form-data" {
 		file, err := c.FormFile("file")
@@ -109,8 +112,15 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 			return
 		}
 		force := parseBoolForm(c.PostForm("force_reread"))
-		resolved, err := h.FileExtract.Resolve(c.Request.Context(), file.Filename, b, force)
+		provider := strings.TrimSpace(c.PostForm("provider"))
+		resolved, err := h.FileExtract.Prepare(c.Request.Context(), fileextract.PrepareInput{
+			Filename: file.Filename, Data: b, Force: force, Provider: provider, NeedText: true,
+		})
 		if err != nil {
+			if errors.Is(err, fileextract.ErrBusy) {
+				writeError(c, http.StatusConflict, "busy", err.Error())
+				return
+			}
 			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
@@ -119,6 +129,7 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 		contentHash = resolved.ContentHash
 		id := resolved.ExtractionID
 		extractionID = &id
+		extractBackend = resolved.ExtractBackend
 	} else {
 		var req struct {
 			Title       string `json:"title"`
@@ -146,6 +157,9 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 	}
 	if extractionID != nil {
 		out["extraction_id"] = extractionID
+	}
+	if extractBackend != "" {
+		out["extract_backend"] = extractBackend
 	}
 	c.JSON(http.StatusCreated, out)
 }

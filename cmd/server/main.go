@@ -43,6 +43,7 @@ func main() {
 	log := bundle.App
 	defer log.Sync()           //nolint:errcheck
 	defer bundle.Access.Sync() //nolint:errcheck
+	defer bundle.LLM.Sync()    //nolint:errcheck
 
 	db, err := database.Open(cfg.Database, log)
 	if err != nil {
@@ -53,7 +54,7 @@ func main() {
 	}
 	_ = database.EnsureVectorIndex(db, cfg.RAG.VectorIndex)
 
-	application, err := app.New(cfg, db, log, bundle.Access)
+	application, err := app.New(cfg, db, log, bundle.Access, bundle.LLM)
 	if err != nil {
 		log.Fatal("init app", zap.Error(err))
 	}
