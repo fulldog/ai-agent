@@ -153,6 +153,77 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 流式补全。请求体同同步接口。SSE 事件：`delta`、`done`、`error`。
 
+### POST `/api/v1/chat/analyze`
+
+**上传文件直接交给大模型分析，不写入语料库。**  
+适合：合同 PDF 抽字段，一次性返回 JSON。
+
+#### 合同抽字段示例（推荐）
+
+```bash
+curl -X POST http://localhost:18090/api/v1/chat/analyze \
+  -H "X-API-Key: change-me-api-key" \
+  -F "file=@/path/to/contract.pdf" \
+  -F "provider=deepseek" \
+  -F 'fields=["合同名称","合同编号","合同联系人","合同有效期"]'
+```
+
+也可用逗号分隔：`-F "fields=合同名称,合同编号,合同联系人,合同有效期"`
+
+**成功响应（关注 `data`）**：
+
+```json
+{
+  "data": {
+    "合同名称": "XX技术服务合同",
+    "合同编号": "HT-2026-001",
+    "合同联系人": "张三",
+    "合同有效期": "2026-01-01 至 2026-12-31"
+  },
+  "file_name": "contract.pdf",
+  "file_chars": 12345,
+  "truncated": false,
+  "content": "{...}",
+  "usage": { "prompt_tokens": 1000, "completion_tokens": 80, "total_tokens": 1080 }
+}
+```
+
+找不到的字段值为 `null`。业务侧直接用 `data` 即可。
+
+#### 自定义问题 + 强制 JSON
+
+```bash
+curl -X POST http://localhost:18090/api/v1/chat/analyze \
+  -H "X-API-Key: change-me-api-key" \
+  -F "file=@/path/to/contract.pdf" \
+  -F "response_format=json" \
+  -F "message=根据文件，请帮我分析出：合同名称、合同编号、合同联系人、合同有效期，并以 JSON 对象返回"
+```
+
+#### 表单字段
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `file` | 是 | pdf/docx/txt/图片等 |
+| `fields` | 与 message 二选一 | 抽取字段列表（JSON 数组或逗号分隔）；有则自动要求 JSON |
+| `message` | 与 fields 二选一 | 自定义问题 |
+| `force_reread` | 否 | `true`/`1`：强制重新抽取（软删旧缓存记录，保留旧文件，新建关联） |
+| `response_format` | 否 | `json`：只返回 JSON；有 `fields` 时默认开启 |
+| `provider` / `model` | 否 | 厂商与模型 |
+| `conversation_id` | 否 | 有则写入会话；无则一次性 |
+
+成功响应额外字段：`cache_hit`、`content_hash`、`extraction_id`（multipart 上传时）。
+
+同一文件（内容 SHA256 相同）再次上传且未传 `force_reread` 时，直接使用上次抽取文本，跳过 OCR。原始文件与抽取 txt 保存在 `attachments/YYYY/MM/DD/`（见 [DB_SCHEMA.md](./DB_SCHEMA.md) `file_extractions`）。
+
+JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走文件缓存）。
+
+过长正文默认截断约 8 万字（`truncated: true`）。扫描版 PDF 需本机 OCR。
+
+### POST `/api/v1/chat/analyze/stream`
+
+同上，SSE：`delta` / `done` / `error`。结构化结果在 `done` 的 `data` 里；抽字段场景更推荐同步接口。
+
 ---
 
 ## 5. Agent
@@ -231,7 +302,7 @@ data: {"status":"ok","run_id":"uuid"}
 
 ### POST `/api/v1/corpora/:id/documents`
 
-上传文档。`multipart/form-data`：`file`，支持：
+上传文档。`multipart/form-data`：`file`，可选 `force_reread`（强制重新抽取并软删旧缓存）。支持：
 
 - 文本：txt/md/…
 - Word：docx
@@ -247,8 +318,9 @@ data: {"status":"ok","run_id":"uuid"}
 }
 ```
 
-服务端：解析/OCR → 分块 → Embedding → 写入 `chunks`。  
-OCR 依赖说明见 [EXTRACT.md](./EXTRACT.md)。
+multipart 响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`。附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEMA.md) `file_extractions`。
+
+服务端：解析/OCR（或命中缓存）→ 分块 → Embedding → 写入 `chunks`。
 
 ### GET `/api/v1/corpora/:id/documents`
 
@@ -323,6 +395,8 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Models | GET | `/api/v1/models` | 是 |
 | Chat | POST | `/api/v1/chat/completions` | 是 |
 | Chat Stream | POST | `/api/v1/chat/completions/stream` | 是 |
+| Chat Analyze | POST | `/api/v1/chat/analyze` | 是 |
+| Chat Analyze Stream | POST | `/api/v1/chat/analyze/stream` | 是 |
 | Agent | POST | `/api/v1/agent/runs` | 是 |
 | Agent Stream | POST | `/api/v1/agent/runs/stream` | 是 |
 | Agent Run | GET | `/api/v1/agent/runs/:id` | 是 |

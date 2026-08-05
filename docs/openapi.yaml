@@ -314,6 +314,70 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/chat/analyze:
+    post:
+      tags: [Chat]
+      summary: 上传文件直接给大模型分析（不进语料库）
+      operationId: chatAnalyze
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, message]
+              properties:
+                file: { type: string, format: binary }
+                message: { type: string }
+                provider: { type: string }
+                model: { type: string }
+                conversation_id: { type: string, format: uuid }
+          application/json:
+            schema:
+              type: object
+              required: [message, content]
+              properties:
+                message: { type: string }
+                content: { type: string, description: 文件正文 }
+                file_name: { type: string }
+                provider: { type: string }
+                model: { type: string }
+                conversation_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: 分析结果
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/chat/analyze/stream:
+    post:
+      tags: [Chat]
+      summary: 文件分析（SSE）
+      operationId: chatAnalyzeStream
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, message]
+              properties:
+                file: { type: string, format: binary }
+                message: { type: string }
+                provider: { type: string }
+                model: { type: string }
+      responses:
+        "200":
+          description: SSE 事件流
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/agent/runs:
     post:
       tags: [Agent]

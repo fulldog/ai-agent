@@ -17,58 +17,105 @@ type Options struct {
 	Level      string
 	Encoding   string
 	Dir        string // relative to process working directory; default "logs"
-	Filename   string // base name without date; default "ai-agent"
+	Filename   string // legacy base name; unused when CategoryFiles=true
 	MaxSizeMB  int    // rotate when file exceeds this size; default 100
-	MaxBackups int    // reserved for future cleanup; currently unused
-	MaxAgeDays int    // reserved for future cleanup; currently unused
-	AlsoStdout bool   // also write to stdout; default true
+	MaxBackups int
+	MaxAgeDays int
+	AlsoStdout bool // also write to stdout; pro/release should be false
 }
 
-// New builds a zap logger that writes under Dir with daily + size rotation.
-// Active file: logs/ai-agent-2006-01-02.log
-// When size exceeds MaxSizeMB: logs/ai-agent-2006-01-02.001.log, .002.log, ...
-func New(opt Options) (*zap.Logger, error) {
+// Bundle 按类别拆分日志文件：access / info / error。
+type Bundle struct {
+	Access *zap.Logger // HTTP 访问日志 → logs/access-YYYY-MM-DD.log
+	Info   *zap.Logger // 业务 info/warn/debug、SQL → logs/info-*.log
+	Error  *zap.Logger // error 及以上 → logs/error-*.log
+	App    *zap.Logger // 应用默认：info 级进 info 文件，error 级进 error 文件
+}
+
+// NewBundle 创建分类日志；pro/release 请设 AlsoStdout=false。
+func NewBundle(opt Options) (*Bundle, error) {
 	opt = normalizeOptions(opt)
 	if err := os.MkdirAll(opt.Dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create log dir: %w", err)
 	}
 
-	lvl := zapcore.InfoLevel
-	switch strings.ToLower(opt.Level) {
-	case "debug":
-		lvl = zapcore.DebugLevel
-	case "warn":
-		lvl = zapcore.WarnLevel
-	case "error":
-		lvl = zapcore.ErrorLevel
+	lvl := parseLevel(opt.Level)
+	encoder := newEncoder(opt.Encoding)
+
+	accessWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "access", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
+	infoWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "info", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
+	errorWS := zapcore.AddSync(&dailySizeWriter{dir: opt.Dir, prefix: "error", maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024})
+
+	accessCores := []zapcore.Core{zapcore.NewCore(encoder, accessWS, lvl)}
+	infoFileCore := zapcore.NewCore(encoder, infoWS, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+		return l >= lvl && l < zapcore.ErrorLevel
+	}))
+	errorFileCore := zapcore.NewCore(encoder, errorWS, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+		return l >= zapcore.ErrorLevel
+	}))
+	// error 同时落一份到 info，便于按时间线排查
+	errorToInfoCore := zapcore.NewCore(encoder, infoWS, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+		return l >= zapcore.ErrorLevel
+	}))
+
+	infoCores := []zapcore.Core{infoFileCore}
+	errorCores := []zapcore.Core{errorFileCore}
+	appCores := []zapcore.Core{infoFileCore, errorFileCore, errorToInfoCore}
+
+	if opt.AlsoStdout {
+		stdout := zapcore.AddSync(os.Stdout)
+		accessCores = append(accessCores, zapcore.NewCore(encoder, stdout, lvl))
+		infoCores = append(infoCores, zapcore.NewCore(encoder, stdout, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+			return l >= lvl && l < zapcore.ErrorLevel
+		})))
+		errorCores = append(errorCores, zapcore.NewCore(encoder, stdout, zap.LevelEnablerFunc(func(l zapcore.Level) bool {
+			return l >= zapcore.ErrorLevel
+		})))
+		appCores = append(appCores, zapcore.NewCore(encoder, stdout, lvl))
 	}
 
+	opts := []zap.Option{zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel)}
+	b := &Bundle{
+		Access: zap.New(zapcore.NewTee(accessCores...), opts...).With(zap.String("category", "access")),
+		Info:   zap.New(zapcore.NewTee(infoCores...), opts...).With(zap.String("category", "info")),
+		Error:  zap.New(zapcore.NewTee(errorCores...), opts...).With(zap.String("category", "error")),
+		App:    zap.New(zapcore.NewTee(appCores...), opts...),
+	}
+	return b, nil
+}
+
+// New 兼容旧接口：返回 App 日志（info/error 分流文件）。
+func New(opt Options) (*zap.Logger, error) {
+	b, err := NewBundle(opt)
+	if err != nil {
+		return nil, err
+	}
+	return b.App, nil
+}
+
+func parseLevel(level string) zapcore.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+func newEncoder(encoding string) zapcore.Encoder {
 	encCfg := zap.NewProductionEncoderConfig()
 	encCfg.TimeKey = "ts"
 	encCfg.EncodeTime = zapcore.ISO8601TimeEncoder
-	var encoder zapcore.Encoder
-	if strings.EqualFold(opt.Encoding, "console") {
+	if strings.EqualFold(encoding, "console") {
 		encCfg = zap.NewDevelopmentEncoderConfig()
 		encCfg.EncodeTime = zapcore.ISO8601TimeEncoder
-		encoder = zapcore.NewConsoleEncoder(encCfg)
-	} else {
-		encoder = zapcore.NewJSONEncoder(encCfg)
+		return zapcore.NewConsoleEncoder(encCfg)
 	}
-
-	fileWS := zapcore.AddSync(&dailySizeWriter{
-		dir:      opt.Dir,
-		prefix:   opt.Filename,
-		maxBytes: int64(opt.MaxSizeMB) * 1024 * 1024,
-	})
-
-	cores := []zapcore.Core{
-		zapcore.NewCore(encoder, fileWS, lvl),
-	}
-	if opt.AlsoStdout {
-		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), lvl))
-	}
-	log := zap.New(zapcore.NewTee(cores...), zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	return log, nil
+	return zapcore.NewJSONEncoder(encCfg)
 }
 
 func normalizeOptions(opt Options) Options {
@@ -88,6 +135,16 @@ func normalizeOptions(opt Options) Options {
 		opt.Encoding = "json"
 	}
 	return opt
+}
+
+// IsProdMode 生产类模式：不向控制台输出日志。
+func IsProdMode(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "release", "prod", "pro", "production":
+		return true
+	default:
+		return false
+	}
 }
 
 // dailySizeWriter rotates by calendar day and by size.
@@ -113,7 +170,6 @@ func (w *dailySizeWriter) Write(p []byte) (int, error) {
 			return 0, err
 		}
 	}
-	// Rotate before write when current file already at/over limit (keep single huge lines intact).
 	if w.size >= w.maxBytes {
 		if err := w.open(w.day, w.index+1); err != nil {
 			return 0, err
@@ -156,7 +212,6 @@ func (w *dailySizeWriter) open(day string, index int) error {
 	w.day = day
 	w.index = index
 	w.size = info.Size()
-	// If reopening an already oversized file (restart), advance index.
 	if w.size >= w.maxBytes {
 		_ = w.file.Close()
 		w.file = nil

@@ -83,4 +83,8 @@ func TestAlsoStdoutDefaultsByMode(t *testing.T) {
 	if releaseCfg.Log.AlsoStdout == nil || *releaseCfg.Log.AlsoStdout {
 		t.Fatalf("release should also_stdout=false, got %#v", releaseCfg.Log.AlsoStdout)
 	}
+	proCfg := writeAndLoad("pro")
+	if proCfg.Log.AlsoStdout == nil || *proCfg.Log.AlsoStdout {
+		t.Fatalf("pro should also_stdout=false, got %#v", proCfg.Log.AlsoStdout)
+	}
 }

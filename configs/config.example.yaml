@@ -72,13 +72,22 @@ agent:
 # 文档解析：pdf/docx 文本提取；图片与扫描版 PDF 走 OCR（需本机安装工具，Linux/Windows 均可）
 ocr:
   enabled: true
-  # Linux: tesseract 或 /usr/bin/tesseract；Windows 可写绝对路径如 C:\Program Files\Tesseract-OCR\tesseract.exe
-  tesseract_path: tesseract
-  languages: chi_sim+eng             # 需安装对应 tessdata（中文 chi_sim）
-  # Linux: pdftoppm（apt: poppler-utils）；Windows 可写 pdftoppm.exe 绝对路径
+  # Windows 建议写绝对路径，避免服务进程未继承用户 PATH
+  tesseract_path: tesseract          # 例: C:\Program Files\Tesseract-OCR\tesseract.exe
+  languages: chi_sim+eng             # 需 tessdata 含 chi_sim（见 docs/EXTRACT.md）
   pdftoppm_path: pdftoppm
+  pdftotext_path: pdftotext          # 例: C:\Poppler\poppler-26.02.0\Library\bin\pdftotext.exe
   min_pdf_text_len: 40               # PDF 文本少于此长度时尝试 OCR
   timeout_seconds: 180
+  dpi: 200                           # pdftoppm -r；默认 200。可试 300，有印章时未必更好
+  psm: 3                             # tesseract --psm；3=全自动（推荐），6=均匀文本块（印章页慎用）
+  oem: 3                             # tesseract --oem；3=默认 LSTM
+  pdftoppm_gray: false               # true 时 pdftoppm -gray；默认 false（彩色）
+  collapse_cjk_spaces: true          # 去掉汉字间多余空格（Tesseract 中文常见「一字一空」）
+
+# 附件落盘：原始文件 + 抽取文本（按年月日分目录）
+storage:
+  attachments_dir: attachments
 
 log:
   level: info # debug | info | warn | error
@@ -86,13 +95,13 @@ log:
   encoding: json
   # 请求体/响应预览最大字符数
   body_preview_max: 4096
-  # 文件日志：项目工作目录下 logs/，按日命名，单文件超过 100MB 再切分
+  # 分类日志目录：access-日期.log / info-日期.log / error-日期.log（含 SQL）
   dir: logs
-  filename: ai-agent
+  filename: ai-agent # 兼容旧配置，分类后文件名以 access|info|error 为前缀
   max_size_mb: 100
   max_backups: 30
   max_age_days: 30
-  # 省略时：debug 打 stdout+文件；release（生产）只写文件、不 stdout
+  # 省略时：debug 打 stdout+文件；release/pro/prod/production 只写文件、不 stdout
   # also_stdout: false
 
 metrics:

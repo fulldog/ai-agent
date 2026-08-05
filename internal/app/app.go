@@ -7,6 +7,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
+	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
@@ -15,21 +16,26 @@ import (
 )
 
 type App struct {
-	Config  *config.Config
-	DB      *gorm.DB
-	Log     *zap.Logger
-	LLM     *llm.Client
-	LLMPool *llm.Pool
-	Embed   *embed.Client
-	RAG     *rag.Service
-	Corpus  *corpus.Service
-	Chat    *chat.Service
-	Agent   *agent.Service
-	Eino    *eino.Runtime
-	Extract *extract.Extractor
+	Config      *config.Config
+	DB          *gorm.DB
+	Log         *zap.Logger // 应用日志：info→info 文件，error→error 文件
+	AccessLog   *zap.Logger // HTTP access 分类
+	LLM         *llm.Client
+	LLMPool     *llm.Pool
+	Embed       *embed.Client
+	RAG         *rag.Service
+	Corpus      *corpus.Service
+	Chat        *chat.Service
+	Agent       *agent.Service
+	Eino        *eino.Runtime
+	Extract     *extract.Extractor
+	FileExtract *fileextract.Service
 }
 
-func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
+func New(cfg *config.Config, db *gorm.DB, log, accessLog *zap.Logger) (*App, error) {
+	if accessLog == nil {
+		accessLog = log
+	}
 	rt, err := eino.NewRuntime(cfg)
 	if err != nil {
 		return nil, err
@@ -40,25 +46,34 @@ func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
 	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc)
 	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc)
 	extractor := extract.New(extract.OCRConfig{
-		Enabled:        cfg.OCR.Enabled,
-		TesseractPath:  cfg.OCR.TesseractPath,
-		Languages:      cfg.OCR.Languages,
-		PDFToPPMPath:   cfg.OCR.PDFToPPMPath,
-		MinPDFTextLen:  cfg.OCR.MinPDFTextLen,
-		TimeoutSeconds: cfg.OCR.TimeoutSeconds,
+		Enabled:           cfg.OCR.Enabled,
+		TesseractPath:     cfg.OCR.TesseractPath,
+		Languages:         cfg.OCR.Languages,
+		PDFToPPMPath:      cfg.OCR.PDFToPPMPath,
+		PDFToTextPath:     cfg.OCR.PDFToTextPath,
+		MinPDFTextLen:     cfg.OCR.MinPDFTextLen,
+		TimeoutSeconds:    cfg.OCR.TimeoutSeconds,
+		DPI:               cfg.OCR.DPI,
+		PSM:               cfg.OCR.PSM,
+		OEM:               cfg.OCR.OEM,
+		PDFToPPMGray:      cfg.OCR.PDFToPPMGray,
+		CollapseCJKSpaces: cfg.OCR.CollapseCJKSpaces,
 	})
+	fileExtractSvc := fileextract.New(db, extractor, cfg.Storage.AttachmentsDir)
 	return &App{
-		Config:  cfg,
-		DB:      db,
-		Log:     log,
-		LLM:     rt.Client,
-		LLMPool: rt.Pool,
-		Embed:   embedClient,
-		RAG:     ragSvc,
-		Corpus:  corpusSvc,
-		Chat:    chatSvc,
-		Agent:   agentSvc,
-		Eino:    rt,
-		Extract: extractor,
+		Config:      cfg,
+		DB:          db,
+		Log:         log,
+		AccessLog:   accessLog,
+		LLM:         rt.Client,
+		LLMPool:     rt.Pool,
+		Embed:       embedClient,
+		RAG:         ragSvc,
+		Corpus:      corpusSvc,
+		Chat:        chatSvc,
+		Agent:       agentSvc,
+		Eino:        rt,
+		Extract:     extractor,
+		FileExtract: fileExtractSvc,
 	}, nil
 }

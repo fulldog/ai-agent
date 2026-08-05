@@ -82,7 +82,7 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 			bodyStr = truncate(string(reqBody), cfg.Log.BodyPreviewMax)
 		}
 
-		log.Info("http_request",
+		log.Info("http_access",
 			zap.String("request_id", reqID),
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),

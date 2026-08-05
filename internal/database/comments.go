@@ -14,6 +14,7 @@ func EnsureSchemaComments(db *gorm.DB) error {
 		`COMMENT ON TABLE agent_steps IS 'Agent 步骤明细表'`,
 		`COMMENT ON TABLE request_logs IS 'HTTP 请求日志表'`,
 		`COMMENT ON TABLE llm_call_logs IS '上游 LLM 调用日志表'`,
+		`COMMENT ON TABLE file_extractions IS '上传文件与抽取文本关联表(按内容哈希缓存)'`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

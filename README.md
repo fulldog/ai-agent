@@ -13,41 +13,55 @@ M4：CloudWeGo Eino DeepSeek ChatModel + Agent 工具循环。
 | PostgreSQL 16+ | Community + [pgvector](https://github.com/pgvector/pgvector)（安装见 [docs/POSTGRES.md](docs/POSTGRES.md)） |
 | DeepSeek / 千问 / Kimi / 豆包 API Key | 对话 / Agent（YAML `llm.providers` 或环境变量，见 [MULTI_LLM.md](docs/MULTI_LLM.md)） |
 | Ollama（可选） | 默认 Embedding：`nomic-embed-text` |
-| Tesseract OCR | 图片 OCR；扫描版 PDF OCR（见下方「OCR 插件」） |
-| Poppler `pdftoppm` | 仅扫描版 PDF 需要（转图片后再 OCR） |
+| Tesseract OCR | 图片 OCR；扫描版 PDF OCR（安装见 [docs/EXTRACT.md](docs/EXTRACT.md)） |
+| Poppler | `pdftotext`（PDF 文字层）+ `pdftoppm`（扫描件转图）；**安装步骤见 [docs/EXTRACT.md](docs/EXTRACT.md)#1-安装-poppler** |
 
 **数据库安装与 `DATABASE_URL` 配置**：见 [docs/POSTGRES.md](docs/POSTGRES.md)（含 Windows 详解；Linux 可用发行版包 + `postgresql-xx-pgvector` / 源码编译）。
 
-### OCR 插件（文档上传）
+### OCR / Poppler 插件（文档上传与文件分析）
 
-上传 `POST /api/v1/corpora/{id}/documents` 支持 PDF / Word(docx) / 图片。OCR 依赖本机外部程序（无 CGO），**Linux / Windows 均可**，配置写可执行文件名或绝对路径即可。
+上传语料与 `POST /api/v1/chat/analyze` 依赖本机外部程序（无 CGO），**Linux / Windows 均可**。
 
 | 插件 | 用途 | 是否必须 | Linux | Windows |
 |------|------|----------|-------|---------|
-| **Tesseract OCR** | 图片 / 扫描 PDF OCR | 图片、扫描 PDF 时必须 | `apt install tesseract-ocr tesseract-ocr-chi-sim`（或 `yum`/`dnf` 等价包） | [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki)，勾选 **chi_sim** |
-| **Poppler（`pdftoppm`）** | 扫描 PDF 转 PNG | 仅扫描版 PDF | `apt install poppler-utils` | [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases)，`Library\bin` 加入 PATH |
+| **Poppler** | `pdftotext` 抽文字；`pdftoppm` 扫描 PDF 转图 | PDF 强烈推荐 | `apt/dnf install poppler-utils` | [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases)，将 `Library\bin` 加入 PATH |
+| **Tesseract OCR** | 图片 / 扫描 PDF OCR（需 **chi_sim**） | 图片、扫描 PDF 时必须 | `apt install tesseract-ocr tesseract-ocr-chi-sim` | `winget install UB-Mannheim.TesseractOCR`，并安装 chi_sim（见文档） |
 
-纯文字 PDF、`.docx`、纯文本 **不需要** 上述 OCR 插件。旧版 `.doc` 不支持，请另存为 `.docx`。
+**Windows 安装摘要：**
 
-```bash
-# Linux / macOS / Git Bash（命令相同）
+- Poppler：解压 → PATH / 配置绝对路径 → `pdftotext -v`  
+- Tesseract：winget 或 [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki) → 确认 `chi_sim` → 配置绝对路径  
+
+完整步骤见 [docs/EXTRACT.md](docs/EXTRACT.md)（§1 Poppler、§2 Tesseract）。
+
+扫描件 PDF（无文字层）必须同时具备 Poppler + Tesseract；纯文字 PDF / `.docx` 不强制 OCR。旧版 `.doc` 不支持。
+
+```powershell
 tesseract --version
+tesseract --list-langs   # 应含 chi_sim、eng
+pdftotext -v
 pdftoppm -v
-which tesseract pdftoppm
 ```
 
-配置示例（`configs/config.yaml`）：
+配置示例（`configs/config.yaml`，Windows 建议绝对路径）：
 
 ```yaml
 ocr:
   enabled: true
-  # Linux 装好后一般直接用命令名；也可写绝对路径如 /usr/bin/tesseract
-  tesseract_path: tesseract
+  tesseract_path: "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
   languages: chi_sim+eng
-  pdftoppm_path: pdftoppm          # Linux: /usr/bin/pdftoppm；Windows 可写 .exe 绝对路径
+  pdftotext_path: "C:\\Poppler\\poppler-26.02.0\\Library\\bin\\pdftotext.exe"
+  pdftoppm_path: "C:\\Poppler\\poppler-26.02.0\\Library\\bin\\pdftoppm.exe"
   min_pdf_text_len: 40
   timeout_seconds: 180
+  dpi: 200
+  psm: 3
+  oem: 3
+  pdftoppm_gray: false
+  collapse_cjk_spaces: true
 ```
+
+OCR 参数详解见 [docs/EXTRACT.md](docs/EXTRACT.md) §4。
 
 更细说明见 [docs/EXTRACT.md](docs/EXTRACT.md)。
 
@@ -90,7 +104,7 @@ go run ./cmd/server -config configs/config.yaml
 - 健康检查：`GET /health`
 - 指标：`GET /metrics`
 - API 前缀：`/api/v1`（需 Header `X-API-Key`）
-- 文件日志：工作目录下 `logs/ai-agent-YYYY-MM-DD.log`，按日切换；单文件超过 **100MB** 自动切分（配置见 `log.*`）。`server.mode: release` 时默认**不**打 stdout，只写文件
+- 文件日志（分类）：`logs/access-YYYY-MM-DD.log`（HTTP）、`logs/info-*.log`（业务 + **全部 SQL**）、`logs/error-*.log`（错误）；按日切换，单文件超过 **100MB** 切分。`server.mode` 为 `release` / `pro` / `prod` / `production` 时默认**不**打 stdout，只写文件
 
 默认示例 Key（见配置）：`change-me-api-key`。
 

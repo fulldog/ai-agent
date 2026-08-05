@@ -7,12 +7,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
+	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
 )
 
 type CorpusHandler struct {
-	Corpus  *corpus.Service
-	Extract *extract.Extractor
+	Corpus      *corpus.Service
+	FileExtract *fileextract.Service
 }
 
 func (h *CorpusHandler) Create(c *gin.Context) {
@@ -76,6 +77,10 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 	}
 	ct := c.ContentType()
 	var title, source, content string
+	var cacheHit bool
+	var contentHash string
+	var extractionID *uuid.UUID
+
 	if len(ct) >= 19 && ct[:19] == "multipart/form-data" {
 		file, err := c.FormFile("file")
 		if err != nil {
@@ -99,24 +104,32 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 		}
 		title = extract.GuessName(file.Filename)
 		source = file.Filename
-		if h.Extract == nil {
-			writeError(c, http.StatusInternalServerError, "internal_error", "extractor not configured")
+		if h.FileExtract == nil {
+			writeError(c, http.StatusInternalServerError, "internal_error", "fileextract not configured")
 			return
 		}
-		content, err = h.Extract.FromBytes(file.Filename, b)
+		force := parseBoolForm(c.PostForm("force_reread"))
+		resolved, err := h.FileExtract.Resolve(c.Request.Context(), file.Filename, b, force)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		content = resolved.Text
+		cacheHit = resolved.CacheHit
+		contentHash = resolved.ContentHash
+		id := resolved.ExtractionID
+		extractionID = &id
 	} else {
 		var req struct {
-			Title   string `json:"title"`
-			Content string `json:"content" binding:"required"`
+			Title       string `json:"title"`
+			Content     string `json:"content" binding:"required"`
+			ForceReread bool   `json:"force_reread"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		_ = req.ForceReread
 		title, content = req.Title, req.Content
 		source = req.Title
 	}
@@ -127,7 +140,14 @@ func (h *CorpusHandler) AddDocument(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	c.JSON(http.StatusCreated, doc)
+	out := gin.H{"document": doc, "cache_hit": cacheHit}
+	if contentHash != "" {
+		out["content_hash"] = contentHash
+	}
+	if extractionID != nil {
+		out["extraction_id"] = extractionID
+	}
+	c.JSON(http.StatusCreated, out)
 }
 
 func (h *CorpusHandler) ListDocuments(c *gin.Context) {

@@ -1,18 +1,25 @@
 package database
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	glogger "gorm.io/gorm/logger"
 )
 
-func Open(cfg config.DatabaseConfig) (*gorm.DB, error) {
+func Open(cfg config.DatabaseConfig, log *zap.Logger) (*gorm.DB, error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: newZapGormLogger(log, glogger.Info, 200*time.Millisecond),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
@@ -52,10 +59,10 @@ func migrate(db *gorm.DB) error {
 		&model.AgentStep{},
 		&model.RequestLog{},
 		&model.LLMCallLog{},
+		&model.FileExtraction{},
 	); err != nil {
 		return fmt.Errorf("automigrate: %w", err)
 	}
-	// Ensure embedding column exists as vector type (GORM cannot manage it well).
 	var dim int
 	_ = db.Raw(`SELECT 1`).Scan(&dim)
 	return nil
@@ -97,5 +104,64 @@ ON chunks USING ivfflat (embedding vector_cosine_ops)
 WITH (lists = 100)`).Error
 	default:
 		return nil
+	}
+}
+
+// zapGormLogger 将 GORM SQL 写入 zap（走 info/error 分类文件）。
+type zapGormLogger struct {
+	zap           *zap.Logger
+	level         glogger.LogLevel
+	slowThreshold time.Duration
+}
+
+func newZapGormLogger(log *zap.Logger, level glogger.LogLevel, slow time.Duration) glogger.Interface {
+	return &zapGormLogger{zap: log.With(zap.String("component", "gorm")), level: level, slowThreshold: slow}
+}
+
+func (l *zapGormLogger) LogMode(level glogger.LogLevel) glogger.Interface {
+	n := *l
+	n.level = level
+	return &n
+}
+
+func (l *zapGormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+	if l.level < glogger.Info {
+		return
+	}
+	l.zap.Sugar().Infof(msg, data...)
+}
+
+func (l *zapGormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+	if l.level < glogger.Warn {
+		return
+	}
+	l.zap.Sugar().Warnf(msg, data...)
+}
+
+func (l *zapGormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+	if l.level < glogger.Error {
+		return
+	}
+	l.zap.Sugar().Errorf(msg, data...)
+}
+
+func (l *zapGormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if l.level <= glogger.Silent {
+		return
+	}
+	elapsed := time.Since(begin)
+	sql, rows := fc()
+	fields := []zap.Field{
+		zap.String("sql", sql),
+		zap.Int64("rows", rows),
+		zap.Duration("elapsed", elapsed),
+	}
+	switch {
+	case err != nil && !errors.Is(err, gorm.ErrRecordNotFound):
+		l.zap.Error("sql", append(fields, zap.Error(err))...)
+	case l.slowThreshold > 0 && elapsed > l.slowThreshold && l.level >= glogger.Warn:
+		l.zap.Warn("sql_slow", fields...)
+	case l.level >= glogger.Info:
+		l.zap.Info("sql", fields...)
 	}
 }

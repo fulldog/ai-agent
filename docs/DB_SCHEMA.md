@@ -55,6 +55,7 @@ postgres://ai_agent:password@127.0.0.1:5432/ai_agent?sslmode=disable
 | `request_logs` | HTTP 请求完整日志 |
 | `llm_call_logs` | 上游 LLM 调用日志 |
 | `token_usage` | 可选按日聚合（M5） |
+| `file_extractions` | 上传文件与抽取文本关联（内容哈希缓存） |
 
 API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文末可选表）。
 
@@ -121,6 +122,30 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | updated_at | TIMESTAMPTZ | 更新时间 |
 
 索引：`(corpus_id, created_at)`、`status`。
+
+### 3.4b file_extractions（文件抽取关联表）
+
+上传文件按**内容 SHA256**缓存抽取结果；命中则跳过 OCR/解析。强制重读时将旧行 `is_deleted=1`，新建一行并保留旧原始文件与 txt。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | UUID PK | 抽取记录ID |
+| content_hash | TEXT | 原始文件 SHA256 |
+| original_name | TEXT | 上传文件名 |
+| ext | TEXT | 扩展名 |
+| size_bytes | BIGINT | 原始字节数 |
+| source_path | TEXT | 原始文件相对路径（如 `attachments/2026/08/05/{id}_source.pdf`） |
+| text_path | TEXT | 抽取文本相对路径（如 `attachments/2026/08/05/{id}.txt`） |
+| text_chars | INT | 抽取字符数 |
+| status | TEXT | `ready` / `failed` |
+| error_message | TEXT | 失败原因 |
+| is_deleted | SMALLINT 默认 0 | 软删除：`0` 有效，`1` 已删 |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间（软删时刷新） |
+
+索引：`(content_hash, is_deleted)`。查询当前缓存：`content_hash = ? AND is_deleted = 0 AND status = 'ready'`。
+
+落盘根目录配置：`storage.attachments_dir`（默认 `attachments`），子目录按 `YYYY/MM/DD`。
 
 ### 3.5 chunks（文档分块与向量表）
 

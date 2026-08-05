@@ -213,3 +213,29 @@ func (l *LLMCallLog) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// FileExtraction 上传文件与抽取文本的关联（按内容哈希缓存；强制重读则软删旧行并新建）。
+type FileExtraction struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey;comment:抽取记录ID" json:"id"`
+	ContentHash  string    `gorm:"type:text;index:idx_file_extractions_hash_active,priority:1;not null;comment:原始文件SHA256" json:"content_hash"`
+	OriginalName string    `gorm:"type:text;comment:上传文件名" json:"original_name"`
+	Ext          string    `gorm:"type:text;comment:扩展名" json:"ext"`
+	SizeBytes    int64     `gorm:"comment:原始文件字节数" json:"size_bytes"`
+	SourcePath   string    `gorm:"type:text;comment:原始文件相对路径" json:"source_path"`
+	TextPath     string    `gorm:"type:text;comment:抽取文本相对路径" json:"text_path"`
+	TextChars    int       `gorm:"comment:抽取文本字符数" json:"text_chars"`
+	Status       string    `gorm:"type:text;index;comment:状态:ready/failed" json:"status"`
+	ErrorMessage string    `gorm:"type:text;comment:失败原因" json:"error_message,omitempty"`
+	IsDeleted    int16     `gorm:"type:smallint;not null;default:0;index:idx_file_extractions_hash_active,priority:2;comment:软删除:0有效1已删" json:"is_deleted"`
+	CreatedAt    time.Time `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (FileExtraction) TableName() string { return "file_extractions" }
+
+func (f *FileExtraction) BeforeCreate(tx *gorm.DB) error {
+	if f.ID == uuid.Nil {
+		f.ID = uuid.New()
+	}
+	return nil
+}

@@ -26,7 +26,8 @@ func main() {
 		panic(err)
 	}
 
-	log, err := logger.New(logger.Options{
+	alsoStdout := cfg.Log.AlsoStdout == nil || *cfg.Log.AlsoStdout
+	bundle, err := logger.NewBundle(logger.Options{
 		Level:      cfg.Log.Level,
 		Encoding:   cfg.Log.Encoding,
 		Dir:        cfg.Log.Dir,
@@ -34,14 +35,16 @@ func main() {
 		MaxSizeMB:  cfg.Log.MaxSizeMB,
 		MaxBackups: cfg.Log.MaxBackups,
 		MaxAgeDays: cfg.Log.MaxAgeDays,
-		AlsoStdout: cfg.Log.AlsoStdout == nil || *cfg.Log.AlsoStdout,
+		AlsoStdout: alsoStdout,
 	})
 	if err != nil {
 		panic(err)
 	}
-	defer log.Sync() //nolint:errcheck
+	log := bundle.App
+	defer log.Sync()           //nolint:errcheck
+	defer bundle.Access.Sync() //nolint:errcheck
 
-	db, err := database.Open(cfg.Database)
+	db, err := database.Open(cfg.Database, log)
 	if err != nil {
 		log.Fatal("open database", zap.Error(err))
 	}
@@ -50,7 +53,7 @@ func main() {
 	}
 	_ = database.EnsureVectorIndex(db, cfg.RAG.VectorIndex)
 
-	application, err := app.New(cfg, db, log)
+	application, err := app.New(cfg, db, log, bundle.Access)
 	if err != nil {
 		log.Fatal("init app", zap.Error(err))
 	}
@@ -65,6 +68,8 @@ func main() {
 	go func() {
 		log.Info("server listening",
 			zap.String("addr", cfg.Server.Addr),
+			zap.String("mode", cfg.Server.Mode),
+			zap.Bool("log_stdout", alsoStdout),
 			zap.String("llm_default_provider", cfg.LLM.DefaultProvider),
 			zap.String("llm_default_model", cfg.LLM.DefaultModel),
 			zap.Bool("llm_default_key_set", cfg.LLM.APIKey != ""),

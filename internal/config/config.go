@@ -17,6 +17,7 @@ type Config struct {
 	RAG        RAGConfig        `yaml:"rag"`
 	Agent      AgentConfig      `yaml:"agent"`
 	OCR        OCRConfig        `yaml:"ocr"`
+	Storage    StorageConfig    `yaml:"storage"`
 	Log        LogConfig        `yaml:"log"`
 	Metrics    MetricsConfig    `yaml:"metrics"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
@@ -79,12 +80,23 @@ type AgentConfig struct {
 }
 
 type OCRConfig struct {
-	Enabled        bool   `yaml:"enabled"`
-	TesseractPath  string `yaml:"tesseract_path"`
-	Languages      string `yaml:"languages"`
-	PDFToPPMPath   string `yaml:"pdftoppm_path"`
-	MinPDFTextLen  int    `yaml:"min_pdf_text_len"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	Enabled           bool   `yaml:"enabled"`
+	TesseractPath     string `yaml:"tesseract_path"`
+	Languages         string `yaml:"languages"`
+	PDFToPPMPath      string `yaml:"pdftoppm_path"`
+	PDFToTextPath     string `yaml:"pdftotext_path"`
+	MinPDFTextLen     int    `yaml:"min_pdf_text_len"`
+	TimeoutSeconds    int    `yaml:"timeout_seconds"`
+	DPI               int    `yaml:"dpi"`                 // pdftoppm -r，默认 200
+	PSM               int    `yaml:"psm"`                 // tesseract --psm，默认 3
+	OEM               int    `yaml:"oem"`                 // tesseract --oem，默认 3
+	PDFToPPMGray      bool   `yaml:"pdftoppm_gray"`       // pdftoppm -gray，默认 false
+	CollapseCJKSpaces *bool  `yaml:"collapse_cjk_spaces"` // 去汉字间空格，默认 true
+}
+
+// StorageConfig 本地附件与抽取文本落盘。
+type StorageConfig struct {
+	AttachmentsDir string `yaml:"attachments_dir"` // 默认 attachments；按 YYYY/MM/DD 分子目录
 }
 
 type LogConfig struct {
@@ -174,12 +186,21 @@ func defaultConfig() *Config {
 			DefaultTools: []string{"knowledge_search", "current_time", "calculator"},
 		},
 		OCR: OCRConfig{
-			Enabled:        true,
-			TesseractPath:  "tesseract",
-			Languages:      "chi_sim+eng",
-			PDFToPPMPath:   "pdftoppm",
-			MinPDFTextLen:  40,
-			TimeoutSeconds: 180,
+			Enabled:           true,
+			TesseractPath:     "tesseract",
+			Languages:         "chi_sim+eng",
+			PDFToPPMPath:      "pdftoppm",
+			PDFToTextPath:     "pdftotext",
+			MinPDFTextLen:     40,
+			TimeoutSeconds:    180,
+			DPI:               200,
+			PSM:               3,
+			OEM:               3,
+			PDFToPPMGray:      false,
+			CollapseCJKSpaces: boolPtr(true),
+		},
+		Storage: StorageConfig{
+			AttachmentsDir: "attachments",
 		},
 		Log: LogConfig{
 			Level:          "info",
@@ -288,7 +309,7 @@ func (c *Config) normalize() {
 		c.Log.MaxAgeDays = 30
 	}
 	if c.Log.AlsoStdout == nil {
-		v := !strings.EqualFold(c.Server.Mode, "release")
+		v := !loggerIsProdMode(c.Server.Mode)
 		c.Log.AlsoStdout = &v
 	}
 	if c.LLM.TimeoutSeconds <= 0 {
@@ -309,11 +330,30 @@ func (c *Config) normalize() {
 	if strings.TrimSpace(c.OCR.PDFToPPMPath) == "" {
 		c.OCR.PDFToPPMPath = "pdftoppm"
 	}
+	if strings.TrimSpace(c.OCR.PDFToTextPath) == "" {
+		c.OCR.PDFToTextPath = "pdftotext"
+	}
 	if c.OCR.MinPDFTextLen <= 0 {
 		c.OCR.MinPDFTextLen = 40
 	}
 	if c.OCR.TimeoutSeconds <= 0 {
 		c.OCR.TimeoutSeconds = 180
+	}
+	if c.OCR.DPI <= 0 {
+		c.OCR.DPI = 200
+	}
+	if c.OCR.PSM <= 0 {
+		c.OCR.PSM = 3
+	}
+	if c.OCR.OEM <= 0 {
+		c.OCR.OEM = 3
+	}
+	if c.OCR.CollapseCJKSpaces == nil {
+		v := true
+		c.OCR.CollapseCJKSpaces = &v
+	}
+	if strings.TrimSpace(c.Storage.AttachmentsDir) == "" {
+		c.Storage.AttachmentsDir = "attachments"
 	}
 
 	c.normalizeLLMProviders()
@@ -446,4 +486,15 @@ func (c *Config) APIKeyID(key string) string {
 		return "key:" + key
 	}
 	return "key:" + key[:4] + "..." + key[len(key)-4:]
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func loggerIsProdMode(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "release", "prod", "pro", "production":
+		return true
+	default:
+		return false
+	}
 }

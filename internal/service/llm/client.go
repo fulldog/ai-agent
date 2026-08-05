@@ -45,12 +45,13 @@ type ToolSpecFunc struct {
 }
 
 type ChatRequest struct {
-	Model       string
-	Messages    []Message
-	Temperature float64
-	MaxTokens   int
-	Tools       []ToolSpec
-	ToolChoice  string
+	Model          string
+	Messages       []Message
+	Temperature    float64
+	MaxTokens      int
+	Tools          []ToolSpec
+	ToolChoice     string
+	ResponseFormat string // "" | "json_object" — OpenAI 兼容强制 JSON
 }
 
 type ChatResponse struct {
@@ -276,6 +277,9 @@ func (c *Client) buildBody(req ChatRequest, stream bool) map[string]any {
 		if req.ToolChoice != "" {
 			body["tool_choice"] = req.ToolChoice
 		}
+	}
+	if req.ResponseFormat == "json_object" {
+		body["response_format"] = map[string]any{"type": "json_object"}
 	}
 	return body
 }

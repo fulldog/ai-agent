@@ -5,6 +5,7 @@ configs/config.yaml
 bin/
 dist/
 logs/
+attachments/
 .idea/
 .vscode/
 *.log

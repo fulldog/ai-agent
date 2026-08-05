@@ -45,7 +45,7 @@ func (e *Extractor) FromBytes(filename string, data []byte) (string, error) {
 }
 
 func (e *Extractor) extractPDF(data []byte) (string, error) {
-	text, err := extractPDFText(data)
+	text, err := e.extractPDFText(data)
 	if err == nil && len([]rune(text)) >= e.OCR.MinPDFTextLen {
 		return text, nil
 	}
@@ -78,7 +78,17 @@ func trimText(s string) string {
 	return s
 }
 
-func extractPDFText(data []byte) (string, error) {
+// extractPDFText 优先用 Poppler pdftotext（无 CGO，与 pdftoppm 同属 poppler）；
+// 不可用时回退到纯 Go 的 ledongthuc/pdf。
+// 说明：go-fitz(MuPDF) 在 Windows MinGW 下链接会失败（__intrinsic_setjmpex），故不采用。
+func (e *Extractor) extractPDFText(data []byte) (string, error) {
+	if text, err := extractPDFTextPoppler(e.OCR, data); err == nil && text != "" {
+		return text, nil
+	}
+	return extractPDFTextPureGo(data)
+}
+
+func extractPDFTextPureGo(data []byte) (string, error) {
 	r, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return "", fmt.Errorf("parse pdf: %w", err)

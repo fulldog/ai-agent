@@ -20,7 +20,11 @@ func Setup(application *app.App) *gin.Engine {
 	r := gin.New()
 	// 全局中间件：panic 恢复 → 请求日志落库/zap → Prometheus HTTP 指标
 	r.Use(middleware.Recover(application.Log))
-	r.Use(middleware.RequestLog(cfg, application.DB, application.Log))
+	accessLog := application.AccessLog
+	if accessLog == nil {
+		accessLog = application.Log
+	}
+	r.Use(middleware.RequestLog(cfg, application.DB, accessLog))
 	if cfg.Metrics.Enabled {
 		r.Use(middleware.Metrics())
 	}
@@ -41,9 +45,9 @@ func Setup(application *app.App) *gin.Engine {
 
 	// ---------- 业务 Handler ----------
 	convH := &handler.ConversationHandler{Chat: application.Chat}
-	chatH := &handler.ChatHandler{Chat: application.Chat}
+	chatH := &handler.ChatHandler{Chat: application.Chat, FileExtract: application.FileExtract}
 	agentH := &handler.AgentHandler{Agent: application.Agent}
-	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, Extract: application.Extract}
+	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, FileExtract: application.FileExtract}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
 	modelsH := &handler.ModelsHandler{Pool: application.LLMPool}
@@ -64,6 +68,8 @@ func Setup(application *app.App) *gin.Engine {
 		// 聊天（同步 / SSE 流式）
 		v1.POST("/chat/completions", chatH.Completions)              // 同步补全
 		v1.POST("/chat/completions/stream", chatH.CompletionsStream) // SSE 流式补全
+		v1.POST("/chat/analyze", chatH.Analyze)                      // 上传文件直接分析（不进语料库）
+		v1.POST("/chat/analyze/stream", chatH.AnalyzeStream)         // 文件分析 SSE
 
 		// Agent 运行（同步 / SSE；含 Tool Calling）
 		v1.POST("/agent/runs", agentH.Run)              // 同步运行
