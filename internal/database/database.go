@@ -34,6 +34,9 @@ func Open(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		if err := migrate(db); err != nil {
 			return nil, err
 		}
+		if err := EnsureSchemaComments(db); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }
@@ -76,6 +79,7 @@ END $$;`, dimensions)
 	if err := db.Exec(sql).Error; err != nil {
 		return fmt.Errorf("add embedding column: %w", err)
 	}
+	_ = db.Exec(`COMMENT ON COLUMN chunks.embedding IS '分块向量(pgvector)，维度与 embed.dimensions 一致'`).Error
 	return nil
 }
 

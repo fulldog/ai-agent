@@ -16,7 +16,20 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- 可选，用于 gen_random_uuid()
 ```
 
-应用启动时由 `internal/database` 执行扩展检查与 AutoMigrate。
+应用启动时由 `internal/database` 执行扩展检查、AutoMigrate，并写入 **PostgreSQL 表/列 COMMENT**（来源：GORM 字段 `comment` 标签 + `EnsureSchemaComments`）。
+
+在 psql 中可查看：
+
+```sql
+\d+ conversations
+SELECT cols.column_name, pgd.description
+FROM pg_catalog.pg_statio_all_tables AS st
+JOIN pg_catalog.pg_description pgd ON pgd.objoid = st.relid
+JOIN information_schema.columns cols
+  ON cols.table_schema = st.schemaname AND cols.table_name = st.relname
+ AND cols.ordinal_position = pgd.objsubid
+WHERE st.relname = 'conversations';
+```
 
 **配置示例 DSN**
 
@@ -49,76 +62,78 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 
 ## 3. 表定义
 
-### 3.1 conversations
+> 下列「说明」与库内 `COMMENT ON COLUMN` / GORM `comment` 标签一致。
+
+### 3.1 conversations（会话表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| title | TEXT | |
-| system_prompt | TEXT | 可空 |
-| corpus_id | UUID NULL | 默认 RAG 语料 |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-| deleted_at | TIMESTAMPTZ NULL | 软删可选 |
+| id | UUID PK | 会话ID |
+| title | TEXT | 会话标题 |
+| system_prompt | TEXT | 系统提示词（可空） |
+| corpus_id | UUID NULL | 默认绑定的语料库ID（RAG） |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
+| deleted_at | TIMESTAMPTZ NULL | 软删除时间 |
 
-索引：`created_at DESC`。
+索引：`deleted_at`；建议按 `created_at DESC` 查询。
 
-### 3.2 messages
+### 3.2 messages（会话消息表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| conversation_id | UUID FK → conversations | |
-| role | TEXT | `system` / `user` / `assistant` / `tool` |
-| content | TEXT | |
-| tool_call_id | TEXT NULL | tool 消息关联 |
-| tool_calls_json | JSONB NULL | assistant 发起的 tool_calls |
-| token_prompt | INT NULL | |
-| token_completion | INT NULL | |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | 消息ID |
+| conversation_id | UUID FK → conversations | 所属会话ID |
+| role | TEXT | 角色：`system` / `user` / `assistant` / `tool` |
+| content | TEXT | 消息正文 |
+| tool_call_id | TEXT NULL | tool 消息关联的 tool_call_id |
+| tool_calls_json | JSONB NULL | assistant 发起的 tool_calls JSON |
+| token_prompt | INT NULL | 本条消耗的 prompt token |
+| token_completion | INT NULL | 本条消耗的 completion token |
+| created_at | TIMESTAMPTZ | 创建时间 |
 
 索引：`(conversation_id, created_at)`。
 
-### 3.3 corpora
+### 3.3 corpora（语料库表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| name | TEXT UNIQUE | |
-| description | TEXT | |
-| embed_model | TEXT | 记录维度对应的模型名 |
-| embed_dim | INT | 如 768 |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
+| id | UUID PK | 语料库ID |
+| name | TEXT UNIQUE | 语料库名称（唯一） |
+| description | TEXT | 语料库描述 |
+| embed_model | TEXT | Embedding 模型名 |
+| embed_dim | INT | 向量维度（如 768） |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
 
-### 3.4 documents
-
-| 列 | 类型 | 说明 |
-|----|------|------|
-| id | UUID PK | |
-| corpus_id | UUID FK → corpora | |
-| title | TEXT | |
-| source | TEXT | 文件名或 URI |
-| content_hash | TEXT | 去重/变更检测 |
-| status | TEXT | `pending` / `indexed` / `failed` |
-| error_message | TEXT NULL | |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
-
-索引：`(corpus_id, created_at)`。
-
-### 3.5 chunks
+### 3.4 documents（语料文档表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| corpus_id | UUID FK | 冗余便于按库检索 |
-| document_id | UUID FK → documents | |
-| chunk_index | INT | 文档内序号 |
-| content | TEXT | |
-| metadata | JSONB | 页码、标题路径等 |
-| embedding | vector(dim) | **dim 与 embed 模型一致，全局固定** |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | 文档ID |
+| corpus_id | UUID FK → corpora | 所属语料库ID |
+| title | TEXT | 文档标题 |
+| source | TEXT | 来源（文件名 / URI 等） |
+| content_hash | TEXT | 内容哈希（去重 / 变更检测） |
+| status | TEXT | 状态：`pending` / `indexing` / `ready` / `failed` |
+| error_message | TEXT NULL | 索引失败原因 |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
+
+索引：`(corpus_id, created_at)`、`status`。
+
+### 3.5 chunks（文档分块与向量表）
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | UUID PK | 分块ID |
+| corpus_id | UUID FK | 所属语料库ID（冗余便于按库检索） |
+| document_id | UUID FK → documents | 所属文档ID |
+| chunk_index | INT | 文档内分块序号（从 0 起） |
+| content | TEXT | 分块文本内容 |
+| metadata | JSONB | 分块元数据 JSON（页码、标题路径等） |
+| embedding | vector(dim) | 分块向量（pgvector）；**dim 与 embed.dimensions 一致** |
+| created_at | TIMESTAMPTZ | 创建时间 |
 
 ```sql
 -- 示例：dim = 768（需与 configs.embed.dimensions 一致）
@@ -150,80 +165,80 @@ LIMIT $3;
 
 > 注意：PostgreSQL 一列 `vector(n)` 的 `n` 在建表时固定。更换 Embedding 模型维度需迁移（重建列/表）。
 
-### 3.6 agent_runs
+### 3.6 agent_runs（Agent 运行记录表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| conversation_id | UUID NULL | |
-| input | TEXT | |
-| output | TEXT | 最终回复 |
-| model | TEXT | |
-| status | TEXT | `running` / `succeeded` / `failed` / `cancelled` |
-| max_steps | INT | |
-| step_count | INT | |
-| error_message | TEXT NULL | |
-| prompt_tokens | INT | |
-| completion_tokens | INT | |
-| created_at | TIMESTAMPTZ | |
-| finished_at | TIMESTAMPTZ NULL | |
+| id | UUID PK | 运行ID |
+| conversation_id | UUID NULL | 关联会话ID（可选） |
+| input | TEXT | 用户输入 |
+| output | TEXT | 最终输出 |
+| model | TEXT | 使用的模型名 |
+| status | TEXT | 状态：`running` / `succeeded` / `failed` |
+| max_steps | INT | 最大步数上限 |
+| step_count | INT | 实际步数 |
+| error_message | TEXT NULL | 失败错误信息 |
+| prompt_tokens | INT | 累计 prompt token |
+| completion_tokens | INT | 累计 completion token |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| finished_at | TIMESTAMPTZ NULL | 结束时间 |
 
-### 3.7 agent_steps
+### 3.7 agent_steps（Agent 步骤明细表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| run_id | UUID FK → agent_runs | |
-| step_index | INT | |
-| kind | TEXT | `llm` / `tool_call` / `tool_result` / `final` |
-| tool_name | TEXT NULL | |
-| input_json | JSONB NULL | |
-| output_text | TEXT NULL | |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | 步骤ID |
+| run_id | UUID FK → agent_runs | 所属运行ID |
+| step_index | INT | 步骤序号 |
+| kind | TEXT | 类型：`llm` / `tool_result` |
+| tool_name | TEXT NULL | 工具名（工具步骤时） |
+| input_json | JSONB NULL | 步骤输入 JSON |
+| output_text | TEXT NULL | 步骤输出文本 |
+| created_at | TIMESTAMPTZ | 创建时间 |
 
 索引：`(run_id, step_index)`。
 
-### 3.8 request_logs
+### 3.8 request_logs（HTTP 请求日志表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| request_id | TEXT UNIQUE | 与 Header / zap 关联 |
-| api_key_id | TEXT | 密钥标识（非明文） |
-| method | TEXT | |
-| path | TEXT | |
-| path_template | TEXT | 如 `/api/v1/chat/completions/stream` |
-| status | INT | |
-| latency_ms | INT | |
-| request_body | TEXT | 可截断存储 |
-| response_preview | TEXT | 流式为拼接预览 |
-| stream | BOOLEAN | |
-| sse_event_count | INT NULL | 流式事件数 |
-| conversation_id | UUID NULL | |
-| agent_run_id | UUID NULL | |
-| error_message | TEXT NULL | |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | 日志ID |
+| request_id | TEXT UNIQUE | 请求追踪ID（与 Header / zap 关联） |
+| api_key_id | TEXT | 调用方 API Key 标识（脱敏，非明文） |
+| method | TEXT | HTTP 方法 |
+| path | TEXT | 请求路径 |
+| path_template | TEXT | 路由模板（如 `/api/v1/chat/completions/stream`） |
+| status | INT | HTTP 状态码 |
+| latency_ms | INT | 耗时毫秒 |
+| request_body | TEXT | 请求体摘要（可截断） |
+| response_preview | TEXT | 响应预览（流式为拼接预览） |
+| stream | BOOLEAN | 是否 SSE 流式 |
+| sse_event_count | INT | SSE 事件数 |
+| conversation_id | UUID NULL | 关联会话ID |
+| agent_run_id | UUID NULL | 关联 Agent 运行ID |
+| error_message | TEXT NULL | 错误信息 |
+| created_at | TIMESTAMPTZ | 创建时间 |
 
 索引：`(created_at DESC)`、`request_id`、`(conversation_id)`、`(agent_run_id)`。
 
-### 3.9 llm_call_logs
+### 3.9 llm_call_logs（上游 LLM 调用日志表）
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | UUID PK | |
-| request_id | TEXT | 关联 HTTP |
-| conversation_id | UUID NULL | |
-| agent_run_id | UUID NULL | |
-| provider | TEXT | `deepseek` |
-| model | TEXT | |
-| stream | BOOLEAN | |
-| status | TEXT | `ok` / `error` |
-| prompt_tokens | INT | |
-| completion_tokens | INT | |
-| latency_ms | INT | |
-| request_summary | TEXT | 消息条数、tools 等摘要，避免存全量密钥 |
-| error_message | TEXT NULL | |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | 调用日志ID |
+| request_id | TEXT | 关联 HTTP 请求ID |
+| conversation_id | UUID NULL | 关联会话ID |
+| agent_run_id | UUID NULL | 关联 Agent 运行ID |
+| provider | TEXT | 厂商：`deepseek` / `qwen` / `kimi` / `doubao` 等 |
+| model | TEXT | 模型名 |
+| stream | BOOLEAN | 是否流式 |
+| status | TEXT | 状态：`ok` / `error` |
+| prompt_tokens | INT | prompt token 数 |
+| completion_tokens | INT | completion token 数 |
+| latency_ms | INT | 耗时毫秒 |
+| request_summary | TEXT | 请求摘要（消息条数、tools 等，不存密钥） |
+| error_message | TEXT NULL | 错误信息 |
+| created_at | TIMESTAMPTZ | 创建时间 |
 
 索引：`(created_at DESC)`、`(request_id)`。
 
@@ -233,12 +248,12 @@ LIMIT $3;
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| id | BIGSERIAL PK | |
-| day | DATE | |
-| model | TEXT | |
-| prompt_tokens | BIGINT | |
-| completion_tokens | BIGINT | |
-| request_count | BIGINT | |
+| id | BIGSERIAL PK | 主键 |
+| day | DATE | 统计日 |
+| model | TEXT | 模型名 |
+| prompt_tokens | BIGINT | 当日 prompt token 合计 |
+| completion_tokens | BIGINT | 当日 completion token 合计 |
+| request_count | BIGINT | 当日调用次数 |
 
 唯一约束：`(day, model)`。也可第一期直接从 `llm_call_logs` 聚合，本表延后。
 
@@ -263,10 +278,10 @@ LIMIT $3;
 
 ## 5. GORM / 类型注意
 
+- 字段注释：模型使用 `gorm:"comment:中文说明"`；启动 AutoMigrate 会同步到 PostgreSQL 列 COMMENT；表注释与 `chunks.embedding` 由 `EnsureSchemaComments` 补充
 - UUID：`uuid` 或 `string` + `type:uuid`
-- JSONB：`datatypes.JSON` 或 `json.RawMessage`
-- `vector(dim)`：可用 `pgvector-go` 类型，或 raw SQL 写入；AutoMigrate 对自定义类型需额外 `CREATE TABLE`/migration
-- 建议 M1 对 `chunks` 使用显式 SQL migration，避免 GORM 无法正确生成 `vector(n)`
+- JSONB：`datatypes.JSON` 或 `json.RawMessage` / `string` + `type:jsonb`
+- `vector(dim)`：raw SQL 维护；AutoMigrate 无法可靠管理该列
 
 ---
 
