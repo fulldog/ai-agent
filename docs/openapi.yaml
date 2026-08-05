@@ -208,6 +208,34 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/models:
+    get:
+      tags: [Chat]
+      summary: 列出已配置的 LLM 厂商（不含密钥）
+      operationId: listModels
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: 厂商列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        base_url: { type: string }
+                        default_model: { type: string }
+                        configured: { type: boolean }
+                        enabled: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/chat/completions:
     post:
       tags: [Chat]
@@ -226,6 +254,7 @@ paths:
             example:
               conversation_id: "00000000-0000-0000-0000-000000000001"
               message: 你好
+              provider: deepseek
               model: deepseek-v4-flash
               temperature: 0.7
               max_tokens: 2048
@@ -862,6 +891,10 @@ components:
           format: uuid
         message:
           type: string
+        provider:
+          type: string
+          description: deepseek / qwen / kimi / doubao（及别名）
+          example: deepseek
         model:
           type: string
           example: deepseek-v4-flash
@@ -905,6 +938,9 @@ components:
           format: uuid
         input:
           type: string
+        provider:
+          type: string
+          description: deepseek / qwen / kimi / doubao
         model:
           type: string
         max_steps:

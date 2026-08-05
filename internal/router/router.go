@@ -46,11 +46,14 @@ func Setup(application *app.App) *gin.Engine {
 	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, Extract: application.Extract}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
+	modelsH := &handler.ModelsHandler{Pool: application.LLMPool}
 
 	// ---------- /api/v1（需 X-API-Key）----------
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.APIKey(cfg))
 	{
+		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
+
 		// 会话管理
 		v1.POST("/conversations", convH.Create)               // 创建会话
 		v1.GET("/conversations", convH.List)                  // 会话列表

@@ -11,26 +11,28 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 )
 
-// Runtime holds DeepSeek model wiring for Chat/Agent.
-// - ChatModel: CloudWeGo Eino DeepSeek ChatModel (M4); may be nil if API key unset
-// - Client: OpenAI-compatible HTTP client used by service layer
+// Runtime 持有多厂商 Client 池；Eino ChatModel 仅在默认厂商为 deepseek 且有 key 时装配。
 type Runtime struct {
 	ChatModel model.ToolCallingChatModel
-	Client    *llm.Client
+	Pool      *llm.Pool
+	Client    *llm.Client // 默认厂商客户端（兼容旧代码）
 	Provider  string
 	Model     string
 }
 
-// NewRuntime builds Eino DeepSeek ChatModel (when key present) + service LLM client.
 func NewRuntime(cfg *config.Config) (*Runtime, error) {
-	client := llm.NewClient(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.TimeoutSeconds)
+	pool := llm.NewPool(cfg)
+	client := pool.DefaultClient()
 	rt := &Runtime{
+		Pool:     pool,
 		Client:   client,
-		Provider: "deepseek",
+		Provider: cfg.LLM.DefaultProvider,
 		Model:    cfg.LLM.DefaultModel,
 	}
-	if cfg.LLM.APIKey == "" {
-		// Allow bootstrapping DB/metrics without LLM credentials.
+
+	// Eino DeepSeek 仅默认厂商为 deepseek 时启用
+	name, pc, err := cfg.ResolveLLM(cfg.LLM.DefaultProvider)
+	if err != nil || name != "deepseek" {
 		return rt, nil
 	}
 	timeout := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second
@@ -38,9 +40,9 @@ func NewRuntime(cfg *config.Config) (*Runtime, error) {
 		timeout = 2 * time.Minute
 	}
 	cm, err := deepseek.NewChatModel(context.Background(), &deepseek.ChatModelConfig{
-		APIKey:  cfg.LLM.APIKey,
-		BaseURL: cfg.LLM.BaseURL,
-		Model:   cfg.LLM.DefaultModel,
+		APIKey:  pc.APIKey,
+		BaseURL: pc.BaseURL,
+		Model:   pc.DefaultModel,
 		Timeout: timeout,
 	})
 	if err != nil {

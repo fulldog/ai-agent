@@ -32,8 +32,29 @@ llm:
 	if cfg.LLM.APIKey != "secret-key" {
 		t.Fatalf("api key override failed: %q", cfg.LLM.APIKey)
 	}
+	if cfg.LLM.Providers["deepseek"].APIKey != "secret-key" {
+		t.Fatalf("provider key override failed: %#v", cfg.LLM.Providers["deepseek"])
+	}
 	if len(cfg.Auth.APIKeys) != 2 {
 		t.Fatalf("api keys override failed: %#v", cfg.Auth.APIKeys)
+	}
+}
+
+func TestResolveLLM(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.LLM.Providers["qwen"] = LLMProviderConfig{
+		BaseURL:      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		APIKey:       "qk",
+		DefaultModel: "qwen-plus",
+	}
+	cfg.normalize()
+	name, pc, err := cfg.ResolveLLM("dashscope")
+	if err != nil || name != "qwen" || pc.APIKey != "qk" {
+		t.Fatalf("alias resolve: name=%s err=%v", name, err)
+	}
+	_, _, err = cfg.ResolveLLM("kimi")
+	if err == nil {
+		t.Fatal("expected missing key error for kimi")
 	}
 }
 

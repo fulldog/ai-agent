@@ -65,8 +65,9 @@ func main() {
 	go func() {
 		log.Info("server listening",
 			zap.String("addr", cfg.Server.Addr),
-			zap.String("llm_model", cfg.LLM.DefaultModel),
-			zap.Bool("llm_key_set", cfg.LLM.APIKey != ""),
+			zap.String("llm_default_provider", cfg.LLM.DefaultProvider),
+			zap.String("llm_default_model", cfg.LLM.DefaultModel),
+			zap.Bool("llm_default_key_set", cfg.LLM.APIKey != ""),
 		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal("server error", zap.Error(err))

@@ -108,6 +108,12 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ## 4. 聊天 Chat
 
+多厂商说明见 [MULTI_LLM.md](./MULTI_LLM.md)。可选 `provider`（`deepseek` / `qwen` / `kimi` / `doubao`），未传则用配置默认厂商。
+
+### GET `/api/v1/models`
+
+列出 YAML 中配置的厂商（含是否已配 key，**不含密钥**）。
+
 ### POST `/api/v1/chat/completions`
 
 同步补全（非流式）。
@@ -116,6 +122,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 {
   "conversation_id": "uuid",
   "message": "用户问题",
+  "provider": "deepseek",
   "model": "deepseek-v4-flash",
   "rag": {
     "enabled": true,
@@ -160,6 +167,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 {
   "conversation_id": "uuid",
   "input": "帮我查知识库里关于 SLA 的说明",
+  "provider": "deepseek",
   "model": "deepseek-v4-flash",
   "max_steps": 8,
   "tools": ["knowledge_search", "current_time", "calculator"],
@@ -312,6 +320,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Metrics | GET | `/metrics` | 默认否 |
 | Conversations | CRUD | `/api/v1/conversations` | 是 |
 | Messages | GET | `/api/v1/conversations/:id/messages` | 是 |
+| Models | GET | `/api/v1/models` | 是 |
 | Chat | POST | `/api/v1/chat/completions` | 是 |
 | Chat Stream | POST | `/api/v1/chat/completions/stream` | 是 |
 | Agent | POST | `/api/v1/agent/runs` | 是 |

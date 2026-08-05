@@ -19,6 +19,7 @@ type App struct {
 	DB      *gorm.DB
 	Log     *zap.Logger
 	LLM     *llm.Client
+	LLMPool *llm.Pool
 	Embed   *embed.Client
 	RAG     *rag.Service
 	Corpus  *corpus.Service
@@ -36,8 +37,8 @@ func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
 	embedClient := embed.NewClient(cfg.Embed.BaseURL, cfg.Embed.APIKey, cfg.Embed.Model, cfg.Embed.Dimensions)
 	ragSvc := rag.New(db, embedClient)
 	corpusSvc := corpus.New(db, cfg, embedClient)
-	chatSvc := chat.New(db, cfg, rt.Client, ragSvc)
-	agentSvc := agent.New(db, cfg, rt.Client, ragSvc)
+	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc)
+	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:        cfg.OCR.Enabled,
 		TesseractPath:  cfg.OCR.TesseractPath,
@@ -51,6 +52,7 @@ func New(cfg *config.Config, db *gorm.DB, log *zap.Logger) (*App, error) {
 		DB:      db,
 		Log:     log,
 		LLM:     rt.Client,
+		LLMPool: rt.Pool,
 		Embed:   embedClient,
 		RAG:     ragSvc,
 		Corpus:  corpusSvc,

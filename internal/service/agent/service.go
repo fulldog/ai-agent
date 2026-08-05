@@ -25,16 +25,16 @@ type Event struct {
 type Service struct {
 	db       *gorm.DB
 	cfg      *config.Config
-	llm      *llm.Client
+	pool     *llm.Pool
 	rag      *rag.Service
 	registry *tools.Registry
 }
 
-func New(db *gorm.DB, cfg *config.Config, llmClient *llm.Client, ragSvc *rag.Service) *Service {
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service) *Service {
 	return &Service{
 		db:       db,
 		cfg:      cfg,
-		llm:      llmClient,
+		pool:     pool,
 		rag:      ragSvc,
 		registry: tools.Default(),
 	}
@@ -43,6 +43,7 @@ func New(db *gorm.DB, cfg *config.Config, llmClient *llm.Client, ragSvc *rag.Ser
 type RunInput struct {
 	ConversationID *uuid.UUID
 	Input          string
+	Provider       string
 	Model          string
 	MaxSteps       int
 	Tools          []string
@@ -78,9 +79,9 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	if maxSteps <= 0 {
 		maxSteps = s.cfg.Agent.MaxSteps
 	}
-	modelName := in.Model
-	if modelName == "" {
-		modelName = s.cfg.LLM.DefaultModel
+	client, providerName, modelName, err := s.pool.Resolve(in.Provider, in.Model)
+	if err != nil {
+		return nil, err
 	}
 	toolNames := in.Tools
 	if len(toolNames) == 0 {
@@ -132,7 +133,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		var resp *llm.ChatResponse
 		var err error
 		if in.Stream {
-			resp, err = s.llm.ChatStream(ctx, llm.ChatRequest{
+			resp, err = client.ChatStream(ctx, llm.ChatRequest{
 				Model: modelName, Messages: msgs, Tools: toolSpecs,
 			}, func(ev llm.StreamEvent) error {
 				if ev.Content != "" && emit != nil {
@@ -141,7 +142,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 				return nil
 			})
 		} else {
-			resp, err = s.llm.Chat(ctx, llm.ChatRequest{
+			resp, err = client.Chat(ctx, llm.ChatRequest{
 				Model: modelName, Messages: msgs, Tools: toolSpecs,
 			})
 		}
@@ -159,7 +160,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		}
 		llmog.Save(s.db, &model.LLMCallLog{
 			RequestID: in.RequestID, ConversationID: in.ConversationID, AgentRunID: &run.ID,
-			Provider: s.cfg.LLM.Provider, Model: modelName, Stream: in.Stream, Status: status,
+			Provider: providerName, Model: modelName, Stream: in.Stream, Status: status,
 			PromptTokens: pt, CompletionTokens: ct, LatencyMs: time.Since(start).Milliseconds(),
 			RequestSummary: fmt.Sprintf("agent_step=%d tools=%d", step, len(toolSpecs)), ErrorMessage: errMsg,
 		})

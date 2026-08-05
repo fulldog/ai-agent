@@ -16,14 +16,14 @@ import (
 )
 
 type Service struct {
-	db  *gorm.DB
-	cfg *config.Config
-	llm *llm.Client
-	rag *rag.Service
+	db   *gorm.DB
+	cfg  *config.Config
+	pool *llm.Pool
+	rag  *rag.Service
 }
 
-func New(db *gorm.DB, cfg *config.Config, llmClient *llm.Client, ragSvc *rag.Service) *Service {
-	return &Service{db: db, cfg: cfg, llm: llmClient, rag: ragSvc}
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service) *Service {
+	return &Service{db: db, cfg: cfg, pool: pool, rag: ragSvc}
 }
 
 type CreateConversationInput struct {
@@ -80,6 +80,7 @@ func (s *Service) ListMessages(conversationID uuid.UUID, limit int) ([]model.Mes
 type CompleteInput struct {
 	ConversationID uuid.UUID
 	Message        string
+	Provider       string
 	Model          string
 	Temperature    float64
 	MaxTokens      int
@@ -102,12 +103,12 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	if err != nil {
 		return nil, err
 	}
-	modelName := in.Model
-	if modelName == "" {
-		modelName = s.cfg.LLM.DefaultModel
+	client, providerName, modelName, err := s.pool.Resolve(in.Provider, in.Model)
+	if err != nil {
+		return nil, err
 	}
 	start := time.Now()
-	resp, err := s.llm.Chat(ctx, llm.ChatRequest{
+	resp, err := client.Chat(ctx, llm.ChatRequest{
 		Model:       modelName,
 		Messages:    llmMsgs,
 		Temperature: in.Temperature,
@@ -122,7 +123,7 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	llmog.Save(s.db, &model.LLMCallLog{
 		RequestID:        in.RequestID,
 		ConversationID:   &conv.ID,
-		Provider:         s.cfg.LLM.Provider,
+		Provider:         providerName,
 		Model:            modelName,
 		Stream:           false,
 		Status:           status,
@@ -165,16 +166,16 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	if err != nil {
 		return nil, err
 	}
-	modelName := in.Model
-	if modelName == "" {
-		modelName = s.cfg.LLM.DefaultModel
+	client, providerName, modelName, err := s.pool.Resolve(in.Provider, in.Model)
+	if err != nil {
+		return nil, err
 	}
 	userMsg := model.Message{ConversationID: conv.ID, Role: "user", Content: in.Message}
 	if err := s.db.Create(&userMsg).Error; err != nil {
 		return nil, err
 	}
 	start := time.Now()
-	resp, err := s.llm.ChatStream(ctx, llm.ChatRequest{
+	resp, err := client.ChatStream(ctx, llm.ChatRequest{
 		Model:       modelName,
 		Messages:    llmMsgs,
 		Temperature: in.Temperature,
@@ -200,7 +201,7 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	llmog.Save(s.db, &model.LLMCallLog{
 		RequestID:        in.RequestID,
 		ConversationID:   &conv.ID,
-		Provider:         s.cfg.LLM.Provider,
+		Provider:         providerName,
 		Model:            modelName,
 		Stream:           true,
 		Status:           status,

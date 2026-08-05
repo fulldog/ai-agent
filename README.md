@@ -11,7 +11,7 @@ M4：CloudWeGo Eino DeepSeek ChatModel + Agent 工具循环。
 |------|------|
 | Go | **1.25.5**（Linux / Windows 均可；Windows 路径示例：`D:\gosdk\go1.25.5`） |
 | PostgreSQL 16+ | Community + [pgvector](https://github.com/pgvector/pgvector)（安装见 [docs/POSTGRES.md](docs/POSTGRES.md)） |
-| DeepSeek API Key | 对话 / Agent |
+| DeepSeek / 千问 / Kimi / 豆包 API Key | 对话 / Agent（YAML `llm.providers` 或环境变量，见 [MULTI_LLM.md](docs/MULTI_LLM.md)） |
 | Ollama（可选） | 默认 Embedding：`nomic-embed-text` |
 | Tesseract OCR | 图片 OCR；扫描版 PDF OCR（见下方「OCR 插件」） |
 | Poppler `pdftoppm` | 仅扫描版 PDF 需要（转图片后再 OCR） |
@@ -103,6 +103,7 @@ go run ./cmd/server -config configs/config.yaml
 | [docs/openapi.yaml](docs/openapi.yaml) | **OpenAPI 3.0（可直接导入 Apifox）** |
 | [docs/EXTRACT.md](docs/EXTRACT.md) | PDF/Word/图片 OCR 与本机依赖 |
 | [docs/AGENT_TOOLS.md](docs/AGENT_TOOLS.md) | **Agent 工具规范**（新增 Tool、中文描述、注册清单） |
+| [docs/MULTI_LLM.md](docs/MULTI_LLM.md) | 多厂商 LLM（DeepSeek / 千问 / Kimi / 豆包）YAML 配置 |
 | [docs/POSTGRES.md](docs/POSTGRES.md) | PostgreSQL + pgvector 安装与 DATABASE_URL |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | 表结构 / 向量列与索引 |
 | [configs/config.example.yaml](configs/config.example.yaml) | 配置样例 |
@@ -116,7 +117,7 @@ go run ./cmd/server -config configs/config.yaml
 | HTTP | Gin |
 | 日志 | zap |
 | DB / 向量 | PostgreSQL + pgvector |
-| LLM | DeepSeek（Eino ChatModel + 服务层 HTTP 流式/工具循环） |
+| LLM | 多厂商 OpenAI 兼容（DeepSeek / 千问 / Kimi / 豆包）；默认 DeepSeek |
 | Agent | Tool Calling（`knowledge_search`、`current_time`、`calculator`） |
 | Embedding | OpenAI 兼容（默认 Ollama） |
 | 鉴权 | `X-API-Key` |

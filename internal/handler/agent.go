@@ -16,6 +16,7 @@ func (h *AgentHandler) parse(c *gin.Context) (agent.RunInput, bool) {
 	var req struct {
 		ConversationID string   `json:"conversation_id"`
 		Input          string   `json:"input" binding:"required"`
+		Provider       string   `json:"provider"`
 		Model          string   `json:"model"`
 		MaxSteps       int      `json:"max_steps"`
 		Tools          []string `json:"tools"`
@@ -29,7 +30,7 @@ func (h *AgentHandler) parse(c *gin.Context) (agent.RunInput, bool) {
 		return agent.RunInput{}, false
 	}
 	in := agent.RunInput{
-		Input: req.Input, Model: req.Model, MaxSteps: req.MaxSteps,
+		Input: req.Input, Provider: req.Provider, Model: req.Model, MaxSteps: req.MaxSteps,
 		Tools: req.Tools, RequestID: requestID(c),
 	}
 	if req.ConversationID != "" {

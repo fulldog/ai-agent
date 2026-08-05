@@ -16,6 +16,7 @@ func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
 	var req struct {
 		ConversationID string  `json:"conversation_id" binding:"required"`
 		Message        string  `json:"message" binding:"required"`
+		Provider       string  `json:"provider"`
 		Model          string  `json:"model"`
 		Temperature    float64 `json:"temperature"`
 		MaxTokens      int     `json:"max_tokens"`
@@ -37,6 +38,7 @@ func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
 	in := chat.CompleteInput{
 		ConversationID: cid,
 		Message:        req.Message,
+		Provider:       req.Provider,
 		Model:          req.Model,
 		Temperature:    req.Temperature,
 		MaxTokens:      req.MaxTokens,

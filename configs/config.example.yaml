@@ -1,5 +1,5 @@
 # AI Agent 配置样例（复制为 config.yaml 后填写；勿提交真实密钥）
-# 环境变量可覆盖：DEEPSEEK_API_KEY、API_KEYS、DATABASE_URL / PG_DSN
+# 环境变量可覆盖：DEEPSEEK_API_KEY、DASHSCOPE_API_KEY、MOONSHOT_API_KEY、ARK_API_KEY、API_KEYS、DATABASE_URL / PG_DSN
 
 server:
   addr: ":18090"
@@ -22,12 +22,31 @@ database:
   auto_migrate: true
 
 llm:
+  # 默认厂商；请求未传 provider 时使用
+  default_provider: deepseek
+  # 兼容旧字段（与 default_provider / 默认厂商扁平配置等价）
   provider: deepseek
-  base_url: "https://api.deepseek.com/v1"
-  # 务必用环境变量 DEEPSEEK_API_KEY，勿把真实 key 写入仓库
-  api_key: ""
-  default_model: "deepseek-v4-flash"
   timeout_seconds: 120
+  # 多厂商（OpenAI 兼容协议）。也可用环境变量注入 key：
+  #   DEEPSEEK_API_KEY / DASHSCOPE_API_KEY|QWEN_API_KEY / MOONSHOT_API_KEY|KIMI_API_KEY / ARK_API_KEY|DOUBAO_API_KEY
+  providers:
+    deepseek:
+      base_url: "https://api.deepseek.com/v1"
+      api_key: ""
+      default_model: "deepseek-v4-flash"
+    qwen:
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      api_key: ""
+      default_model: "qwen-plus"
+    kimi:
+      base_url: "https://api.moonshot.cn/v1"
+      api_key: ""
+      default_model: "moonshot-v1-8k"
+    doubao:
+      # 火山方舟 OpenAI 兼容；default_model 填接入点 ID（如 ep-xxxx）或模型名
+      base_url: "https://ark.cn-beijing.volces.com/api/v3"
+      api_key: ""
+      default_model: ""
 
 embed:
   # DeepSeek 无 Embedding；默认本地 Ollama OpenAI 兼容接口

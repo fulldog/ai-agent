@@ -39,12 +39,24 @@ type DatabaseConfig struct {
 	AutoMigrate  bool   `yaml:"auto_migrate"`
 }
 
+// LLMProviderConfig 单个 OpenAI 兼容上游。
+type LLMProviderConfig struct {
+	BaseURL      string `yaml:"base_url"`
+	APIKey       string `yaml:"api_key"`
+	DefaultModel string `yaml:"default_model"`
+	Enabled      *bool  `yaml:"enabled"` // nil 视为 true
+}
+
 type LLMConfig struct {
-	Provider       string `yaml:"provider"`
-	BaseURL        string `yaml:"base_url"`
-	APIKey         string `yaml:"api_key"`
-	DefaultModel   string `yaml:"default_model"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	// DefaultProvider 请求未传 provider 时使用；兼容旧字段 provider。
+	DefaultProvider string `yaml:"default_provider"`
+	Provider        string `yaml:"provider"` // 兼容旧配置，normalize 时写入 DefaultProvider
+	BaseURL         string `yaml:"base_url"` // 兼容：无 providers 时当作默认厂商
+	APIKey          string `yaml:"api_key"`
+	DefaultModel    string `yaml:"default_model"`
+	TimeoutSeconds  int    `yaml:"timeout_seconds"`
+	// Providers 多厂商；key 为 deepseek / qwen / kimi / doubao / openai_compat 等。
+	Providers map[string]LLMProviderConfig `yaml:"providers"`
 }
 
 type EmbedConfig struct {
@@ -66,7 +78,6 @@ type AgentConfig struct {
 	DefaultTools []string `yaml:"default_tools"`
 }
 
-// OCRConfig controls document OCR (images / scanned PDF).
 type OCRConfig struct {
 	Enabled        bool   `yaml:"enabled"`
 	TesseractPath  string `yaml:"tesseract_path"`
@@ -80,12 +91,12 @@ type LogConfig struct {
 	Level          string `yaml:"level"`
 	Encoding       string `yaml:"encoding"`
 	BodyPreviewMax int    `yaml:"body_preview_max"`
-	Dir            string `yaml:"dir"`          // default: logs
-	Filename       string `yaml:"filename"`     // default: ai-agent
-	MaxSizeMB      int    `yaml:"max_size_mb"`  // default: 100
-	MaxBackups     int    `yaml:"max_backups"`  // default: 30
-	MaxAgeDays     int    `yaml:"max_age_days"` // default: 30; 0 = keep forever
-	AlsoStdout     *bool  `yaml:"also_stdout"`  // default: true
+	Dir            string `yaml:"dir"`
+	Filename       string `yaml:"filename"`
+	MaxSizeMB      int    `yaml:"max_size_mb"`
+	MaxBackups     int    `yaml:"max_backups"`
+	MaxAgeDays     int    `yaml:"max_age_days"`
+	AlsoStdout     *bool  `yaml:"also_stdout"`
 }
 
 type MetricsConfig struct {
@@ -123,10 +134,29 @@ func defaultConfig() *Config {
 			AutoMigrate:  true,
 		},
 		LLM: LLMConfig{
-			Provider:       "deepseek",
-			BaseURL:        "https://api.deepseek.com/v1",
-			DefaultModel:   "deepseek-v4-flash",
-			TimeoutSeconds: 120,
+			DefaultProvider: "deepseek",
+			Provider:        "deepseek",
+			BaseURL:         "https://api.deepseek.com/v1",
+			DefaultModel:    "deepseek-v4-flash",
+			TimeoutSeconds:  120,
+			Providers: map[string]LLMProviderConfig{
+				"deepseek": {
+					BaseURL:      "https://api.deepseek.com/v1",
+					DefaultModel: "deepseek-v4-flash",
+				},
+				"qwen": {
+					BaseURL:      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+					DefaultModel: "qwen-plus",
+				},
+				"kimi": {
+					BaseURL:      "https://api.moonshot.cn/v1",
+					DefaultModel: "moonshot-v1-8k",
+				},
+				"doubao": {
+					BaseURL:      "https://ark.cn-beijing.volces.com/api/v3",
+					DefaultModel: "",
+				},
+			},
 		},
 		Embed: EmbedConfig{
 			BaseURL:    "http://localhost:11434/v1",
@@ -173,9 +203,6 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) applyEnv() {
-	if v := os.Getenv("DEEPSEEK_API_KEY"); v != "" {
-		c.LLM.APIKey = v
-	}
 	if v := os.Getenv("DATABASE_URL"); v != "" {
 		c.Database.DSN = v
 	} else if v := os.Getenv("PG_DSN"); v != "" {
@@ -194,10 +221,47 @@ func (c *Config) applyEnv() {
 			c.Auth.APIKeys = keys
 		}
 	}
+
+	setProviderKey := func(name, envKey string) {
+		v := os.Getenv(envKey)
+		if v == "" {
+			return
+		}
+		if c.LLM.Providers == nil {
+			c.LLM.Providers = map[string]LLMProviderConfig{}
+		}
+		p := c.LLM.Providers[name]
+		p.APIKey = v
+		c.LLM.Providers[name] = p
+		if name == "deepseek" || c.LLM.APIKey == "" {
+			c.LLM.APIKey = v
+		}
+	}
+	setProviderKey("deepseek", "DEEPSEEK_API_KEY")
+	setProviderKey("qwen", "DASHSCOPE_API_KEY")
+	setProviderKey("qwen", "QWEN_API_KEY")
+	setProviderKey("kimi", "MOONSHOT_API_KEY")
+	setProviderKey("kimi", "KIMI_API_KEY")
+	setProviderKey("doubao", "ARK_API_KEY")
+	setProviderKey("doubao", "DOUBAO_API_KEY")
+}
+
+func providerPreset(name string) (baseURL, model string) {
+	switch strings.ToLower(name) {
+	case "deepseek":
+		return "https://api.deepseek.com/v1", "deepseek-v4-flash"
+	case "qwen", "dashscope":
+		return "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"
+	case "kimi", "moonshot":
+		return "https://api.moonshot.cn/v1", "moonshot-v1-8k"
+	case "doubao", "ark", "volcengine":
+		return "https://ark.cn-beijing.volces.com/api/v3", ""
+	default:
+		return "", ""
+	}
 }
 
 func (c *Config) normalize() {
-	c.LLM.BaseURL = strings.TrimRight(c.LLM.BaseURL, "/")
 	c.Embed.BaseURL = strings.TrimRight(c.Embed.BaseURL, "/")
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":18090"
@@ -224,7 +288,6 @@ func (c *Config) normalize() {
 		c.Log.MaxAgeDays = 30
 	}
 	if c.Log.AlsoStdout == nil {
-		// debug: stdout + file; release/production: file only
 		v := !strings.EqualFold(c.Server.Mode, "release")
 		c.Log.AlsoStdout = &v
 	}
@@ -252,6 +315,109 @@ func (c *Config) normalize() {
 	if c.OCR.TimeoutSeconds <= 0 {
 		c.OCR.TimeoutSeconds = 180
 	}
+
+	c.normalizeLLMProviders()
+}
+
+func (c *Config) normalizeLLMProviders() {
+	if c.LLM.Providers == nil {
+		c.LLM.Providers = map[string]LLMProviderConfig{}
+	}
+
+	defName := strings.TrimSpace(c.LLM.DefaultProvider)
+	if defName == "" {
+		defName = strings.TrimSpace(c.LLM.Provider)
+	}
+	if defName == "" {
+		defName = "deepseek"
+	}
+	c.LLM.DefaultProvider = defName
+	c.LLM.Provider = defName
+
+	// 兼容旧扁平 llm.api_key / base_url / default_model → 合并进默认厂商
+	p := c.LLM.Providers[defName]
+	if strings.TrimSpace(c.LLM.BaseURL) != "" {
+		p.BaseURL = c.LLM.BaseURL
+	}
+	if strings.TrimSpace(c.LLM.APIKey) != "" {
+		p.APIKey = c.LLM.APIKey
+	}
+	if strings.TrimSpace(c.LLM.DefaultModel) != "" {
+		p.DefaultModel = c.LLM.DefaultModel
+	}
+	c.LLM.Providers[defName] = p
+
+	// 确保内置厂商条目存在（可无 key）
+	for _, name := range []string{"deepseek", "qwen", "kimi", "doubao"} {
+		if _, ok := c.LLM.Providers[name]; ok {
+			continue
+		}
+		base, model := providerPreset(name)
+		c.LLM.Providers[name] = LLMProviderConfig{BaseURL: base, DefaultModel: model}
+	}
+
+	for name, p := range c.LLM.Providers {
+		base, model := providerPreset(name)
+		if strings.TrimSpace(p.BaseURL) == "" {
+			p.BaseURL = base
+		}
+		p.BaseURL = strings.TrimRight(p.BaseURL, "/")
+		if strings.TrimSpace(p.DefaultModel) == "" {
+			p.DefaultModel = model
+		}
+		c.LLM.Providers[name] = p
+	}
+
+	// 回写扁平字段，便于旧代码读 DefaultModel / APIKey
+	if p, ok := c.LLM.Providers[defName]; ok {
+		c.LLM.BaseURL = p.BaseURL
+		if p.APIKey != "" {
+			c.LLM.APIKey = p.APIKey
+		}
+		if p.DefaultModel != "" {
+			c.LLM.DefaultModel = p.DefaultModel
+		}
+	}
+}
+
+// ProviderEnabled 是否启用该厂商（未配置 enabled 时默认启用）。
+func (p LLMProviderConfig) ProviderEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
+}
+
+// ResolveLLM 按 provider 名解析配置；空则用默认厂商。
+func (c *Config) ResolveLLM(provider string) (name string, cfg LLMProviderConfig, err error) {
+	name = strings.TrimSpace(provider)
+	if name == "" {
+		name = c.LLM.DefaultProvider
+	}
+	name = strings.ToLower(name)
+	// 别名
+	switch name {
+	case "dashscope":
+		name = "qwen"
+	case "moonshot":
+		name = "kimi"
+	case "ark", "volcengine":
+		name = "doubao"
+	}
+	cfg, ok := c.LLM.Providers[name]
+	if !ok {
+		return "", LLMProviderConfig{}, fmt.Errorf("未知模型厂商: %s", name)
+	}
+	if !cfg.ProviderEnabled() {
+		return "", LLMProviderConfig{}, fmt.Errorf("模型厂商未启用: %s", name)
+	}
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return "", LLMProviderConfig{}, fmt.Errorf("模型厂商 %s 未配置 api_key", name)
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return "", LLMProviderConfig{}, fmt.Errorf("模型厂商 %s 未配置 base_url", name)
+	}
+	return name, cfg, nil
 }
 
 func (c *Config) IsAPIKey(key string) bool {
