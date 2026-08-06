@@ -1,0 +1,42 @@
+# 最小化部署：仅应用，不启 PostgreSQL
+# /chat/analyze、/models、/health 可用；会话/RAG/Agent 等返回 503
+#
+#   cp deploy/docker/env.example .env
+#   docker compose -f docker-compose.minimal.yml up -d --build
+
+name: ai-agent-minimal
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: "1.25.5"
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: ai-agent:local
+    container_name: ai-agent-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-18090}:18090"
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_ENABLED: "false"
+      API_KEYS: ${API_KEYS:-change-me-api-key}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_API_KEY: ${DASHSCOPE_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      KIMI_API_KEY: ${MOONSHOT_API_KEY:-}
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      DOUBAO_API_KEY: ${ARK_API_KEY:-}
+    volumes:
+      - ./data/logs:/app/logs
+      - ./data/attachments:/app/attachments
+      # - ./configs/config.minimal.example.yaml:/app/configs/config.yaml:ro
+    networks:
+      - ai-agent-net
+
+networks:
+  ai-agent-net:
+    driver: bridge

@@ -1,0 +1,102 @@
+# Docker Compose 内使用的默认配置（密钥请用环境变量覆盖，勿把真实 key 写进镜像）
+# 挂载自定义配置：在 compose 里把宿主机 yaml 绑到 /app/configs/config.yaml
+
+server:
+  addr: ":18090"
+  mode: release
+
+auth:
+  api_keys:
+    - "change-me-api-key"
+  admin_api_keys:
+    - "change-me-admin-key"
+
+database:
+  enabled: true
+  # compose 网络内主机名为 db；也可用环境变量 DATABASE_URL 覆盖
+  dsn: "postgres://ai_agent:ai_agent_dev@db:5432/ai_agent?sslmode=disable"
+  max_open_conns: 20
+  max_idle_conns: 5
+  auto_migrate: true
+
+llm:
+  default_provider: deepseek
+  provider: deepseek
+  timeout_seconds: 120
+  providers:
+    deepseek:
+      base_url: "https://api.deepseek.com/v1"
+      api_key: ""
+      default_model: "deepseek-v4-flash"
+    qwen:
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      api_key: ""
+      default_model: "qwen-plus"
+    kimi:
+      base_url: "https://api.moonshot.cn/v1"
+      api_key: ""
+      default_model: "moonshot-v1-8k"
+    doubao:
+      base_url: "https://ark.cn-beijing.volces.com/api/v3"
+      api_key: ""
+      default_model: ""
+
+embed:
+  # 容器内若未部署 Ollama，请改成可达地址，或暂时不用 RAG
+  base_url: "http://host.docker.internal:11434/v1"
+  api_key: ""
+  model: "nomic-embed-text"
+  dimensions: 768
+
+rag:
+  top_k: 5
+  chunk_size: 800
+  chunk_overlap: 120
+  vector_index: hnsw
+
+agent:
+  max_steps: 8
+  default_tools:
+    - knowledge_search
+    - current_time
+    - calculator
+
+ocr:
+  enabled: true
+  tesseract_path: tesseract
+  languages: chi_sim+eng
+  pdftoppm_path: pdftoppm
+  pdftotext_path: pdftotext
+  min_pdf_text_len: 40
+  timeout_seconds: 180
+  dpi: 200
+  psm: 3
+  oem: 3
+  pdftoppm_gray: false
+  collapse_cjk_spaces: true
+
+storage:
+  attachments_dir: attachments
+
+extract:
+  timeout_seconds: 180
+
+log:
+  level: info
+  encoding: json
+  body_preview_max: 4096
+  dir: logs
+  filename: ai-agent
+  max_size_mb: 100
+  max_backups: 30
+  max_age_days: 30
+  also_stdout: false
+
+metrics:
+  enabled: true
+  path: /metrics
+  protect: false
+
+request_log:
+  enabled: true
+  persist_body: true

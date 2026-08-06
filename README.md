@@ -18,6 +18,8 @@ M4：CloudWeGo Eino DeepSeek ChatModel + Agent 工具循环。
 
 **数据库安装与 `DATABASE_URL` 配置**：见 [docs/POSTGRES.md](docs/POSTGRES.md)（含 Windows 详解；Linux 可用发行版包 + `postgresql-xx-pgvector` / 源码编译）。
 
+**Docker 完整部署（Git 拉取最新 + 编译，含 PG16/pgvector）**：见 [docs/DOCKER.md](docs/DOCKER.md)。
+
 ### OCR / Poppler 插件（文档上传与文件分析）
 
 上传语料与 `POST /api/v1/chat/analyze` 依赖本机外部程序（无 CGO），**Linux / Windows 均可**。
@@ -119,6 +121,7 @@ go run ./cmd/server -config configs/config.yaml
 | [docs/AGENT_TOOLS.md](docs/AGENT_TOOLS.md) | **Agent 工具规范**（新增 Tool、中文描述、注册清单） |
 | [docs/MULTI_LLM.md](docs/MULTI_LLM.md) | 多厂商 LLM（DeepSeek / 千问 / Kimi / 豆包）YAML 配置 |
 | [docs/POSTGRES.md](docs/POSTGRES.md) | PostgreSQL + pgvector 安装与 DATABASE_URL |
+| [docs/DOCKER.md](docs/DOCKER.md) | **Docker 完整部署：开机/重启自动 git pull + 编译** |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | 表结构 / 向量列与索引 |
 | [configs/config.example.yaml](configs/config.example.yaml) | 配置样例 |
 | [deploy/prometheus/scrape.example.yml](deploy/prometheus/scrape.example.yml) | Prometheus 抓取示例 |

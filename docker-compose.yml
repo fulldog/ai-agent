@@ -1,0 +1,78 @@
+# ai-agent 完整栈：应用 + PostgreSQL 16 + pgvector
+# 用法见 docs/DOCKER.md
+#
+#   cp deploy/docker/env.example .env
+#   # 编辑 .env 填入 API Key
+#   docker compose up -d --build
+
+name: ai-agent
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ai-agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_agent_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_agent}
+      TZ: Asia/Shanghai
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ai_agent_pgdata:/var/lib/postgresql/data
+      - ./deploy/docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - ai-agent-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION: "1.25.5"
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: ai-agent:local
+    container_name: ai-agent-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-18090}:18090"
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_URL: ${DATABASE_URL:-postgres://ai_agent:ai_agent_dev@db:5432/ai_agent?sslmode=disable}
+      API_KEYS: ${API_KEYS:-change-me-api-key}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      QWEN_API_KEY: ${DASHSCOPE_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      KIMI_API_KEY: ${MOONSHOT_API_KEY:-}
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      DOUBAO_API_KEY: ${ARK_API_KEY:-}
+      GOPROXY: ${GOPROXY:-}
+    volumes:
+      # 日志 / 附件持久化到宿主机
+      - ./data/logs:/app/logs
+      - ./data/attachments:/app/attachments
+      # 可选：覆盖容器内配置（取消下一行注释，并先准备 configs/config.yaml）
+      # - ./configs/config.yaml:/app/configs/config.yaml:ro
+    extra_hosts:
+      # Linux 上访问宿主机 Ollama 等服务时需要
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ai-agent-net
+
+volumes:
+  ai_agent_pgdata:
+
+networks:
+  ai-agent-net:
+    driver: bridge
