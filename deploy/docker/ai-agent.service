@@ -1,6 +1,7 @@
 [Unit]
 Description=AI Agent (git pull + docker compose full stack)
 Documentation=https://github.com/fulldog/ai-agent
+# 使用 HTTPS clone：https://github.com/fulldog/ai-agent.git
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
@@ -8,11 +9,11 @@ Requires=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# 改成服务器上的实际克隆路径
+# 改成服务器上的实际克隆路径；建议与 git clone 的用户一致，以便读取 HTTPS 凭证
+# User=deploy
 WorkingDirectory=/opt/ai-agent
 Environment=DEPLOY_BRANCH=main
 Environment=DEPLOY_REMOTE=origin
-# 可选：若 .env 里 APP_PORT 仅给 compose 用，脚本末尾提示也可用
 ExecStart=/opt/ai-agent/deploy/docker/update-and-start.sh
 ExecStop=/usr/bin/docker compose -f /opt/ai-agent/docker-compose.yml stop
 TimeoutStartSec=0

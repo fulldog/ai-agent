@@ -1,6 +1,6 @@
 # Docker 完整部署（Git 拉取最新代码 + 编译）
 
-> 仓库：`git@github.com:fulldog/ai-agent.git`（默认分支 `main`）  
+> 仓库（HTTPS）：`https://github.com/fulldog/ai-agent.git`（默认分支 `main`）  
 > 前提：服务器已安装 **git**、**Docker**、**Docker Compose V2**  
 > 行为：**每次启动/重启服务时** → `git pull`（reset 到远端）→ `docker compose up -d --build`（重新编译镜像并启动完整栈）
 
@@ -32,52 +32,70 @@ docker compose version
 
 Debian/Ubuntu 用 `apt` 安装 `git`、`docker.io` 或官方 Docker CE，并确认有 `docker compose` 子命令。
 
-### 1.2 配置 GitHub 拉取权限
+### 1.2 用 HTTPS 克隆（推荐）
 
-本仓库远程为 SSH：`git@github.com:fulldog/ai-agent.git`。
+远程地址：
 
-```bash
-# 生成部署用密钥（若尚无）
-ssh-keygen -t ed25519 -C "ai-agent-deploy" -f ~/.ssh/ai_agent_deploy -N ""
-
-# 把 ~/.ssh/ai_agent_deploy.pub 加到 GitHub：
-# 仓库 Settings → Deploy keys → Add deploy key（只读即可）
-# 或加到有权限的个人/机器账号 SSH Keys
-
-# ~/.ssh/config 示例
-cat >> ~/.ssh/config <<'EOF'
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/ai_agent_deploy
-  StrictHostKeyChecking accept-new
-EOF
-chmod 600 ~/.ssh/config
-
-ssh -T git@github.com
-# 成功会提示 Hi fulldog/... 
+```text
+https://github.com/fulldog/ai-agent.git
 ```
 
-若只能用 HTTPS + Token：
-
-```bash
-git clone https://<TOKEN>@github.com/fulldog/ai-agent.git /opt/ai-agent
-```
-
-下文以 `/opt/ai-agent` 为例，可按实际路径修改。
-
-### 1.3 克隆仓库
+**公开仓库**直接克隆：
 
 ```bash
 sudo mkdir -p /opt
-sudo git clone git@github.com:fulldog/ai-agent.git /opt/ai-agent
-# 若目录属主不是当前用户：
+sudo git clone https://github.com/fulldog/ai-agent.git /opt/ai-agent
 sudo chown -R "$USER":"$USER" /opt/ai-agent
 cd /opt/ai-agent
 git checkout main
+git remote -v
+# origin  https://github.com/fulldog/ai-agent.git (fetch/push)
 ```
 
-### 1.4 创建 `.env`（只做一次）
+**私有仓库**用 GitHub Personal Access Token（PAT，至少 `repo` 只读权限）：
+
+```bash
+# 方式 A：克隆时带 Token（Token 会进 remote URL，注意权限）
+sudo git clone "https://<GITHUB_USERNAME>:<GITHUB_PAT>@github.com/fulldog/ai-agent.git" /opt/ai-agent
+sudo chown -R "$USER":"$USER" /opt/ai-agent
+cd /opt/ai-agent
+
+# 建议立刻改成不带密码的 URL，改用凭证存储（见下）
+git remote set-url origin https://github.com/fulldog/ai-agent.git
+```
+
+长期拉取（systemd 重启会 `git fetch`）推荐把凭证存本地，避免写进 remote URL：
+
+```bash
+cd /opt/ai-agent
+git remote set-url origin https://github.com/fulldog/ai-agent.git
+
+# 按提示输入用户名；密码处粘贴 PAT（不是 GitHub 登录密码）
+git config --global credential.helper store
+git fetch origin
+# 首次成功后，凭证写入 ~/.git-credentials
+
+chmod 600 ~/.git-credentials
+```
+
+或只给本仓库写死（机器专用账号时可用；注意文件权限）：
+
+```bash
+# 勿把含 Token 的文件提交进 Git
+git remote set-url origin "https://<GITHUB_USERNAME>:<GITHUB_PAT>@github.com/fulldog/ai-agent.git"
+```
+
+验证：
+
+```bash
+cd /opt/ai-agent
+git fetch origin
+git log -1 --oneline origin/main
+```
+
+> 下文以安装路径 `/opt/ai-agent` 为例，可按实际修改。
+
+### 1.3 创建 `.env`（只做一次）
 
 ```bash
 cd /opt/ai-agent
@@ -173,7 +191,7 @@ journalctl -u ai-agent -f
 docker compose -f /opt/ai-agent/docker-compose.yml logs -f app
 ```
 
-### 3.3 手动触发一次更新（不停机策略下的热更）
+### 3.3 手动触发一次更新
 
 ```bash
 cd /opt/ai-agent
@@ -204,7 +222,13 @@ sudo systemctl restart ai-agent
 | `DEPLOY_REMOTE` | `origin` | 远程名 |
 | `COMPOSE_FILE` | `docker-compose.yml` | Compose 文件 |
 
-**注意：** `git reset --hard` 会丢掉对**已跟踪文件**的本地修改。请只改 `.env`、挂载的自定义配置（若自行挂载且未提交）、以及 `data/`。不要直接改已入库的 `Dockerfile` 等作为生产补丁，应改 GitHub 再拉。
+**注意：** `git reset --hard` 会丢掉对**已跟踪文件**的本地修改。请只改 `.env`、以及 `data/`。不要直接改已入库文件当生产补丁，应推到 GitHub 再拉。
+
+若 systemd 以 **root** 跑脚本，而 HTTPS 凭证写在普通用户的 `~/.git-credentials`，会导致 `git fetch` 失败。任选其一：
+
+- unit 里加 `User=` 为克隆仓库的那个用户；或  
+- 用 root 再执行一次 `git fetch` 并配置 root 的 `credential.helper store`；或  
+- remote URL 内嵌 PAT（仅限加固后的专用机）。
 
 ---
 
@@ -228,7 +252,7 @@ sudo systemctl restart ai-agent
 |------|----------------------|
 | `.env` | 否（gitignore） |
 | `data/*` | 否（gitignore） |
-| Postgres 数据 | 否（Docker volume `ai-agent_ai_agent_pgdata`） |
+| Postgres 数据 | 否（Docker volume） |
 | 应用代码 / 镜像 | 会更新为 GitHub 最新并重新 build |
 
 ---
@@ -238,23 +262,15 @@ sudo systemctl restart ai-agent
 ```bash
 cd /opt/ai-agent
 
-# 日志
 docker compose logs -f app
 docker compose logs -f db
 ls -l data/logs/
 
-# 进库
 docker compose exec db psql -U ai_agent -d ai_agent
 # \dx   应有 vector
 
-# 仅重启容器（不拉代码）
 docker compose restart app
-
-# 停栈（保留数据）
 docker compose down
-
-# 危险：删库数据卷
-docker compose down -v
 ```
 
 备份数据库：
@@ -283,25 +299,23 @@ curl -sS -X POST "http://127.0.0.1:18090/api/v1/chat/analyze" \
 
 | 现象 | 处理 |
 |------|------|
-| `git fetch` 失败 | 检查 Deploy Key / `ssh -T git@github.com` |
+| `git fetch` 认证失败 | 检查 PAT 是否过期；`~/.git-credentials` 权限与 **运行用户**是否一致 |
+| `Repository not found` | 确认 HTTPS URL、账号对私有仓有读权限 |
 | `缺少 .env` | `cp deploy/docker/env.example .env` 并填写 |
 | 构建拉不下基础镜像 | 配置 Docker 镜像加速；确认 `GOPROXY` |
-| app 起不来 / `db: down` | `docker compose ps`、`logs db`；等 healthcheck 通过 |
+| app 起不来 / `db: down` | `docker compose ps`、`logs db` |
 | 端口冲突 | `.env` 中改 `APP_PORT` / `POSTGRES_PORT` |
-| 重启后代码不是最新 | `journalctl -u ai-agent` 看是否执行了脚本；确认 `WorkingDirectory` 正确 |
-| 本地改过代码被冲掉 | 预期行为；改 GitHub 或只改 `.env` |
+| 重启后代码不是最新 | `journalctl -u ai-agent`；核对 unit 路径与 `User=` |
 
 ---
 
 ## 9. 生产建议
 
-- [ ] `.env` 权限：`chmod 600 .env`  
-- [ ] 不要把 Postgres `5432` 对公网开放（可删掉 compose 里 db 的 `ports`）  
+- [ ] `.env`：`chmod 600 .env`；含 Token 的 `~/.git-credentials` 同样 `600`  
+- [ ] PAT 使用**最小权限**、可撤销的 fine-grained / classic token  
+- [ ] 不要把 Postgres `5432` 对公网开放  
 - [ ] 定期 `pg_dump` + 备份 `data/attachments`  
-- [ ] 反向代理 HTTPS + SSE 长超时（见下方）  
-- [ ] 部署机只读 Deploy Key，勿放个人高权限 token  
-
-Nginx 反代摘要：
+- [ ] 反向代理 HTTPS + SSE 长超时  
 
 ```nginx
 location / {
@@ -316,11 +330,13 @@ location / {
 
 ---
 
-## 10. 从零复制清单
+## 10. 从零复制清单（HTTPS）
 
 ```bash
 # 1. 依赖：git、docker、compose 已就绪
-sudo mkdir -p /opt && sudo git clone git@github.com:fulldog/ai-agent.git /opt/ai-agent
+sudo mkdir -p /opt
+sudo git clone https://github.com/fulldog/ai-agent.git /opt/ai-agent
+# 私有仓：sudo git clone "https://USER:PAT@github.com/fulldog/ai-agent.git" /opt/ai-agent
 sudo chown -R "$USER":"$USER" /opt/ai-agent
 cd /opt/ai-agent
 
@@ -335,9 +351,9 @@ curl -sS http://127.0.0.1:18090/health
 
 # 4. 开机自动拉代码并编译
 sudo cp deploy/docker/ai-agent.service /etc/systemd/system/
-# 若路径不是 /opt/ai-agent，编辑 unit 中的路径
+# 若路径不是 /opt/ai-agent，编辑 unit
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-agent.service
 ```
 
-之后每次 **`systemctl restart ai-agent` 或机器重启**，都会从 GitHub 拉取 `main` 最新提交并重新编译部署完整栈。
+之后每次 **`systemctl restart ai-agent` 或机器重启**，都会经 HTTPS 从 GitHub 拉取 `main` 最新提交并重新编译部署完整栈。
