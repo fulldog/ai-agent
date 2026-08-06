@@ -1,9 +1,4 @@
-# 最小化部署：仅应用，不启 PostgreSQL
-# /chat/analyze、/models、/health 可用；会话/RAG/Agent 等返回 503
-#
-#   cp deploy/docker/env.example .env
-#   docker compose -f docker-compose.minimal.yml up -d --build
-
+# 最小化：无库。同样挂载 configs/config.yaml（其中 database.enabled: false）
 name: ai-agent-minimal
 
 services:
@@ -22,18 +17,10 @@ services:
     environment:
       TZ: Asia/Shanghai
       DATABASE_ENABLED: "false"
-      API_KEYS: ${API_KEYS:-change-me-api-key}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-      QWEN_API_KEY: ${DASHSCOPE_API_KEY:-}
-      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
-      KIMI_API_KEY: ${MOONSHOT_API_KEY:-}
-      ARK_API_KEY: ${ARK_API_KEY:-}
-      DOUBAO_API_KEY: ${ARK_API_KEY:-}
     volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
       - ./data/logs:/app/logs
       - ./data/attachments:/app/attachments
-      # - ./configs/config.minimal.example.yaml:/app/configs/config.yaml:ro
     networks:
       - ai-agent-net
 

@@ -1,8 +1,5 @@
-# ai-agent 应用服务（默认不启数据库）
-# 数据库：见 docker-compose.db.yml；由 update-and-start.sh 按 5432 是否占用自动决定
-#
-#   cp deploy/docker/env.example .env
-#   ./deploy/docker/update-and-start.sh
+# ai-agent 应用：配置文件挂载自宿主机 configs/config.yaml
+# 用法见 docs/DOCKER.md
 
 name: ai-agent
 
@@ -21,21 +18,13 @@ services:
       - "${APP_PORT:-18090}:18090"
     environment:
       TZ: Asia/Shanghai
-      DATABASE_URL: ${DATABASE_URL:-postgres://ai_agent:ai_agent_dev@db:5432/ai_agent?sslmode=disable}
-      DATABASE_ENABLED: ${DATABASE_ENABLED:-true}
-      API_KEYS: ${API_KEYS:-change-me-api-key}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
-      QWEN_API_KEY: ${DASHSCOPE_API_KEY:-}
-      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
-      KIMI_API_KEY: ${MOONSHOT_API_KEY:-}
-      ARK_API_KEY: ${ARK_API_KEY:-}
-      DOUBAO_API_KEY: ${ARK_API_KEY:-}
-      GOPROXY: ${GOPROXY:-}
+      # 仅当部署脚本需要改写库地址时才会设置；空则完全使用挂载的 config.yaml
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_ENABLED: ${DATABASE_ENABLED:-}
     volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
       - ./data/logs:/app/logs
       - ./data/attachments:/app/attachments
-      # - ./configs/config.yaml:/app/configs/config.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

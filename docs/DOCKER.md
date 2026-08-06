@@ -2,22 +2,28 @@
 
 > 仓库（HTTPS）：`https://github.com/fulldog/ai-agent.git`（默认分支 `main`）  
 > 前提：服务器已安装 **git**、**Docker**、**Docker Compose V2**  
-> 行为：**每次启动/重启服务时** → `git pull` → 按需复用已有 Postgres / 或启动内置库 → `docker compose up -d --build`
+> 行为：重启时 `git pull` → 编译 → 启动；**API Key / 库地址写在宿主机 `configs/config.yaml`，挂载进容器直接使用**
 
 | 容器 | 说明 |
 |------|------|
-| `ai-agent-app` | Go 应用（含 Poppler + Tesseract 中文 OCR） |
-| `ai-agent-db` | **仅当 5432 空闲时**才启动：PostgreSQL 16 + pgvector |
+| `ai-agent-app` | 挂载 `configs/config.yaml` → `/app/configs/config.yaml` |
+| `ai-agent-db` | 仅当 5432 空闲时启动（PG16+pgvector） |
 
-**数据库策略（默认 `DB_MODE=auto`）**
+**配置方式（推荐）**
+
+```bash
+cp configs/config.docker.yaml configs/config.yaml
+vi configs/config.yaml   # 填写 llm.providers.*.api_key、database.dsn、auth.api_keys
+```
+
+`configs/config.yaml` 已在 `.gitignore`，`git pull` **不会覆盖**你的密钥。
+
+**数据库策略（默认 auto）**
 
 | 情况 | 行为 |
 |------|------|
-| 宿主机 `5432`（或 `POSTGRES_PORT`）已有 Postgres（例如已有 Docker 库） | **不新建**库容器；连已有库；若无 pgvector 则**在该容器内自动编译安装**并 `CREATE EXTENSION` |
-| 本项目 `ai-agent-db` 已在跑 | 继续用内置库 |
-| 端口空闲 | 启动 `docker-compose.db.yml` 内置 PG+pgvector |
-
-本地机密（`.env`）与数据（`data/`、Postgres volume）**不进 Git**。
+| 5432 已有 Postgres | 不新建库容器；按 config 里的 dsn 连接（运行时主机改写为 `host.docker.internal`）；自动安装/启用 pgvector |
+| 5432 空闲 | 启动内置 `ai-agent-db`；运行时 dsn 主机改写为 `db` |
 
 ---
 
@@ -101,62 +107,49 @@ git log -1 --oneline origin/main
 
 > 下文以安装路径 `/opt/ai-agent` 为例，可按实际修改。
 
-### 1.3 创建 `.env`（只做一次）
+### 1.3 创建配置文件（只做一次，密钥写这里）
 
 ```bash
 cd /opt/ai-agent
-cp deploy/docker/env.example .env
-vi .env
+cp configs/config.docker.yaml configs/config.yaml
+vi configs/config.yaml
 ```
 
-**已有 Docker Postgres 占用 5432 时（推荐这样配）：**
+**必改示例：**
 
-```env
-DB_MODE=auto
-POSTGRES_PORT=5432
-# 宿主机视角连接串（用户/密码/库名改成你现有的）
-EXTERNAL_DATABASE_URL=postgres://postgres:你的密码@127.0.0.1:5432/ai_agent?sslmode=disable
+```yaml
+auth:
+  api_keys:
+    - "你的对外API-Key"
 
-API_KEYS=prod-change-me
-DEEPSEEK_API_KEY=sk-xxxx
-APP_PORT=18090
-GOPROXY=https://goproxy.cn,direct
+database:
+  enabled: true
+  # 已有宿主机/其它容器 Postgres（映射 5432）时推荐：
+  dsn: "postgres://用户:密码@host.docker.internal:5432/ai_agent?sslmode=disable"
+  # 若用本项目内置库，写成：
+  # dsn: "postgres://ai_agent:ai_agent_dev@db:5432/ai_agent?sslmode=disable"
+
+llm:
+  providers:
+    deepseek:
+      api_key: "sk-..."
+    qwen:
+      api_key: "sk-..."   # provider=qwen / 通义文件分析时需要
 ```
 
-说明：
-
-1. 脚本发现 `5432` 已监听 → **不会**再起 `ai-agent-db`  
-2. 用 `EXTERNAL_DATABASE_URL` 探测并检查 **pgvector**（无扩展文件会报错退出）  
-3. 自动 `CREATE EXTENSION IF NOT EXISTS vector`  
-4. 应用容器经 `host.docker.internal` 连同一实例  
-
-请先在已有库中建好业务库（若还没有）：
+改完密钥后只需：
 
 ```bash
-# 示例：进入你现有的 postgres 容器执行
-docker exec -it <你的postgres容器名> psql -U postgres -c "CREATE DATABASE ai_agent;"
+docker compose restart app
+# 或
+bash deploy/docker/update-and-start.sh
 ```
 
-**没有现成 Postgres 时：** 保持 `DB_MODE=auto`，可不配 `EXTERNAL_DATABASE_URL`，填内置库账号即可：
-
-```env
-DB_MODE=auto
-POSTGRES_USER=ai_agent
-POSTGRES_PASSWORD=请改成强密码
-POSTGRES_DB=ai_agent
-DATABASE_URL=postgres://ai_agent:请改成强密码@db:5432/ai_agent?sslmode=disable
-```
-
-| 变量 | 说明 |
-|------|------|
-| `DB_MODE` | `auto` / `external` / `embedded` |
-| `EXTERNAL_DATABASE_URL` | 复用外部库时必填（宿主机 `127.0.0.1`） |
-| `API_KEYS` | 请求头 `X-API-Key` |
-| `DEEPSEEK_API_KEY` 等 | LLM Key |
+可选：`.env` 仅用于 `DB_MODE` / `APP_PORT` / 内置库账号等，**不必**再配 `DASHSCOPE_API_KEY`。
 
 ```bash
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh
+chmod +x deploy/docker/update-and-start.sh || true
 ```
 
 ### 1.4 单独检查 / 自动安装 pgvector
@@ -382,30 +375,24 @@ location / {
 
 ---
 
-## 10. 从零复制清单（HTTPS）
+## 10. 从零复制清单（HTTPS + 配置文件挂载）
 
 ```bash
-# 1. 依赖：git、docker、compose 已就绪
 sudo mkdir -p /opt
 sudo git clone https://github.com/fulldog/ai-agent.git /opt/ai-agent
-# 私有仓：sudo git clone "https://USER:PAT@github.com/fulldog/ai-agent.git" /opt/ai-agent
 sudo chown -R "$USER":"$USER" /opt/ai-agent
 cd /opt/ai-agent
 
-# 2. 配置（已有 5432 上的 Postgres 时务必填 EXTERNAL_DATABASE_URL）
-cp deploy/docker/env.example .env && vi .env
+cp configs/config.docker.yaml configs/config.yaml
+vi configs/config.yaml          # 填 api_key、dsn、api_keys
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh
 
-# 3. 首次启动
-./deploy/docker/update-and-start.sh
+bash deploy/docker/update-and-start.sh
 curl -sS http://127.0.0.1:18090/health
 
-# 4. 开机自动拉代码并编译
 sudo cp deploy/docker/ai-agent.service /etc/systemd/system/
-# 若路径不是 /opt/ai-agent，编辑 unit
 sudo systemctl daemon-reload
 sudo systemctl enable --now ai-agent.service
 ```
 
-之后每次 **`systemctl restart ai-agent` 或机器重启**，都会经 HTTPS 从 GitHub 拉取 `main` 最新提交并重新编译部署完整栈。
+之后改密钥只需改 `configs/config.yaml`，然后 `docker compose restart app`。
