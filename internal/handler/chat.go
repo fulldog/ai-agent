@@ -13,11 +13,13 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
+	"gorm.io/gorm"
 )
 
 type ChatHandler struct {
 	Chat        *chat.Service
 	FileExtract *fileextract.Service
+	DB          *gorm.DB // nil = 最小化部署，analyze 不落会话
 }
 
 func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
@@ -184,6 +186,10 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 			}
 		}
 		if cid := strings.TrimSpace(c.PostForm("conversation_id")); cid != "" {
+			if h.DB == nil {
+				writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
+				return chat.AnalyzeInput{}, false
+			}
 			id, err := uuid.Parse(cid)
 			if err != nil {
 				writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -279,6 +285,10 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 		return chat.AnalyzeInput{}, false
 	}
 	if req.ConversationID != "" {
+		if h.DB == nil {
+			writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
+			return chat.AnalyzeInput{}, false
+		}
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")

@@ -30,7 +30,7 @@ func Setup(application *app.App) *gin.Engine {
 	}
 
 	// ---------- 公开路由（无需 X-API-Key）----------
-	healthH := &handler.HealthHandler{DB: application.DB}
+	healthH := &handler.HealthHandler{DB: application.DB, DBEnabled: cfg.Database.IsEnabled()}
 	r.GET("/health", healthH.Health) // 健康检查，含 DB 连通性
 
 	// Prometheus 抓取端点；protect=true 时需 admin API Key
@@ -45,12 +45,14 @@ func Setup(application *app.App) *gin.Engine {
 
 	// ---------- 业务 Handler ----------
 	convH := &handler.ConversationHandler{Chat: application.Chat}
-	chatH := &handler.ChatHandler{Chat: application.Chat, FileExtract: application.FileExtract}
+	chatH := &handler.ChatHandler{Chat: application.Chat, FileExtract: application.FileExtract, DB: application.DB}
 	agentH := &handler.AgentHandler{Agent: application.Agent}
 	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, FileExtract: application.FileExtract}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
 	modelsH := &handler.ModelsHandler{Pool: application.LLMPool}
+
+	needDB := middleware.RequireDB(application.DB)
 
 	// ---------- /api/v1（需 X-API-Key）----------
 	v1 := r.Group("/api/v1")
@@ -58,43 +60,43 @@ func Setup(application *app.App) *gin.Engine {
 	{
 		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
 
-		// 会话管理
-		v1.POST("/conversations", convH.Create)               // 创建会话
-		v1.GET("/conversations", convH.List)                  // 会话列表
-		v1.GET("/conversations/:id", convH.Get)               // 会话详情
-		v1.DELETE("/conversations/:id", convH.Delete)         // 删除会话
-		v1.GET("/conversations/:id/messages", convH.Messages) // 会话消息列表
+		// 无库可用：文件分析
+		v1.POST("/chat/analyze", chatH.Analyze)
+		v1.POST("/chat/analyze/stream", chatH.AnalyzeStream)
 
-		// 聊天（同步 / SSE 流式）
-		v1.POST("/chat/completions", chatH.Completions)              // 同步补全
-		v1.POST("/chat/completions/stream", chatH.CompletionsStream) // SSE 流式补全
-		v1.POST("/chat/analyze", chatH.Analyze)                      // 上传文件直接分析（不进语料库）
-		v1.POST("/chat/analyze/stream", chatH.AnalyzeStream)         // 文件分析 SSE
+		// 以下依赖 PostgreSQL
+		dbGroup := v1.Group("")
+		dbGroup.Use(needDB)
+		{
+			dbGroup.POST("/conversations", convH.Create)
+			dbGroup.GET("/conversations", convH.List)
+			dbGroup.GET("/conversations/:id", convH.Get)
+			dbGroup.DELETE("/conversations/:id", convH.Delete)
+			dbGroup.GET("/conversations/:id/messages", convH.Messages)
 
-		// Agent 运行（同步 / SSE；含 Tool Calling）
-		v1.POST("/agent/runs", agentH.Run)              // 同步运行
-		v1.POST("/agent/runs/stream", agentH.RunStream) // SSE 流式运行
-		v1.GET("/agent/runs/:id", agentH.Get)           // 查询运行记录与步骤
+			dbGroup.POST("/chat/completions", chatH.Completions)
+			dbGroup.POST("/chat/completions/stream", chatH.CompletionsStream)
 
-		// 语料库 / 文档索引（RAG 数据源）
-		v1.POST("/corpora", corpusH.Create)                                 // 创建语料库
-		v1.GET("/corpora", corpusH.List)                                    // 语料库列表
-		v1.GET("/corpora/:id", corpusH.Get)                                 // 语料库详情
-		v1.DELETE("/corpora/:id", corpusH.Delete)                           // 删除语料库
-		v1.POST("/corpora/:id/documents", corpusH.AddDocument)              // 上传/写入文档并索引
-		v1.GET("/corpora/:id/documents", corpusH.ListDocuments)             // 文档列表
-		v1.DELETE("/corpora/:id/documents/:doc_id", corpusH.DeleteDocument) // 删除文档
-		v1.POST("/corpora/:id/reindex", corpusH.Reindex)                    // 重建向量索引
+			dbGroup.POST("/agent/runs", agentH.Run)
+			dbGroup.POST("/agent/runs/stream", agentH.RunStream)
+			dbGroup.GET("/agent/runs/:id", agentH.Get)
 
-		// RAG 检索调试
-		v1.POST("/rag/search", ragH.Search) // 按语料库做向量检索
+			dbGroup.POST("/corpora", corpusH.Create)
+			dbGroup.GET("/corpora", corpusH.List)
+			dbGroup.GET("/corpora/:id", corpusH.Get)
+			dbGroup.DELETE("/corpora/:id", corpusH.Delete)
+			dbGroup.POST("/corpora/:id/documents", corpusH.AddDocument)
+			dbGroup.GET("/corpora/:id/documents", corpusH.ListDocuments)
+			dbGroup.DELETE("/corpora/:id/documents/:doc_id", corpusH.DeleteDocument)
+			dbGroup.POST("/corpora/:id/reindex", corpusH.Reindex)
 
-		// 请求日志查询
-		v1.GET("/logs/requests", logsH.ListRequests)   // 列表（可筛选）
-		v1.GET("/logs/requests/:id", logsH.GetRequest) // 单条详情
+			dbGroup.POST("/rag/search", ragH.Search)
+
+			dbGroup.GET("/logs/requests", logsH.ListRequests)
+			dbGroup.GET("/logs/requests/:id", logsH.GetRequest)
+		}
 	}
 
-	// 未匹配路由
 	r.NoRoute(func(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"code": "not_found", "message": "route not found"}})
 	})

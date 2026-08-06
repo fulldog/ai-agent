@@ -58,6 +58,22 @@ func TestResolveLLM(t *testing.T) {
 	}
 }
 
+func TestDatabaseIsEnabled(t *testing.T) {
+	f, ttrue := false, true
+	if (DatabaseConfig{Enabled: &f}).IsEnabled() {
+		t.Fatal("enabled:false should disable")
+	}
+	if !(DatabaseConfig{Enabled: &ttrue}).IsEnabled() {
+		t.Fatal("enabled:true should enable")
+	}
+	if !(DatabaseConfig{DSN: "postgres://x"}).IsEnabled() {
+		t.Fatal("non-empty dsn should enable when enabled unset")
+	}
+	if (DatabaseConfig{}).IsEnabled() {
+		t.Fatal("empty dsn should disable when enabled unset")
+	}
+}
+
 func TestAlsoStdoutDefaultsByMode(t *testing.T) {
 	dir := t.TempDir()
 

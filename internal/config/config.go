@@ -35,10 +35,20 @@ type AuthConfig struct {
 }
 
 type DatabaseConfig struct {
+	// Enabled 为 false 时不连接数据库（最小化部署）；nil 时若 DSN 非空则启用。
+	Enabled      *bool  `yaml:"enabled"`
 	DSN          string `yaml:"dsn"`
 	MaxOpenConns int    `yaml:"max_open_conns"`
 	MaxIdleConns int    `yaml:"max_idle_conns"`
 	AutoMigrate  bool   `yaml:"auto_migrate"`
+}
+
+// IsEnabled 是否启用 PostgreSQL。最小化部署可设 enabled: false 或清空 dsn。
+func (c DatabaseConfig) IsEnabled() bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return strings.TrimSpace(c.DSN) != ""
 }
 
 // LLMProviderConfig 单个 OpenAI 兼容上游。
@@ -237,6 +247,16 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) applyEnv() {
+	if v := os.Getenv("DATABASE_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "0", "false", "no", "off":
+			f := false
+			c.Database.Enabled = &f
+		case "1", "true", "yes", "on":
+			t := true
+			c.Database.Enabled = &t
+		}
+	}
 	if v := os.Getenv("DATABASE_URL"); v != "" {
 		c.Database.DSN = v
 	} else if v := os.Getenv("PG_DSN"); v != "" {

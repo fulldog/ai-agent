@@ -300,10 +300,6 @@ func (s *Service) asyncFillQwenText(remoteID string, rowID uuid.UUID, hash strin
 }
 
 func (s *Service) writeTextFileAndUpdate(ctx context.Context, rowID uuid.UUID, hash, text string) error {
-	var row model.FileExtraction
-	if err := s.db.WithContext(ctx).First(&row, "id = ?", rowID).Error; err != nil {
-		return err
-	}
 	dayDir := time.Now().Format("2006/01/02")
 	absDay := filepath.Join(s.root, filepath.FromSlash(dayDir))
 	if err := os.MkdirAll(absDay, 0o755); err != nil {
@@ -314,6 +310,9 @@ func (s *Service) writeTextFileAndUpdate(ctx context.Context, rowID uuid.UUID, h
 	relText := filepath.ToSlash(filepath.Join(s.root, dayDir, textName))
 	if err := os.WriteFile(absText, []byte(text), 0o644); err != nil {
 		return err
+	}
+	if s.db == nil {
+		return nil
 	}
 	return s.db.WithContext(ctx).Model(&model.FileExtraction{}).
 		Where("id = ?", rowID).
@@ -363,6 +362,10 @@ func (s *Service) persistNew(ctx context.Context, a persistArgs) (*model.FileExt
 		TextChars: textChars, ExtractBackend: a.Backend, RemoteFileID: a.RemoteID,
 		Status: "ready", IsDeleted: 0,
 	}
+	if s.db == nil {
+		// 最小化部署：只落盘附件/文本，不写库、不缓存命中
+		return row, nil
+	}
 	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
 		return nil, fmt.Errorf("写入 file_extractions 失败: %w", err)
 	}
@@ -374,12 +377,18 @@ func (s *Service) persistNew(ctx context.Context, a persistArgs) (*model.FileExt
 }
 
 func (s *Service) softDeleteActiveExcept(ctx context.Context, hash string, keep uuid.UUID) error {
+	if s.db == nil {
+		return nil
+	}
 	return s.db.WithContext(ctx).Model(&model.FileExtraction{}).
 		Where("content_hash = ? AND is_deleted = 0 AND id <> ?", hash, keep).
 		Updates(map[string]any{"is_deleted": 1, "updated_at": time.Now()}).Error
 }
 
 func (s *Service) loadTextCache(ctx context.Context, hash string) *PrepareResult {
+	if s.db == nil {
+		return nil
+	}
 	var row model.FileExtraction
 	err := s.db.WithContext(ctx).
 		Where("content_hash = ? AND is_deleted = 0 AND status = ? AND text_path <> ''", hash, "ready").
@@ -399,6 +408,9 @@ func (s *Service) loadTextCache(ctx context.Context, hash string) *PrepareResult
 }
 
 func (s *Service) loadQwenFileID(ctx context.Context, hash string) *PrepareResult {
+	if s.db == nil {
+		return nil
+	}
 	var row model.FileExtraction
 	err := s.db.WithContext(ctx).
 		Where("content_hash = ? AND is_deleted = 0 AND status = ? AND extract_backend = ? AND remote_file_id <> ''",

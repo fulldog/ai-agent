@@ -524,7 +524,7 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput, onDelta func(str
 		out.Data = data
 	}
 
-	if in.ConversationID != nil {
+	if in.ConversationID != nil && s.db != nil {
 		q := in.Message
 		if q == "" && len(in.Fields) > 0 {
 			q = "抽取字段: " + strings.Join(in.Fields, "、")

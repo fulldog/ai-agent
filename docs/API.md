@@ -29,9 +29,21 @@
 }
 ```
 
-常见 HTTP 状态：`400` 参数错误、`401` 鉴权失败、`404` 不存在、`429` 限流（预留）、`500` 内部错误。
+常见 HTTP 状态：`400` 参数错误、`401` 鉴权失败、`404` 不存在、`429` 限流（预留）、`500` 内部错误、`503` 数据库未启用。
 
-### 1.3 SSE 约定
+### 1.3 最小化部署（无数据库）
+
+配置 `database.enabled: false`（或环境变量 `DATABASE_ENABLED=false`）时不连接 PostgreSQL，服务仍可启动。
+
+| 仍可用 | 不可用（HTTP 503） |
+|--------|-------------------|
+| `GET /health`（`db: disabled`） | 会话 / 补全 / Agent / 语料 / RAG / 请求日志查询 |
+| `GET /api/v1/models` | |
+| `POST /api/v1/chat/analyze`、`/chat/analyze/stream` | |
+
+无库时 analyze：**不写** `file_extractions` / `llm_call_logs` / 会话消息；附件与抽取 txt 仍可落盘；完整 prompt/回复仍写 `logs/llm-*.log`；无抽取缓存（每次重新识别/上传）。勿传 `conversation_id`。样例配置见 `configs/config.minimal.example.yaml`。
+
+### 1.4 SSE 约定
 
 流式接口：`Content-Type: text/event-stream; charset=utf-8`
 
@@ -54,7 +66,7 @@ Agent 额外事件：`tool_call`、`tool_result`（可选 `thought`）。
 
 ### GET `/health`
 
-健康检查。无需 API Key。
+健康检查。无需 API Key。`db` 为 `up` / `down` / `disabled`（最小化部署）。库未启用时仍返回 `200`，并带 `"mode":"minimal"`。
 
 **响应** `200`
 

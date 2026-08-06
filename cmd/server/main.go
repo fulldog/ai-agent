@@ -15,6 +15,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/logger"
 	"github.com/webapp/go-app/ai-agent/internal/router"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -45,14 +46,20 @@ func main() {
 	defer bundle.Access.Sync() //nolint:errcheck
 	defer bundle.LLM.Sync()    //nolint:errcheck
 
-	db, err := database.Open(cfg.Database, log)
-	if err != nil {
-		log.Fatal("open database", zap.Error(err))
+	var db *gorm.DB
+	if cfg.Database.IsEnabled() {
+		opened, err := database.Open(cfg.Database, log)
+		if err != nil {
+			log.Fatal("open database", zap.Error(err))
+		}
+		db = opened
+		if err := database.EnsureChunkEmbeddingColumn(db, cfg.Embed.Dimensions); err != nil {
+			log.Fatal("ensure embedding column", zap.Error(err))
+		}
+		_ = database.EnsureVectorIndex(db, cfg.RAG.VectorIndex)
+	} else {
+		log.Warn("database disabled; minimal mode (analyze without DB)")
 	}
-	if err := database.EnsureChunkEmbeddingColumn(db, cfg.Embed.Dimensions); err != nil {
-		log.Fatal("ensure embedding column", zap.Error(err))
-	}
-	_ = database.EnsureVectorIndex(db, cfg.RAG.VectorIndex)
 
 	application, err := app.New(cfg, db, log, bundle.Access, bundle.LLM)
 	if err != nil {
@@ -71,6 +78,7 @@ func main() {
 			zap.String("addr", cfg.Server.Addr),
 			zap.String("mode", cfg.Server.Mode),
 			zap.Bool("log_stdout", alsoStdout),
+			zap.Bool("database_enabled", cfg.Database.IsEnabled()),
 			zap.String("llm_default_provider", cfg.LLM.DefaultProvider),
 			zap.String("llm_default_model", cfg.LLM.DefaultModel),
 			zap.Bool("llm_default_key_set", cfg.LLM.APIKey != ""),
