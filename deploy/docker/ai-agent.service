@@ -15,7 +15,7 @@ WorkingDirectory=/opt/ai-agent
 Environment=DEPLOY_BRANCH=main
 Environment=DEPLOY_REMOTE=origin
 ExecStart=/opt/ai-agent/deploy/docker/update-and-start.sh
-ExecStop=/usr/bin/docker compose -f /opt/ai-agent/docker-compose.yml stop
+ExecStop=/bin/bash -c 'cd /opt/ai-agent && docker compose -f docker-compose.yml -f docker-compose.db.yml stop 2>/dev/null; docker compose -f docker-compose.yml stop'
 TimeoutStartSec=0
 
 [Install]

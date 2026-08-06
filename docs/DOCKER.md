@@ -2,16 +2,22 @@
 
 > 仓库（HTTPS）：`https://github.com/fulldog/ai-agent.git`（默认分支 `main`）  
 > 前提：服务器已安装 **git**、**Docker**、**Docker Compose V2**  
-> 行为：**每次启动/重启服务时** → `git pull`（reset 到远端）→ `docker compose up -d --build`（重新编译镜像并启动完整栈）
-
-完整栈包含：
+> 行为：**每次启动/重启服务时** → `git pull` → 按需复用已有 Postgres / 或启动内置库 → `docker compose up -d --build`
 
 | 容器 | 说明 |
 |------|------|
-| `ai-agent-app` | Go 应用（镜像内含 Poppler + Tesseract 中文 OCR） |
-| `ai-agent-db` | PostgreSQL **16** + **pgvector**（与宿主机旧版 PG 无关） |
+| `ai-agent-app` | Go 应用（含 Poppler + Tesseract 中文 OCR） |
+| `ai-agent-db` | **仅当 5432 空闲时**才启动：PostgreSQL 16 + pgvector |
 
-本地机密（`.env`）与数据（`data/`、Postgres volume）**不进 Git**，拉取代码不会覆盖。
+**数据库策略（默认 `DB_MODE=auto`）**
+
+| 情况 | 行为 |
+|------|------|
+| 宿主机 `5432`（或 `POSTGRES_PORT`）已有 Postgres（例如已有 Docker 库） | **不新建**库容器；连已有库；若无 pgvector 则**在该容器内自动编译安装**并 `CREATE EXTENSION` |
+| 本项目 `ai-agent-db` 已在跑 | 继续用内置库 |
+| 端口空闲 | 启动 `docker-compose.db.yml` 内置 PG+pgvector |
+
+本地机密（`.env`）与数据（`data/`、Postgres volume）**不进 Git**。
 
 ---
 
@@ -103,35 +109,71 @@ cp deploy/docker/env.example .env
 vi .env
 ```
 
-**至少修改：**
-
-| 变量 | 说明 |
-|------|------|
-| `API_KEYS` | 对外 API Key（请求头 `X-API-Key`） |
-| `DEEPSEEK_API_KEY` | 或其它厂商 Key |
-| `POSTGRES_PASSWORD` | 数据库密码 |
-| `DATABASE_URL` | 与上面用户/密码一致，**主机名必须是 `db`** |
-
-示例：
+**已有 Docker Postgres 占用 5432 时（推荐这样配）：**
 
 ```env
+DB_MODE=auto
+POSTGRES_PORT=5432
+# 宿主机视角连接串（用户/密码/库名改成你现有的）
+EXTERNAL_DATABASE_URL=postgres://postgres:你的密码@127.0.0.1:5432/ai_agent?sslmode=disable
+
 API_KEYS=prod-change-me
 DEEPSEEK_API_KEY=sk-xxxx
-POSTGRES_USER=ai_agent
-POSTGRES_PASSWORD=请改成强密码
-POSTGRES_DB=ai_agent
-POSTGRES_PORT=5432
-DATABASE_URL=postgres://ai_agent:请改成强密码@db:5432/ai_agent?sslmode=disable
 APP_PORT=18090
 GOPROXY=https://goproxy.cn,direct
 ```
 
-> 宿主机若已有旧 Postgres 占用 `5432`，设 `POSTGRES_PORT=5433`；`DATABASE_URL` 里端口仍写 **`5432`**（容器内端口）。
+说明：
+
+1. 脚本发现 `5432` 已监听 → **不会**再起 `ai-agent-db`  
+2. 用 `EXTERNAL_DATABASE_URL` 探测并检查 **pgvector**（无扩展文件会报错退出）  
+3. 自动 `CREATE EXTENSION IF NOT EXISTS vector`  
+4. 应用容器经 `host.docker.internal` 连同一实例  
+
+请先在已有库中建好业务库（若还没有）：
+
+```bash
+# 示例：进入你现有的 postgres 容器执行
+docker exec -it <你的postgres容器名> psql -U postgres -c "CREATE DATABASE ai_agent;"
+```
+
+**没有现成 Postgres 时：** 保持 `DB_MODE=auto`，可不配 `EXTERNAL_DATABASE_URL`，填内置库账号即可：
+
+```env
+DB_MODE=auto
+POSTGRES_USER=ai_agent
+POSTGRES_PASSWORD=请改成强密码
+POSTGRES_DB=ai_agent
+DATABASE_URL=postgres://ai_agent:请改成强密码@db:5432/ai_agent?sslmode=disable
+```
+
+| 变量 | 说明 |
+|------|------|
+| `DB_MODE` | `auto` / `external` / `embedded` |
+| `EXTERNAL_DATABASE_URL` | 复用外部库时必填（宿主机 `127.0.0.1`） |
+| `API_KEYS` | 请求头 `X-API-Key` |
+| `DEEPSEEK_API_KEY` 等 | LLM Key |
 
 ```bash
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh
+chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh
 ```
+
+### 1.4 单独检查 / 自动安装 pgvector
+
+```bash
+cd /opt/ai-agent
+chmod +x deploy/docker/ensure-pgvector.sh
+./deploy/docker/ensure-pgvector.sh "postgres://postgres:密码@127.0.0.1:5432/ai_agent?sslmode=disable"
+```
+
+行为：
+
+1. 能连上库且已有 `vector` 扩展文件 → 直接 `CREATE EXTENSION IF NOT EXISTS vector`  
+2. **没有扩展文件**、且库在本机 Docker（端口映射到 `5432`）→ **自动在该容器内编译安装 pgvector**，再启用扩展  
+3. 库不在本机 / 非 Docker / 容器无包管理器 → 报错并提示改用 `pgvector/pgvector` 镜像  
+
+可选环境变量：`PGVECTOR_REF=v0.8.0`（源码版本）、`PG_CLIENT_IMAGE=postgres:16`、`PGVECTOR_SKIP_INSTALL=1`（只检查不安装）。
 
 ---
 
@@ -144,8 +186,10 @@ cd /opt/ai-agent
 
 脚本会：
 
-1. `git fetch` + `git reset --hard origin/main`（对齐 GitHub 最新）  
-2. `docker compose up -d --build`（编译应用镜像并启动 app + db）
+1. `git fetch` + `git reset --hard origin/main`  
+2. 按 `DB_MODE` / `5432` 是否占用决定：**复用外部库**或**启动内置 db**  
+3. `ensure-pgvector.sh` 检查并启用 `vector`  
+4. `docker compose up -d --build` 启动应用（及可选的内置库）
 
 验证：
 
@@ -208,11 +252,20 @@ sudo systemctl restart ai-agent
 
 ```text
 校验 git / docker / .env
- → mkdir data/logs data/attachments
- → git fetch + checkout main + reset --hard origin/main
- → docker compose -f docker-compose.yml up -d --build --remove-orphans
- → 打印 compose ps
+ → git fetch + reset --hard origin/main
+ → 判断 DB_MODE / 5432 端口 / ai-agent-db 是否已运行
+ → 外部库：ensure-pgvector → 只启动 app
+ → 内置库：启动 app+db → ensure-pgvector
 ```
+
+相关文件：
+
+| 文件 | 作用 |
+|------|------|
+| `docker-compose.yml` | 仅应用 |
+| `docker-compose.db.yml` | 内置 Postgres+pgvector（按需叠加） |
+| `deploy/docker/ensure-pgvector.sh` | 探测连接 + 检查/启用 vector |
+| `deploy/docker/update-and-start.sh` | 拉代码 + 上述策略 + 编译启动 |
 
 环境变量（可选）：
 
@@ -299,14 +352,14 @@ curl -sS -X POST "http://127.0.0.1:18090/api/v1/chat/analyze" \
 
 | 现象 | 处理 |
 |------|------|
-| `git fetch` 认证失败 | 检查 PAT 是否过期；`~/.git-credentials` 权限与 **运行用户**是否一致 |
-| `Repository not found` | 确认 HTTPS URL、账号对私有仓有读权限 |
-| `缺少 .env` | `cp deploy/docker/env.example .env` 并填写 |
-| 构建拉不下基础镜像 | 配置 Docker 镜像加速；确认 `GOPROXY` |
-| app 起不来 / `db: down` | `docker compose ps`、`logs db` |
-| 端口冲突 | `.env` 中改 `APP_PORT` / `POSTGRES_PORT` |
-| 重启后代码不是最新 | `journalctl -u ai-agent`；核对 unit 路径与 `User=` |
-
+| `git fetch` 认证失败 | 检查 PAT / `~/.git-credentials` 与运行用户 |
+| 外部库连不上 | 检查 `EXTERNAL_DATABASE_URL`、库是否已 `CREATE DATABASE` |
+| 自动安装 pgvector 失败 | 看脚本日志：容器是否映射端口、能否 apt/apk；或换镜像 `pgvector/pgvector:pg16` |
+| 提示非本机无法安装 | 连接串须为 `127.0.0.1`；远端库需在库所在机器安装扩展 |
+| `缺少 .env` | `cp deploy/docker/env.example .env` |
+| 构建拉不下镜像 | Docker 镜像加速；`GOPROXY`；可选 `PG_CLIENT_IMAGE=pgvector/pgvector:pg16` |
+| app `db: down` | 外部库防火墙/`pg_hba.conf` 是否允许 Docker 网桥访问；试 `host.docker.internal` |
+| 端口冲突 | `DB_MODE=auto` 应复用；或 `embedded` 时改 `POSTGRES_PORT` |
 ---
 
 ## 9. 生产建议
@@ -340,10 +393,10 @@ sudo git clone https://github.com/fulldog/ai-agent.git /opt/ai-agent
 sudo chown -R "$USER":"$USER" /opt/ai-agent
 cd /opt/ai-agent
 
-# 2. 配置
+# 2. 配置（已有 5432 上的 Postgres 时务必填 EXTERNAL_DATABASE_URL）
 cp deploy/docker/env.example .env && vi .env
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh
+chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh
 
 # 3. 首次启动
 ./deploy/docker/update-and-start.sh

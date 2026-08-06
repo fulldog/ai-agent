@@ -1,0 +1,43 @@
+# 内置 PostgreSQL 16 + pgvector（仅当宿主机 5432 无库时由脚本叠加启动）
+# docker compose -f docker-compose.yml -f docker-compose.db.yml up -d
+
+name: ai-agent
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ai-agent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_agent_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_agent}
+      TZ: Asia/Shanghai
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ai_agent_pgdata:/var/lib/postgresql/data
+      - ./deploy/docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - ai-agent-net
+
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # 内置库时容器内主机名为 db
+      DATABASE_URL: ${DATABASE_URL:-postgres://ai_agent:ai_agent_dev@db:5432/ai_agent?sslmode=disable}
+
+volumes:
+  ai_agent_pgdata:
+
+networks:
+  ai-agent-net:
+    driver: bridge
