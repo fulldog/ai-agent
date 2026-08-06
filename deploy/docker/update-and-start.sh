@@ -168,10 +168,35 @@ else
 fi
 
 log "服务状态:"
-docker compose -f "${COMPOSE_APP}" ps
+docker compose -f "${COMPOSE_APP}" ps -a
 if [[ "${USE_EMBEDDED}" -eq 1 ]]; then
-  docker compose -f "${COMPOSE_APP}" -f "${COMPOSE_DB}" ps
+  docker compose -f "${COMPOSE_APP}" -f "${COMPOSE_DB}" ps -a
 fi
 
-log "完成。健康检查: curl -sS http://127.0.0.1:${APP_PORT:-18090}/health"
-log "DATABASE_URL(app)=${DATABASE_URL//:*@/:***@}"
+HEALTH_URL="http://127.0.0.1:${APP_PORT:-18090}/health"
+log "等待应用就绪: ${HEALTH_URL}"
+ok=0
+for i in $(seq 1 60); do
+  if curl -fsS "${HEALTH_URL}" >/tmp/ai-agent-health.$$ 2>/dev/null; then
+    log "健康检查通过: $(cat /tmp/ai-agent-health.$$)"
+    ok=1
+    break
+  fi
+  # 容器已退出则不必空等
+  status="$(docker inspect -f '{{.State.Status}}' ai-agent-app 2>/dev/null || echo missing)"
+  if [[ "${status}" == "exited" || "${status}" == "dead" || "${status}" == "missing" ]]; then
+    log "ERROR: 容器 ai-agent-app 状态=${status}，启动失败"
+    break
+  fi
+  sleep 2
+done
+rm -f /tmp/ai-agent-health.$$
+
+if [[ "${ok}" -ne 1 ]]; then
+  log "ERROR: 应用未在 ${HEALTH_URL} 就绪。最近日志："
+  docker logs --tail 80 ai-agent-app 2>&1 || true
+  log "请执行: docker ps -a | grep ai-agent; docker logs -f ai-agent-app"
+  exit 1
+fi
+
+log "完成。DATABASE_URL(app)=${DATABASE_URL//:*@/:***@}"
