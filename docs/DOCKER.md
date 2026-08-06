@@ -163,8 +163,7 @@ chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh
 
 ```bash
 cd /opt/ai-agent
-chmod +x deploy/docker/ensure-pgvector.sh
-./deploy/docker/ensure-pgvector.sh "postgres://postgres:密码@127.0.0.1:5432/ai_agent?sslmode=disable"
+bash deploy/docker/ensure-pgvector.sh "postgres://postgres:密码@127.0.0.1:5432/ai_agent?sslmode=disable"
 ```
 
 行为：

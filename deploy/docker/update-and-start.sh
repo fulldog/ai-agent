@@ -46,7 +46,6 @@ source .env
 set +a
 
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh 2>/dev/null || true
 
 log "仓库目录: ${REPO_ROOT}"
 log "拉取 ${REMOTE}/${BRANCH} ..."
@@ -54,6 +53,9 @@ log "拉取 ${REMOTE}/${BRANCH} ..."
 git fetch --prune "${REMOTE}"
 git checkout "${BRANCH}"
 git reset --hard "${REMOTE}/${BRANCH}"
+
+# reset 之后再赋权；调用统一用 bash，不依赖 +x
+chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh 2>/dev/null || true
 
 REV="$(git rev-parse --short HEAD)"
 log "当前提交: ${REV} ($(git log -1 --pretty=format:'%s'))"
@@ -126,7 +128,7 @@ if [[ "${USE_EMBEDDED}" -eq 1 ]]; then
     sleep 2
   done
   HOST_CHECK_DSN="postgres://${POSTGRES_USER:-ai_agent}:${POSTGRES_PASSWORD:-ai_agent_dev}@127.0.0.1:${PG_PORT}/${POSTGRES_DB:-ai_agent}?sslmode=disable"
-  ./deploy/docker/ensure-pgvector.sh "${HOST_CHECK_DSN}"
+  bash deploy/docker/ensure-pgvector.sh "${HOST_CHECK_DSN}"
 else
   # 外部库：应用容器经 host.docker.internal 访问宿主机映射端口
   EXT_DSN="${EXTERNAL_DATABASE_URL:-}"
@@ -154,7 +156,7 @@ else
   export EXTERNAL_DATABASE_URL="${CHECK_DSN}"
 
   log "检查外部库与 pgvector ..."
-  ./deploy/docker/ensure-pgvector.sh "${CHECK_DSN}"
+  bash deploy/docker/ensure-pgvector.sh "${CHECK_DSN}"
 
   # 若本项目以前起过内置 db，避免占端口；仅停 db，不删卷
   if our_db_running; then
