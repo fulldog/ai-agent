@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# 服务重启：拉最新代码 → 重新编译镜像（含二进制）→ 仅重启 app 容器。
-# 不改动数据库容器；配置仍用挂载的 configs/config.yaml。
+# 服务重启：拉最新代码 → 重新编译镜像 → 用新镜像重启 app（不动 db）。
 #
 #   bash deploy/docker/restart-app.sh
 #
 # 环境变量（可选）：
-#   DEPLOY_BRANCH / DEPLOY_REMOTE / COMPOSE_FILE / APP_PORT / GOPROXY
+#   DEPLOY_BRANCH / DEPLOY_REMOTE / COMPOSE_FILE / COMPOSE_DB_FILE / APP_PORT / GOPROXY
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,6 +14,7 @@ cd "${REPO_ROOT}"
 BRANCH="${DEPLOY_BRANCH:-main}"
 REMOTE="${DEPLOY_REMOTE:-origin}"
 COMPOSE_APP="${COMPOSE_FILE:-docker-compose.yml}"
+COMPOSE_DB="${COMPOSE_DB_FILE:-docker-compose.db.yml}"
 LOG_TAG="[ai-agent-restart]"
 
 log() { echo "${LOG_TAG} $(date '+%F %T') $*"; }
@@ -50,6 +50,15 @@ fi
 
 mkdir -p data/logs data/attachments
 
+# 内置库在跑时叠加 db compose，避免 orphan 告警（仍 --no-deps 不碰 db）
+compose_files=(-f "${COMPOSE_APP}")
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'ai-agent-db'; then
+  if [[ -f "${COMPOSE_DB}" ]]; then
+    compose_files+=(-f "${COMPOSE_DB}")
+    log "检测到 ai-agent-db，compose 叠加 ${COMPOSE_DB}"
+  fi
+fi
+
 # ---------- 1. 更新 Git ----------
 log "仓库目录: ${REPO_ROOT}"
 log "拉取 ${REMOTE}/${BRANCH} ..."
@@ -59,17 +68,16 @@ git reset --hard "${REMOTE}/${BRANCH}"
 REV="$(git rev-parse --short HEAD)"
 log "当前提交: ${REV} ($(git log -1 --pretty=format:'%s'))"
 
-# ---------- 2. 编译（Docker 多阶段 go build → 镜像内 /app/ai-agent）----------
+# ---------- 2. 编译 ----------
 log "编译镜像 ai-agent:local ..."
-docker compose -f "${COMPOSE_APP}" build app
+docker compose "${compose_files[@]}" build app
 
-# ---------- 3. 用最新镜像重启 app 容器 ----------
+# ---------- 3. 用新镜像启动 / 重启 app ----------
 log "重启容器 ai-agent-app ..."
-# --no-deps：不动 db；--force-recreate：确保换上新镜像里的二进制
-docker compose -f "${COMPOSE_APP}" up -d --no-deps --force-recreate app
+docker compose "${compose_files[@]}" up -d --no-deps --force-recreate app
 
 log "服务状态:"
-docker compose -f "${COMPOSE_APP}" ps app
+docker compose "${compose_files[@]}" ps app
 
 HEALTH_URL="http://127.0.0.1:${APP_PORT:-18090}/health"
 log "等待应用就绪: ${HEALTH_URL}"
