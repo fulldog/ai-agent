@@ -55,7 +55,8 @@ log "拉取 ${REMOTE}/${BRANCH} ..."
 git fetch --prune "${REMOTE}"
 git checkout "${BRANCH}"
 git reset --hard "${REMOTE}/${BRANCH}"
-chmod +x deploy/docker/update-and-start.sh deploy/docker/ensure-pgvector.sh 2>/dev/null || true
+# 勿对本仓库脚本 chmod +x：会改 filemode（644→755），导致 git status 显示「已修改」
+# 调用统一用 bash xxx.sh，不依赖可执行位
 
 # config.yaml 被 gitignore，pull 不会覆盖；首次从模板生成
 if [[ ! -f "${CONFIG_FILE}" ]]; then

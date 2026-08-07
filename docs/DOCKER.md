@@ -149,7 +149,7 @@ bash deploy/docker/update-and-start.sh
 
 ```bash
 mkdir -p data/logs data/attachments
-chmod +x deploy/docker/update-and-start.sh || true
+# 用 bash 调用脚本即可，不要 chmod +x（会改 filemode，git status 显示脏）
 ```
 
 ### 1.4 单独检查 / 自动安装 pgvector
