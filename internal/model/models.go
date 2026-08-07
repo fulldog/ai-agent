@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,12 +30,13 @@ func (c *Conversation) BeforeCreate(tx *gorm.DB) error {
 
 // Message 会话消息。
 type Message struct {
-	ID              uuid.UUID `gorm:"type:uuid;primaryKey;comment:消息ID" json:"id"`
-	ConversationID  uuid.UUID `gorm:"type:uuid;index:idx_messages_conv_created,priority:1;comment:所属会话ID" json:"conversation_id"`
-	Role            string    `gorm:"type:text;not null;comment:角色:system/user/assistant/tool" json:"role"`
-	Content         string    `gorm:"type:text;comment:消息正文" json:"content"`
-	ToolCallID      string    `gorm:"type:text;comment:tool消息关联的tool_call_id" json:"tool_call_id,omitempty"`
-	ToolCallsJSON   string    `gorm:"type:jsonb;comment:assistant发起的tool_calls JSON" json:"tool_calls_json,omitempty"`
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey;comment:消息ID" json:"id"`
+	ConversationID uuid.UUID `gorm:"type:uuid;index:idx_messages_conv_created,priority:1;comment:所属会话ID" json:"conversation_id"`
+	Role           string    `gorm:"type:text;not null;comment:角色:system/user/assistant/tool" json:"role"`
+	Content        string    `gorm:"type:text;comment:消息正文" json:"content"`
+	ToolCallID     string    `gorm:"type:text;comment:tool消息关联的tool_call_id" json:"tool_call_id,omitempty"`
+	// ToolCallsJSON 使用指针：空则写 NULL。空字符串对 jsonb 非法（SQLSTATE 22P02）。
+	ToolCallsJSON   *string   `gorm:"type:jsonb;comment:assistant发起的tool_calls JSON" json:"tool_calls_json,omitempty"`
 	TokenPrompt     *int      `gorm:"comment:本条消耗的prompt token" json:"token_prompt,omitempty"`
 	TokenCompletion *int      `gorm:"comment:本条消耗的completion token" json:"token_completion,omitempty"`
 	CreatedAt       time.Time `gorm:"index:idx_messages_conv_created,priority:2;comment:创建时间" json:"created_at"`
@@ -45,6 +47,9 @@ func (Message) TableName() string { return "messages" }
 func (m *Message) BeforeCreate(tx *gorm.DB) error {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
+	}
+	if m.ToolCallsJSON != nil && strings.TrimSpace(*m.ToolCallsJSON) == "" {
+		m.ToolCallsJSON = nil
 	}
 	return nil
 }
