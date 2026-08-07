@@ -231,7 +231,11 @@ docker compose -f /opt/ai-agent/docker-compose.yml logs -f app
 
 ```bash
 cd /opt/ai-agent
-./deploy/docker/update-and-start.sh
+# 仅拉代码 + 重编译 + 重启 app（不动 db）
+bash deploy/docker/restart-app.sh
+
+# 或完整部署（含数据库策略 / pgvector）
+bash deploy/docker/update-and-start.sh
 # 或
 sudo systemctl restart ai-agent
 ```
@@ -257,7 +261,8 @@ sudo systemctl restart ai-agent
 | `docker-compose.yml` | 仅应用 |
 | `docker-compose.db.yml` | 内置 Postgres+pgvector（按需叠加） |
 | `deploy/docker/ensure-pgvector.sh` | 探测连接 + 检查/启用 vector |
-| `deploy/docker/update-and-start.sh` | 拉代码 + 上述策略 + 编译启动 |
+| `deploy/docker/restart-app.sh` | 拉代码 → 编译镜像 → 仅重启 app |
+| `deploy/docker/update-and-start.sh` | 拉代码 + 数据库策略 + 编译启动 |
 
 环境变量（可选）：
 
