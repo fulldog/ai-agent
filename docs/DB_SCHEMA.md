@@ -70,6 +70,7 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | 列 | 类型 | 说明 |
 |----|------|------|
 | id | UUID PK | 会话ID |
+| uid | TEXT NOT NULL 默认 `''` | 所属用户 UID（请求头 `X-User-Id`） |
 | title | TEXT | 会话标题 |
 | system_prompt | TEXT | 系统提示词（可空） |
 | corpus_id | UUID NULL | 默认绑定的语料库ID（RAG） |
@@ -77,7 +78,7 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | updated_at | TIMESTAMPTZ | 更新时间 |
 | deleted_at | TIMESTAMPTZ NULL | 软删除时间 |
 
-索引：`deleted_at`；建议按 `created_at DESC` 查询。
+索引：`deleted_at`；`(uid, created_at)`（按用户列表）；建议按 `created_at DESC` 查询。
 
 ### 3.2 messages（会话消息表）
 

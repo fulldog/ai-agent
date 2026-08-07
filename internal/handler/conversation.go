@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/webapp/go-app/ai-agent/internal/middleware"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
+	"gorm.io/gorm"
 )
 
 type ConversationHandler struct {
@@ -13,6 +16,10 @@ type ConversationHandler struct {
 }
 
 func (h *ConversationHandler) Create(c *gin.Context) {
+	uid, ok := requireUID(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		Title        string  `json:"title"`
 		SystemPrompt string  `json:"system_prompt"`
@@ -32,7 +39,7 @@ func (h *ConversationHandler) Create(c *gin.Context) {
 		corpusID = &id
 	}
 	conv, err := h.Chat.CreateConversation(chat.CreateConversationInput{
-		Title: req.Title, SystemPrompt: req.SystemPrompt, CorpusID: corpusID,
+		UID: uid, Title: req.Title, SystemPrompt: req.SystemPrompt, CorpusID: corpusID,
 	})
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -42,7 +49,11 @@ func (h *ConversationHandler) Create(c *gin.Context) {
 }
 
 func (h *ConversationHandler) List(c *gin.Context) {
-	rows, err := h.Chat.ListConversations(20, 0)
+	uid, ok := requireUID(c)
+	if !ok {
+		return
+	}
+	rows, err := h.Chat.ListConversations(uid, 20, 0)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
@@ -51,12 +62,16 @@ func (h *ConversationHandler) List(c *gin.Context) {
 }
 
 func (h *ConversationHandler) Get(c *gin.Context) {
+	uid, ok := requireUID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
 		return
 	}
-	conv, err := h.Chat.GetConversation(id)
+	conv, err := h.Chat.GetConversation(id, uid)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "not_found", "conversation not found")
 		return
@@ -65,12 +80,20 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 }
 
 func (h *ConversationHandler) Delete(c *gin.Context) {
+	uid, ok := requireUID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
 		return
 	}
-	if err := h.Chat.DeleteConversation(id); err != nil {
+	if err := h.Chat.DeleteConversation(id, uid); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
@@ -78,15 +101,32 @@ func (h *ConversationHandler) Delete(c *gin.Context) {
 }
 
 func (h *ConversationHandler) Messages(c *gin.Context) {
+	uid, ok := requireUID(c)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
 		return
 	}
-	rows, err := h.Chat.ListMessages(id, 200)
+	rows, err := h.Chat.ListMessages(id, uid, 200)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": rows})
+}
+
+func requireUID(c *gin.Context) (string, bool) {
+	uid := middleware.UIDFromContext(c)
+	if uid == "" {
+		writeError(c, http.StatusBadRequest, "uid_required", "missing X-User-Id header")
+		return "", false
+	}
+	return uid, true
 }

@@ -23,6 +23,10 @@ type ChatHandler struct {
 }
 
 func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
+	uid, ok := requireUID(c)
+	if !ok {
+		return chat.CompleteInput{}, false
+	}
 	var req struct {
 		ConversationID string  `json:"conversation_id" binding:"required"`
 		Message        string  `json:"message" binding:"required"`
@@ -47,6 +51,7 @@ func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
 	}
 	in := chat.CompleteInput{
 		ConversationID: cid,
+		UID:            uid,
 		Message:        req.Message,
 		Provider:       req.Provider,
 		Model:          req.Model,
@@ -77,6 +82,10 @@ func (h *ChatHandler) Completions(c *gin.Context) {
 	}
 	res, err := h.Chat.Complete(c.Request.Context(), in)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "record not found") {
+			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
+			return
+		}
 		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}
@@ -107,7 +116,11 @@ func (h *ChatHandler) CompletionsStream(c *gin.Context) {
 		return writeSSE(c, "delta", gin.H{"content": delta})
 	})
 	if err != nil {
-		_ = writeSSE(c, "error", gin.H{"message": err.Error()})
+		msg := err.Error()
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(msg, "record not found") {
+			msg = "conversation not found"
+		}
+		_ = writeSSE(c, "error", gin.H{"message": msg})
 		return
 	}
 	_ = writeSSE(c, "done", gin.H{
@@ -190,6 +203,11 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 				writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
 				return chat.AnalyzeInput{}, false
 			}
+			uid, ok := requireUID(c)
+			if !ok {
+				return chat.AnalyzeInput{}, false
+			}
+			in.UID = uid
 			id, err := uuid.Parse(cid)
 			if err != nil {
 				writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -289,6 +307,11 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 			writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
 			return chat.AnalyzeInput{}, false
 		}
+		uid, ok := requireUID(c)
+		if !ok {
+			return chat.AnalyzeInput{}, false
+		}
+		in.UID = uid
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -341,6 +364,10 @@ func (h *ChatHandler) Analyze(c *gin.Context) {
 	}
 	res, err := h.Chat.Analyze(c.Request.Context(), in, nil)
 	if err != nil {
+		if strings.Contains(err.Error(), "conversation not found") {
+			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
+			return
+		}
 		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 		return
 	}

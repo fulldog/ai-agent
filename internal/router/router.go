@@ -57,6 +57,7 @@ func Setup(application *app.App) *gin.Engine {
 	// ---------- /api/v1（需 X-API-Key）----------
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.APIKey(cfg))
+	v1.Use(middleware.UserID())
 	{
 		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
 

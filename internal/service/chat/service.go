@@ -33,13 +33,19 @@ func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, l
 }
 
 type CreateConversationInput struct {
+	UID          string
 	Title        string
 	SystemPrompt string
 	CorpusID     *uuid.UUID
 }
 
 func (s *Service) CreateConversation(in CreateConversationInput) (*model.Conversation, error) {
+	uid := strings.TrimSpace(in.UID)
+	if uid == "" {
+		return nil, fmt.Errorf("uid required")
+	}
 	c := &model.Conversation{
+		UID:          uid,
 		Title:        in.Title,
 		SystemPrompt: in.SystemPrompt,
 		CorpusID:     in.CorpusID,
@@ -53,28 +59,50 @@ func (s *Service) CreateConversation(in CreateConversationInput) (*model.Convers
 	return c, nil
 }
 
-func (s *Service) ListConversations(limit, offset int) ([]model.Conversation, error) {
+func (s *Service) ListConversations(uid string, limit, offset int) ([]model.Conversation, error) {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return nil, fmt.Errorf("uid required")
+	}
 	if limit <= 0 {
 		limit = 20
 	}
 	var rows []model.Conversation
-	err := s.db.Order("created_at desc").Limit(limit).Offset(offset).Find(&rows).Error
+	err := s.db.Where("uid = ?", uid).Order("created_at desc").Limit(limit).Offset(offset).Find(&rows).Error
 	return rows, err
 }
 
-func (s *Service) GetConversation(id uuid.UUID) (*model.Conversation, error) {
+func (s *Service) GetConversation(id uuid.UUID, uid string) (*model.Conversation, error) {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
 	var c model.Conversation
-	if err := s.db.First(&c, "id = ?", id).Error; err != nil {
+	if err := s.db.First(&c, "id = ? AND uid = ?", id, uid).Error; err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
-func (s *Service) DeleteConversation(id uuid.UUID) error {
-	return s.db.Delete(&model.Conversation{}, "id = ?", id).Error
+func (s *Service) DeleteConversation(id uuid.UUID, uid string) error {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return gorm.ErrRecordNotFound
+	}
+	res := s.db.Where("id = ? AND uid = ?", id, uid).Delete(&model.Conversation{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
-func (s *Service) ListMessages(conversationID uuid.UUID, limit int) ([]model.Message, error) {
+func (s *Service) ListMessages(conversationID uuid.UUID, uid string, limit int) ([]model.Message, error) {
+	if _, err := s.GetConversation(conversationID, uid); err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		limit = 100
 	}
@@ -85,6 +113,7 @@ func (s *Service) ListMessages(conversationID uuid.UUID, limit int) ([]model.Mes
 
 type CompleteInput struct {
 	ConversationID uuid.UUID
+	UID            string
 	Message        string
 	Provider       string
 	Model          string
@@ -262,11 +291,11 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 }
 
 func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Conversation, []model.Message, []llm.Message, error) {
-	conv, err := s.GetConversation(in.ConversationID)
+	conv, err := s.GetConversation(in.ConversationID, in.UID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	history, err := s.ListMessages(conv.ID, 100)
+	history, err := s.ListMessages(conv.ID, in.UID, 100)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -328,6 +357,7 @@ const defaultAnalyzeMaxRunes = 80000
 // AnalyzeInput 上传文件/正文，直接交给大模型分析（不入库语料库）。
 type AnalyzeInput struct {
 	ConversationID *uuid.UUID
+	UID            string
 	Message        string
 	Fields         []string
 	ResponseJSON   bool
@@ -370,6 +400,11 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput, onDelta func(str
 	wantJSON := in.ResponseJSON || len(in.Fields) > 0
 	if strings.TrimSpace(in.Message) == "" && len(in.Fields) == 0 {
 		return nil, fmt.Errorf("请提供 message（自定义问题）或 fields（要抽取的字段列表）")
+	}
+	if in.ConversationID != nil {
+		if _, err := s.GetConversation(*in.ConversationID, in.UID); err != nil {
+			return nil, fmt.Errorf("conversation not found")
+		}
 	}
 	mode := strings.ToLower(strings.TrimSpace(in.FileMode))
 	if mode == "" {

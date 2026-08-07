@@ -5,6 +5,7 @@ info:
     Go AI Agent 后端接口（Gin + DeepSeek + PostgreSQL/pgvector）。
 
     - 业务接口需 Header：`X-API-Key`
+    - 会话相关接口另需：`X-User-Id`（按用户隔离会话）
     - 可选 Header：`X-Request-ID`（缺省由服务端生成）
     - 流式接口返回 `text/event-stream`（SSE）
   version: 1.0.0
@@ -84,6 +85,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
       requestBody:
         required: true
         content:
@@ -115,6 +117,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
         - name: limit
           in: query
           schema:
@@ -149,6 +152,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
         - $ref: "#/components/parameters/UUIDPathId"
       responses:
         "200":
@@ -169,6 +173,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
         - $ref: "#/components/parameters/UUIDPathId"
       responses:
         "204":
@@ -187,6 +192,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
         - $ref: "#/components/parameters/UUIDPathId"
         - name: limit
           in: query
@@ -240,11 +246,13 @@ paths:
     post:
       tags: [Chat]
       summary: 同步聊天补全
+      description: 需 conversation_id；Header 须带 X-User-Id，且会话须属于该 uid
       operationId: chatCompletions
       security:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
       requestBody:
         required: true
         content:
@@ -281,7 +289,8 @@ paths:
       tags: [Chat]
       summary: SSE 流式聊天补全
       description: |
-        请求体同同步接口。响应为 SSE：
+        请求体同同步接口。需 X-User-Id；conversation_id 须属于该 uid。
+        响应为 SSE：
         - `event: delta` data: `{"content":"..."}`
         - `event: done` data: `{"status":"ok"}`
         - `event: error` data: `{"message":"..."}`
@@ -290,6 +299,7 @@ paths:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
       requestBody:
         required: true
         content:
@@ -318,9 +328,13 @@ paths:
     post:
       tags: [Chat]
       summary: 上传文件直接给大模型分析（不进语料库）
+      description: 带 conversation_id 时须 Header X-User-Id，且会话属于该 uid
       operationId: chatAnalyze
       security:
         - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeaderOptional"
       requestBody:
         required: true
         content:
@@ -357,9 +371,13 @@ paths:
     post:
       tags: [Chat]
       summary: 文件分析（SSE）
+      description: 带 conversation_id 时须 Header X-User-Id
       operationId: chatAnalyzeStream
       security:
         - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeaderOptional"
       requestBody:
         required: true
         content:
@@ -382,11 +400,13 @@ paths:
     post:
       tags: [Agent]
       summary: 同步运行 Agent
+      description: 带 conversation_id 时须 Header X-User-Id，且会话属于该 uid
       operationId: agentRun
       security:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeaderOptional"
       requestBody:
         required: true
         content:
@@ -424,12 +444,14 @@ paths:
       tags: [Agent]
       summary: SSE 流式运行 Agent
       description: |
+        带 conversation_id 时须 X-User-Id。
         SSE 事件：`tool_call`、`tool_result`、`delta`、`done`、`error`。
       operationId: agentRunStream
       security:
         - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeaderOptional"
       requestBody:
         required: true
         content:
@@ -802,6 +824,20 @@ components:
         type: string
         format: uuid
       description: 可选；缺省由服务端生成
+    UserIdHeader:
+      name: X-User-Id
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 终端用户 UID；会话 CRUD / 带 conversation_id 的接口必填
+    UserIdHeaderOptional:
+      name: X-User-Id
+      in: header
+      required: false
+      schema:
+        type: string
+      description: 当请求带 conversation_id 时必填，用于校验会话归属
     UUIDPathId:
       name: id
       in: path
@@ -891,6 +927,9 @@ components:
         id:
           type: string
           format: uuid
+        uid:
+          type: string
+          description: 所属用户 UID（来自 X-User-Id）
         title:
           type: string
         system_prompt:

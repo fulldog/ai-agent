@@ -7,4 +7,5 @@ const (
 	CtxAPIKey    ctxKey = "api_key"
 	CtxAPIKeyID  ctxKey = "api_key_id"
 	CtxIsAdmin   ctxKey = "is_admin"
+	CtxUID       ctxKey = "uid" // X-User-Id
 )

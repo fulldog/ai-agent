@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -34,6 +35,11 @@ func (h *AgentHandler) parse(c *gin.Context) (agent.RunInput, bool) {
 		Tools: req.Tools, RequestID: requestID(c),
 	}
 	if req.ConversationID != "" {
+		uid, ok := requireUID(c)
+		if !ok {
+			return agent.RunInput{}, false
+		}
+		in.UID = uid
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -61,6 +67,10 @@ func (h *AgentHandler) Run(c *gin.Context) {
 	in.Stream = false
 	res, err := h.Agent.Run(c.Request.Context(), in, nil)
 	if err != nil {
+		if strings.Contains(err.Error(), "conversation not found") {
+			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
@@ -85,7 +95,11 @@ func (h *AgentHandler) RunStream(c *gin.Context) {
 		return writeSSE(c, ev.Type, ev.Payload)
 	})
 	if err != nil {
-		_ = writeSSE(c, "error", gin.H{"message": err.Error()})
+		msg := err.Error()
+		if strings.Contains(msg, "conversation not found") {
+			msg = "conversation not found"
+		}
+		_ = writeSSE(c, "error", gin.H{"message": msg})
 	}
 }
 

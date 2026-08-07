@@ -14,6 +14,7 @@
 | Header | 必填 | 说明 |
 |--------|------|------|
 | `X-API-Key` | 是（业务 API） | 配置中校验；`/health`、`/metrics` 默认不要求 |
+| `X-User-Id` | 会话相关必填 | 用户 UID，用于会话隔离；见 §1.4 |
 | `X-Request-ID` | 否 | 客户端可传入；缺省由服务端生成 UUID |
 | `Content-Type` | POST/PUT | `application/json`（上传文档可用 `multipart/form-data`） |
 
@@ -29,7 +30,7 @@
 }
 ```
 
-常见 HTTP 状态：`400` 参数错误、`401` 鉴权失败、`404` 不存在、`429` 限流（预留）、`500` 内部错误、`503` 数据库未启用。
+常见 HTTP 状态：`400` 参数错误（含缺 `X-User-Id` → `uid_required`）、`401` 鉴权失败、`404` 不存在或不属于当前 uid、`429` 限流（预留）、`500` 内部错误、`503` 数据库未启用。
 
 ### 1.3 最小化部署（无数据库）
 
@@ -43,7 +44,23 @@
 
 无库时 analyze：**不写** `file_extractions` / `llm_call_logs` / 会话消息；附件与抽取 txt 仍可落盘；完整 prompt/回复仍写 `logs/llm-*.log`；无抽取缓存（每次重新识别/上传）。勿传 `conversation_id`。样例配置见 `configs/config.minimal.example.yaml`。
 
-### 1.4 SSE 约定
+### 1.4 会话 uid 隔离
+
+通过请求头 **`X-User-Id`** 标识终端用户；会话按 `uid` 隔离（同一 API Key 下多用户互不可见）。
+
+| 接口 | `X-User-Id` |
+|------|-------------|
+| 会话 CRUD、消息列表 | **必填** |
+| `/chat/completions`、`/chat/completions/stream` | **必填**（必含 `conversation_id`） |
+| `/chat/analyze*` 且带 `conversation_id` | **必填** |
+| `/agent/runs*` 且带 `conversation_id` | **必填** |
+| 无 `conversation_id` 的 analyze、models、语料/RAG 等 | 不要求 |
+
+- 缺头：`400`，`code=uid_required`
+- 会话不属于该 uid（或不存在）：`404`，`code=not_found`（不区分）
+- 历史无 `uid` 的旧会话：列表不可见，按 id 访问亦 404
+
+### 1.5 SSE 约定
 
 流式接口：`Content-Type: text/event-stream; charset=utf-8`
 
@@ -86,9 +103,11 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ## 3. 会话 Conversations
 
+均需 Header：`X-API-Key` + **`X-User-Id`**。列表/读写仅返回当前 uid 的会话。
+
 ### POST `/api/v1/conversations`
 
-创建会话。
+创建会话（写入请求头中的 uid）。
 
 ```json
 {
@@ -98,23 +117,23 @@ Prometheus 文本格式指标。默认无需 API Key。
 }
 ```
 
-**响应** `201`：会话对象（含 `id`）。
+**响应** `201`：会话对象（含 `id`、`uid`）。
 
 ### GET `/api/v1/conversations`
 
-列表。Query：`limit`（默认 20）、`offset`。
+当前 uid 的会话列表。Query：`limit`（默认 20）、`offset`（实现可固定分页）。
 
 ### GET `/api/v1/conversations/:id`
 
-详情。
+详情；不属于当前 uid → `404`。
 
 ### DELETE `/api/v1/conversations/:id`
 
-删除会话及消息（软删或硬删，实现阶段定）。
+删除会话（软删）；不属于当前 uid → `404`。
 
 ### GET `/api/v1/conversations/:id/messages`
 
-消息列表。Query：`limit`、`before_id`（可选游标）。
+消息列表；先校验会话归属。
 
 ---
 
@@ -128,7 +147,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### POST `/api/v1/chat/completions`
 
-同步补全（非流式）。
+同步补全（非流式）。**必填** `X-User-Id`；`conversation_id` 须属于该 uid，否则 `404`。
 
 ```json
 {
@@ -163,12 +182,13 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### POST `/api/v1/chat/completions/stream`
 
-流式补全。请求体同同步接口。SSE 事件：`delta`、`done`、`error`。
+流式补全。请求体同同步接口（含 `X-User-Id` 要求）。SSE 事件：`delta`、`done`、`error`。
 
 ### POST `/api/v1/chat/analyze`
 
 **上传文件直接交给大模型分析，不写入语料库。**  
-适合：合同 PDF 抽字段，一次性返回 JSON。
+适合：合同 PDF 抽字段，一次性返回 JSON。  
+带 `conversation_id` 时须 `X-User-Id` 且会话属该 uid；无会话时可省略。
 
 #### 合同抽字段示例（推荐）
 
@@ -253,7 +273,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 ### POST `/api/v1/agent/runs`
 
-同步 Agent 运行（适合短任务）。
+同步 Agent 运行（适合短任务）。带 `conversation_id` 时须 `X-User-Id`。
 
 ```json
 {

@@ -11,10 +11,11 @@ import (
 // Conversation 会话。
 type Conversation struct {
 	ID           uuid.UUID      `gorm:"type:uuid;primaryKey;comment:会话ID" json:"id"`
+	UID          string         `gorm:"type:text;not null;default:'';index:idx_conversations_uid_created,priority:1;comment:所属用户UID(X-User-Id)" json:"uid"`
 	Title        string         `gorm:"type:text;comment:会话标题" json:"title"`
 	SystemPrompt string         `gorm:"type:text;comment:系统提示词" json:"system_prompt"`
 	CorpusID     *uuid.UUID     `gorm:"type:uuid;index;comment:默认绑定的语料库ID(RAG)" json:"corpus_id,omitempty"`
-	CreatedAt    time.Time      `gorm:"comment:创建时间" json:"created_at"`
+	CreatedAt    time.Time      `gorm:"index:idx_conversations_uid_created,priority:2;comment:创建时间" json:"created_at"`
 	UpdatedAt    time.Time      `gorm:"comment:更新时间" json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index;comment:软删除时间" json:"-"`
 }

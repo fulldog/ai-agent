@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,6 +49,7 @@ func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, l
 
 type RunInput struct {
 	ConversationID *uuid.UUID
+	UID            string
 	Input          string
 	Provider       string
 	Model          string
@@ -84,6 +86,16 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	maxSteps := in.MaxSteps
 	if maxSteps <= 0 {
 		maxSteps = s.cfg.Agent.MaxSteps
+	}
+	if in.ConversationID != nil {
+		uid := strings.TrimSpace(in.UID)
+		if uid == "" {
+			return nil, fmt.Errorf("conversation not found")
+		}
+		var conv model.Conversation
+		if err := s.db.First(&conv, "id = ? AND uid = ?", *in.ConversationID, uid).Error; err != nil {
+			return nil, fmt.Errorf("conversation not found")
+		}
 	}
 	client, providerName, modelName, err := s.pool.Resolve(in.Provider, in.Model)
 	if err != nil {
