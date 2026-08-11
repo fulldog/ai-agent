@@ -12,7 +12,7 @@ M4：CloudWeGo Eino DeepSeek ChatModel + Agent 工具循环。
 | Go | **1.25.5**（Linux / Windows 均可；Windows 路径示例：`D:\gosdk\go1.25.5`） |
 | PostgreSQL 16+ | Community + [pgvector](https://github.com/pgvector/pgvector)（安装见 [docs/POSTGRES.md](docs/POSTGRES.md)） |
 | DeepSeek / 千问 / Kimi / 豆包 API Key | 对话 / Agent（YAML `llm.providers` 或环境变量，见 [MULTI_LLM.md](docs/MULTI_LLM.md)） |
-| Ollama（可选） | 默认 Embedding：`nomic-embed-text` |
+| Ollama（可选） | 默认 Embedding：`nomic-embed-text`；Docker 部署见 [docs/DOCKER.md](docs/DOCKER.md) §5 |
 | Tesseract OCR | 图片 OCR；扫描版 PDF OCR（安装见 [docs/EXTRACT.md](docs/EXTRACT.md)） |
 | Poppler | `pdftotext`（PDF 文字层）+ `pdftoppm`（扫描件转图）；**安装步骤见 [docs/EXTRACT.md](docs/EXTRACT.md)#1-安装-poppler** |
 

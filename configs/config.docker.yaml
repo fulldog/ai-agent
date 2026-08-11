@@ -46,7 +46,9 @@ llm:
       default_model: ""
 
 embed:
-  base_url: "http://host.docker.internal:11434/v1"
+  # Docker Compose 内置 Ollama（同网络服务名）：http://ollama:11434/v1
+  # 宿主机安装的 Ollama：http://host.docker.internal:11434/v1
+  base_url: "http://ollama:11434/v1"
   api_key: ""
   model: "nomic-embed-text"
   dimensions: 768

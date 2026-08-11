@@ -8,6 +8,7 @@
 |------|------|
 | `ai-agent-app` | 挂载 `configs/config.yaml` → `/app/configs/config.yaml` |
 | `ai-agent-db` | 仅当 5432 空闲时启动（PG16+pgvector） |
+| `ai-agent-ollama` | 可选；RAG Embedding（`docker-compose.ollama.yml`） |
 
 **配置方式（推荐）**
 
@@ -260,6 +261,7 @@ sudo systemctl restart ai-agent
 |------|------|
 | `docker-compose.yml` | 仅应用 |
 | `docker-compose.db.yml` | 内置 Postgres+pgvector（按需叠加） |
+| `docker-compose.ollama.yml` | 可选 Ollama Embedding（按需叠加） |
 | `deploy/docker/ensure-pgvector.sh` | 探测连接 + 检查/启用 vector |
 | `deploy/docker/restart-app.sh` | 拉代码 → 编译镜像 → 仅重启 app |
 | `deploy/docker/update-and-start.sh` | 拉代码 + 数据库策略 + 编译启动 |
@@ -282,7 +284,100 @@ sudo systemctl restart ai-agent
 
 ---
 
-## 5. 目录与持久化
+## 5. Embedding / Ollama（Docker 推荐）
+
+RAG、语料入库、`reindex` 需要 Embedding 服务。默认模型：`nomic-embed-text`（维度 **768**，须与 `embed.dimensions` / 库表一致）。
+
+推荐用 Compose 叠加文件启动 **容器内 Ollama**（与 app 同网络 `ai-agent-net`），不必在宿主机再装一份。
+
+### 5.1 启动 Ollama 容器
+
+```bash
+cd /opt/ai-agent
+
+# 仅起 Ollama（app / db 可已在跑）
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d ollama
+
+# 或与 app 一起
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d
+```
+
+首次拉取模型（体积不大，需能访问模型下载源）：
+
+```bash
+docker exec -it ai-agent-ollama ollama pull nomic-embed-text
+docker exec -it ai-agent-ollama ollama list
+```
+
+自检：
+
+```bash
+curl -sS http://127.0.0.1:11434/api/tags
+# 容器网络内（从 app 视角）：http://ollama:11434
+```
+
+模型数据落在 Docker volume `ai_agent_ollama`，`compose down` 默认不删 volume。
+
+### 5.2 配置 `embed.base_url`
+
+编辑宿主机 `configs/config.yaml`：
+
+```yaml
+embed:
+  base_url: "http://ollama:11434/v1"   # 与 ai-agent-app 同 compose 网络时用服务名
+  api_key: ""
+  model: "nomic-embed-text"
+  dimensions: 768
+```
+
+| 场景 | `embed.base_url` |
+|------|------------------|
+| Compose 内 `ai-agent-ollama`（推荐） | `http://ollama:11434/v1` |
+| 宿主机安装的 Ollama | `http://host.docker.internal:11434/v1` |
+| 本机直接跑 Go（非 Docker） | `http://127.0.0.1:11434/v1` |
+
+改完配置后重建 / 重启 app：
+
+```bash
+bash deploy/docker/restart-app.sh
+# 或
+docker compose up -d --no-deps --force-recreate app
+```
+
+`configs/config.docker.yaml` 默认已按 Compose Ollama 写成 `http://ollama:11434/v1`。
+
+### 5.3 GPU（可选）
+
+宿主机已装 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) 时，编辑 `docker-compose.ollama.yml`，取消 `deploy.resources...devices` 注释后：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d ollama
+```
+
+仅做 Embedding 时 CPU 通常够用。
+
+### 5.4 常用命令
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml logs -f ollama
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml stop ollama
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml start ollama
+```
+
+不用 RAG 时可不起 Ollama；聊天 / analyze 不依赖 Embedding。
+
+### 5.5 备选：宿主机安装 Ollama
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull nomic-embed-text
+```
+
+此时 `embed.base_url` 用 `http://host.docker.internal:11434/v1`，**不要**再起 `ai-agent-ollama`（避免抢 11434）。
+
+---
+
+## 6. 目录与持久化
 
 ```text
 /opt/ai-agent/                 # git 仓库（会随重启更新）
@@ -290,9 +385,12 @@ sudo systemctl restart ai-agent
 ├── data/logs/                 # 应用日志（access/info/error/llm）
 ├── data/attachments/          # 上传附件
 ├── docker-compose.yml
+├── docker-compose.db.yml
+├── docker-compose.ollama.yml  # 可选 Embedding
 ├── Dockerfile
 └── deploy/docker/
     ├── update-and-start.sh    # 拉代码 + 编译启动
+    ├── restart-app.sh
     ├── ai-agent.service       # systemd
     ├── env.example
     └── initdb/01-vector.sql   # 首次初始化启用 vector
@@ -303,17 +401,19 @@ sudo systemctl restart ai-agent
 | `.env` | 否（gitignore） |
 | `data/*` | 否（gitignore） |
 | Postgres 数据 | 否（Docker volume） |
+| Ollama 模型 | 否（volume `ai_agent_ollama`） |
 | 应用代码 / 镜像 | 会更新为 GitHub 最新并重新 build |
 
 ---
 
-## 6. 常用运维
+## 7. 常用运维
 
 ```bash
 cd /opt/ai-agent
 
 docker compose logs -f app
-docker compose logs -f db
+docker compose -f docker-compose.yml -f docker-compose.db.yml logs -f db
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml logs -f ollama
 ls -l data/logs/
 
 docker compose exec db psql -U ai_agent -d ai_agent
@@ -331,7 +431,7 @@ docker compose exec -T db pg_dump -U ai_agent ai_agent > /opt/backup/ai_agent-$(
 
 ---
 
-## 7. 验证文件分析
+## 8. 验证文件分析
 
 ```bash
 curl -sS -X POST "http://127.0.0.1:18090/api/v1/chat/analyze" \
@@ -345,7 +445,7 @@ curl -sS -X POST "http://127.0.0.1:18090/api/v1/chat/analyze" \
 
 ---
 
-## 8. 故障排查
+## 9. 故障排查
 
 | 现象 | 处理 |
 |------|------|
@@ -357,9 +457,13 @@ curl -sS -X POST "http://127.0.0.1:18090/api/v1/chat/analyze" \
 | 构建拉不下镜像 | Docker 镜像加速；`GOPROXY`；可选 `PG_CLIENT_IMAGE=pgvector/pgvector:pg16` |
 | app `db: down` | 外部库防火墙/`pg_hba.conf` 是否允许 Docker 网桥访问；试 `host.docker.internal` |
 | 端口冲突 | `DB_MODE=auto` 应复用；或 `embedded` 时改 `POSTGRES_PORT` |
+| RAG / reindex 连不上 Embedding | 确认已起 `ai-agent-ollama`；`embed.base_url` 用 `http://ollama:11434/v1`（勿用容器内 `localhost`） |
+| `nomic-embed-text` 找不到 | `docker exec -it ai-agent-ollama ollama pull nomic-embed-text` |
+| 11434 端口冲突 | 改 `OLLAMA_PORT`，或停掉宿主机 Ollama / 旧容器 |
+
 ---
 
-## 9. 生产建议
+## 10. 生产建议
 
 - [ ] `.env`：`chmod 600 .env`；含 Token 的 `~/.git-credentials` 同样 `600`  
 - [ ] PAT 使用**最小权限**、可撤销的 fine-grained / classic token  
@@ -380,7 +484,7 @@ location / {
 
 ---
 
-## 10. 从零复制清单（HTTPS + 配置文件挂载）
+## 11. 从零复制清单（HTTPS + 配置文件挂载）
 
 ```bash
 sudo mkdir -p /opt
@@ -389,10 +493,15 @@ sudo chown -R "$USER":"$USER" /opt/ai-agent
 cd /opt/ai-agent
 
 cp configs/config.docker.yaml configs/config.yaml
-vi configs/config.yaml          # 填 api_key、dsn、api_keys
+vi configs/config.yaml          # 填 api_key、dsn、api_keys；RAG 用 embed.base_url=http://ollama:11434/v1
 mkdir -p data/logs data/attachments
 
 bash deploy/docker/update-and-start.sh
+
+# 需要 RAG 时再起 Ollama 并拉模型
+docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d ollama
+docker exec -it ai-agent-ollama ollama pull nomic-embed-text
+
 curl -sS http://127.0.0.1:18090/health
 
 sudo cp deploy/docker/ai-agent.service /etc/systemd/system/
