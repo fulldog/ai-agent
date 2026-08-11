@@ -191,6 +191,8 @@ agent:
 | `current_time` | 获取服务器当前时间（RFC3339） | 无 |
 | `calculator` | 简单四则运算 `a op b`（`+ - * /`） | 无 |
 
+另有一份 **MCP Server** 实现（stdio），工具名同为 `calculator`，逻辑共用 `tools.Calc`：见 [MCP.md](./MCP.md)。
+
 需要 RAG 时请求示例：
 
 ```json
@@ -234,6 +236,8 @@ HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./opena
 | `internal/service/agent/tools/tool.go` | `Tool` / `Env` |
 | `internal/service/agent/tools/registry.go` | 注册与 `Default()` |
 | `internal/service/agent/tools/*.go` | 各工具实现 |
+| `cmd/mcp-calculator` | Calculator 的 MCP（stdio）实现 |
+| `docs/MCP.md` | MCP 接入说明 |
 | `internal/service/agent/service.go` | Agent 循环调用 Registry |
 | `configs/config.example.yaml` | `agent.default_tools` |
 | `docs/API.md` / `docs/openapi.yaml` | 对外契约 |

@@ -18,7 +18,8 @@ M4：CloudWeGo Eino DeepSeek ChatModel + Agent 工具循环。
 
 **数据库安装与 `DATABASE_URL` 配置**：见 [docs/POSTGRES.md](docs/POSTGRES.md)（含 Windows 详解；Linux 可用发行版包 + `postgresql-xx-pgvector` / 源码编译）。
 
-**Docker 完整部署（Git 拉取最新 + 编译，含 PG16/pgvector）**：见 [docs/DOCKER.md](docs/DOCKER.md)。
+**Docker 完整部署（Git 拉取最新 + 编译，含 PG16/pgvector）**：见 [docs/DOCKER.md](docs/DOCKER.md)。  
+**MCP Calculator（stdio）**：见 [docs/MCP.md](docs/MCP.md)。
 
 ### OCR / Poppler 插件（文档上传与文件分析）
 
