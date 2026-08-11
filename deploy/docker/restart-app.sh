@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# 服务重启：拉最新代码 → 重新编译镜像 → 用新镜像重启 app（不动 db）。
-# 与 update-and-start.sh 一样：按内置库/外部库导出 DATABASE_URL，改写容器内可达的主机名。
+# 服务重启脚本。
 #
-#   bash deploy/docker/restart-app.sh
+# 用法:
+#   bash deploy/docker/restart-app.sh [模式]
 #
-# 环境变量（可选）：
+# 模式:
+#   restart | quick | r   — 仅重启 app 容器（不拉代码、不编译）
+#   rebuild | build | b   — 拉 Git → 编译镜像 → 重启（默认）
+#
+# 示例:
+#   bash deploy/docker/restart-app.sh              # 等同 rebuild
+#   bash deploy/docker/restart-app.sh restart      # 只重启
+#   bash deploy/docker/restart-app.sh rebuild      # 拉代码并重新编译
+#
+# 环境变量（可选）:
 #   DEPLOY_BRANCH / DEPLOY_REMOTE / COMPOSE_FILE / COMPOSE_DB_FILE / APP_PORT / GOPROXY / DB_MODE
 set -euo pipefail
 
@@ -20,16 +29,50 @@ LOG_TAG="[ai-agent-restart]"
 
 log() { echo "${LOG_TAG} $(date '+%F %T') $*"; }
 
-if ! command -v git >/dev/null 2>&1; then
-  log "ERROR: 未找到 git"
-  exit 1
-fi
+usage() {
+  cat <<'EOF'
+用法: bash deploy/docker/restart-app.sh [模式]
+
+模式:
+  restart | quick | r   仅重启 app（不拉代码、不编译）
+  rebuild | build | b   拉 Git → 编译镜像 → 重启（默认）
+
+示例:
+  bash deploy/docker/restart-app.sh restart
+  bash deploy/docker/restart-app.sh rebuild
+EOF
+}
+
+MODE_RAW="${1:-rebuild}"
+case "${MODE_RAW}" in
+  restart|quick|r)
+    MODE="restart"
+    ;;
+  rebuild|build|full|b)
+    MODE="rebuild"
+    ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    log "ERROR: 未知模式 '${MODE_RAW}'"
+    usage
+    exit 1
+    ;;
+esac
+
 if ! command -v docker >/dev/null 2>&1; then
   log "ERROR: 未找到 docker"
   exit 1
 fi
 if ! docker compose version >/dev/null 2>&1; then
   log "ERROR: 需要 Docker Compose V2"
+  exit 1
+fi
+
+if [[ "${MODE}" == "rebuild" ]] && ! command -v git >/dev/null 2>&1; then
+  log "ERROR: 未找到 git（rebuild 模式需要）"
   exit 1
 fi
 
@@ -99,14 +142,12 @@ case "${DB_MODE}" in
     elif port_listening "${PG_PORT}"; then
       USE_EMBEDDED=0
     else
-      # 重启脚本不负责起库；默认按内置库主机名，避免容器内连 127.0.0.1
       USE_EMBEDDED=1
       log "WARN: 未检测到库；将按内置库主机 db 设置 DATABASE_URL（请确认 ai-agent-db 已运行）"
     fi
     ;;
 esac
 
-# 勿把空 DATABASE_URL 带进 compose（会覆盖配置却连不上）
 unset DATABASE_URL || true
 unset DATABASE_ENABLED || true
 
@@ -132,22 +173,37 @@ else
   log "外部库模式 → DATABASE_URL 主机改为 host.docker.internal（不改 ${CONFIG_FILE}）"
 fi
 
-# ---------- 1. 更新 Git ----------
-log "仓库目录: ${REPO_ROOT}"
-log "拉取 ${REMOTE}/${BRANCH} ..."
-git fetch --prune "${REMOTE}"
-git checkout "${BRANCH}"
-git reset --hard "${REMOTE}/${BRANCH}"
-REV="$(git rev-parse --short HEAD)"
-log "当前提交: ${REV} ($(git log -1 --pretty=format:'%s'))"
+log "模式: ${MODE}"
 
-# ---------- 2. 编译 ----------
-log "编译镜像 ai-agent:local ..."
-docker compose "${compose_files[@]}" build app
+REV="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
-# ---------- 3. 用新镜像 + DATABASE_URL 重启 app ----------
-log "重启容器 ai-agent-app ..."
-docker compose "${compose_files[@]}" up -d --no-deps --force-recreate app
+if [[ "${MODE}" == "rebuild" ]]; then
+  # ---------- 1. 更新 Git ----------
+  log "仓库目录: ${REPO_ROOT}"
+  log "拉取 ${REMOTE}/${BRANCH} ..."
+  git fetch --prune "${REMOTE}"
+  git checkout "${BRANCH}"
+  git reset --hard "${REMOTE}/${BRANCH}"
+  REV="$(git rev-parse --short HEAD)"
+  log "当前提交: ${REV} ($(git log -1 --pretty=format:'%s'))"
+
+  # ---------- 2. 编译 ----------
+  log "编译镜像 ai-agent:local ..."
+  docker compose "${compose_files[@]}" build app
+
+  # ---------- 3. 用新镜像重启 ----------
+  log "重启容器 ai-agent-app（force-recreate）..."
+  docker compose "${compose_files[@]}" up -d --no-deps --force-recreate app
+else
+  # ---------- 仅重启 ----------
+  log "仅重启容器 ai-agent-app（跳过 git / build）..."
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'ai-agent-app'; then
+    docker compose "${compose_files[@]}" restart app
+  else
+    log "容器不存在，改为 up -d ..."
+    docker compose "${compose_files[@]}" up -d --no-deps app
+  fi
+fi
 
 log "服务状态:"
 docker compose "${compose_files[@]}" ps app
@@ -176,4 +232,8 @@ if [[ "${ok}" -ne 1 ]]; then
   exit 1
 fi
 
-log "完成。提交 ${REV} 已部署到 ai-agent-app"
+if [[ "${MODE}" == "rebuild" ]]; then
+  log "完成（rebuild）。提交 ${REV} 已部署到 ai-agent-app"
+else
+  log "完成（restart）。当前提交 ${REV}"
+fi

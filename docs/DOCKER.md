@@ -232,8 +232,13 @@ docker compose -f /opt/ai-agent/docker-compose.yml logs -f app
 
 ```bash
 cd /opt/ai-agent
-# 仅拉代码 + 重编译 + 重启 app（不动 db）
+# 拉代码 + 重编译 + 重启 app（默认；不动 db）
 bash deploy/docker/restart-app.sh
+# 或显式
+bash deploy/docker/restart-app.sh rebuild
+
+# 仅重启 app（不拉代码、不编译；改配置后可用）
+bash deploy/docker/restart-app.sh restart
 
 # 或完整部署（含数据库策略 / pgvector）
 bash deploy/docker/update-and-start.sh
@@ -263,7 +268,7 @@ sudo systemctl restart ai-agent
 | `docker-compose.db.yml` | 内置 Postgres+pgvector（按需叠加） |
 | `docker-compose.ollama.yml` | 可选 Ollama Embedding（按需叠加） |
 | `deploy/docker/ensure-pgvector.sh` | 探测连接 + 检查/启用 vector |
-| `deploy/docker/restart-app.sh` | 拉代码 → 编译镜像 → 仅重启 app |
+| `deploy/docker/restart-app.sh` | `restart` 仅重启；`rebuild`（默认）拉代码+编译+重启 |
 | `deploy/docker/update-and-start.sh` | 拉代码 + 数据库策略 + 编译启动 |
 
 环境变量（可选）：
@@ -336,12 +341,10 @@ embed:
 | 宿主机安装的 Ollama | `http://host.docker.internal:11434/v1` |
 | 本机直接跑 Go（非 Docker） | `http://127.0.0.1:11434/v1` |
 
-改完配置后重建 / 重启 app：
+改完配置后重启 app（无需编译）：
 
 ```bash
-bash deploy/docker/restart-app.sh
-# 或
-docker compose up -d --no-deps --force-recreate app
+bash deploy/docker/restart-app.sh restart
 ```
 
 `configs/config.docker.yaml` 默认已按 Compose Ollama 写成 `http://ollama:11434/v1`。
