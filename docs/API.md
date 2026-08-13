@@ -18,7 +18,17 @@
 | `X-Request-ID` | 否 | 客户端可传入；缺省由服务端生成 UUID |
 | `Content-Type` | POST/PUT | `application/json`（上传文档可用 `multipart/form-data`） |
 
-### 1.2 错误响应
+### 1.2 通用响应字段
+
+所有 JSON 对象响应（含错误）均包含：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `elapsed_ms` | number | 响应耗时（毫秒），自请求进入服务到写出响应 |
+
+响应头同步带有 `X-Elapsed-Ms`。SSE 流式接口在 `done` / `error` 事件的 data 中带 `elapsed_ms`。
+
+### 1.3 错误响应
 
 ```json
 {
@@ -26,13 +36,14 @@
     "code": "unauthorized",
     "message": "invalid api key"
   },
-  "request_id": "uuid"
+  "request_id": "uuid",
+  "elapsed_ms": 12
 }
 ```
 
 常见 HTTP 状态：`400` 参数错误（含缺 `X-User-Id` → `uid_required`）、`401` 鉴权失败、`404` 不存在或不属于当前 uid、`429` 限流（预留）、`500` 内部错误、`503` 数据库未启用。
 
-### 1.3 最小化部署（无数据库）
+### 1.4 最小化部署（无数据库）
 
 配置 `database.enabled: false`（或环境变量 `DATABASE_ENABLED=false`）时不连接 PostgreSQL，服务仍可启动。
 
@@ -45,7 +56,7 @@
 
 无库时 analyze：**不写** `file_extractions` / `llm_call_logs` / 会话消息；附件与抽取 txt 仍可落盘；完整 prompt/回复仍写 `logs/llm-*.log`；无抽取缓存（每次重新识别/上传）。勿传 `conversation_id`。样例配置见 `configs/config.minimal.example.yaml`。
 
-### 1.4 会话 uid 隔离
+### 1.5 会话 uid 隔离
 
 通过请求头 **`X-User-Id`** 标识终端用户；会话按 `uid` 隔离（同一 API Key 下多用户互不可见）。
 
@@ -61,7 +72,7 @@
 - 会话不属于该 uid（或不存在）：`404`，`code=not_found`（不区分）
 - 历史无 `uid` 的旧会话：列表不可见，按 id 访问亦 404
 
-### 1.5 SSE 约定
+### 1.6 SSE 约定
 
 流式接口：`Content-Type: text/event-stream; charset=utf-8`
 

@@ -7,7 +7,8 @@ info:
     - 业务接口需 Header：`X-API-Key`
     - 会话相关接口另需：`X-User-Id`（按用户隔离会话）
     - 可选 Header：`X-Request-ID`（缺省由服务端生成）
-    - 流式接口返回 `text/event-stream`（SSE）
+    - 所有 JSON 对象响应含 `elapsed_ms`（响应耗时毫秒）；响应头 `X-Elapsed-Ms`
+    - 流式接口返回 `text/event-stream`（SSE）；`done`/`error` 事件含 `elapsed_ms`
   version: 1.0.0
   contact:
     name: ai-agent
@@ -948,6 +949,10 @@ components:
         request_id:
           type: string
           format: uuid
+        elapsed_ms:
+          type: integer
+          description: 响应耗时（毫秒）
+          example: 12
 
     HealthResponse:
       type: object
@@ -958,6 +963,9 @@ components:
         db:
           type: string
           enum: [up, down]
+        elapsed_ms:
+          type: integer
+          description: 响应耗时（毫秒）
 
     Usage:
       type: object

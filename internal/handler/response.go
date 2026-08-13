@@ -26,6 +26,9 @@ func writeError(c *gin.Context, status int, code, message string) {
 }
 
 func writeSSE(c *gin.Context, event string, payload any) error {
+	if event == "done" || event == "error" {
+		payload = withElapsedMS(c, payload)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -40,6 +43,20 @@ func writeSSE(c *gin.Context, event string, payload any) error {
 	}
 	c.Writer.Flush()
 	return nil
+}
+
+func withElapsedMS(c *gin.Context, payload any) any {
+	ms := middleware.ElapsedMs(c)
+	switch p := payload.(type) {
+	case gin.H:
+		p["elapsed_ms"] = ms
+		return p
+	case map[string]any:
+		p["elapsed_ms"] = ms
+		return p
+	default:
+		return payload
+	}
 }
 
 func setupSSE(c *gin.Context) {

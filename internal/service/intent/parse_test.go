@@ -78,6 +78,17 @@ func TestParseResultJSONExpandNonBanAccountLists(t *testing.T) {
 	}
 }
 
+func TestParseResultJSONRejectMixedKeyWordTypes(t *testing.T) {
+	raw := `{"code":0,"msg":"","data":[{"media_account_id":"23432432","media_account_id_in":"","phone":"","icon_amount":1,"TransferTryBest":false,"media_account_ids":[],"KeyWordType":10,"KeyWordTypeStr":"充值","remark":""},{"media_account_id":"1232sfsf","media_account_id_in":"","phone":"","icon_amount":-100,"TransferTryBest":true,"media_account_ids":[],"KeyWordType":20,"KeyWordTypeStr":"尽可能退","remark":""}]}`
+	r, err := intent.ParseResultJSON(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Code != 1 || len(r.Data) != 0 {
+		t.Fatalf("mixed types should fail: %+v", r)
+	}
+}
+
 func TestParseResultJSONFreeAnswer(t *testing.T) {
 	raw := `{"code":1,"msg":"今天多云，气温 22℃ 左右，出门记得带伞。","data":[]}`
 	r, err := intent.ParseResultJSON(raw)

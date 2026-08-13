@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 type bodyWriter struct {
 	gin.ResponseWriter
 	buf        *bytes.Buffer
+	held       *bytes.Buffer // 非流式：暂存完整响应，结束后注入 elapsed_ms
 	stream     bool
 	sseCount   int
 	previewMax int
@@ -23,6 +25,18 @@ type bodyWriter struct {
 func (w *bodyWriter) Write(b []byte) (int, error) {
 	if w.stream {
 		w.sseCount++
+		if w.buf.Len() < w.previewMax {
+			remain := w.previewMax - w.buf.Len()
+			if len(b) > remain {
+				w.buf.Write(b[:remain])
+			} else {
+				w.buf.Write(b)
+			}
+		}
+		return w.ResponseWriter.Write(b)
+	}
+	if w.held != nil {
+		_, _ = w.held.Write(b)
 	}
 	if w.buf.Len() < w.previewMax {
 		remain := w.previewMax - w.buf.Len()
@@ -32,7 +46,7 @@ func (w *bodyWriter) Write(b []byte) (int, error) {
 			w.buf.Write(b)
 		}
 	}
-	return w.ResponseWriter.Write(b)
+	return len(b), nil
 }
 
 func (w *bodyWriter) WriteString(s string) (int, error) {
@@ -48,6 +62,9 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 		c.Set(string(CtxRequestID), reqID)
 		c.Writer.Header().Set("X-Request-ID", reqID)
 
+		start := time.Now()
+		c.Set(string(CtxStartTime), start)
+
 		var reqBody []byte
 		if c.Request.Body != nil {
 			reqBody, _ = io.ReadAll(c.Request.Body)
@@ -62,14 +79,22 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 		bw := &bodyWriter{
 			ResponseWriter: c.Writer,
 			buf:            &bytes.Buffer{},
+			held:           &bytes.Buffer{},
 			stream:         stream,
 			previewMax:     cfg.Log.BodyPreviewMax,
 		}
 		c.Writer = bw
 
-		start := time.Now()
 		c.Next()
 		latency := time.Since(start)
+		elapsedMs := latency.Milliseconds()
+		c.Writer.Header().Set("X-Elapsed-Ms", itoa64(elapsedMs))
+
+		if !stream && bw.held != nil && bw.held.Len() > 0 {
+			out := injectElapsedMS(bw.held.Bytes(), elapsedMs)
+			c.Writer.Header().Del("Content-Length")
+			_, _ = bw.ResponseWriter.Write(out)
+		}
 
 		apiKeyID, _ := c.Get(string(CtxAPIKeyID))
 		pathTemplate := c.FullPath()
@@ -90,32 +115,52 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 			zap.String("body", bodyStr),
 			zap.Int("status", c.Writer.Status()),
 			zap.Duration("latency", latency),
+			zap.Int64("elapsed_ms", elapsedMs),
 			zap.Any("api_key_id", apiKeyID),
 			zap.Bool("stream", stream),
 			zap.Int("bytes_out_preview", bw.buf.Len()),
 		)
-		return
-		//if !cfg.RequestLog.Enabled || db == nil {
-		//	return
-		//}
-		//keyID, _ := apiKeyID.(string)
-		//row := model.RequestLog{
-		//	RequestID:       reqID,
-		//	APIKeyID:        keyID,
-		//	Method:          c.Request.Method,
-		//	Path:            c.Request.URL.Path,
-		//	PathTemplate:    pathTemplate,
-		//	Status:          c.Writer.Status(),
-		//	LatencyMs:       latency.Milliseconds(),
-		//	RequestBody:     bodyStr,
-		//	ResponsePreview: truncate(bw.buf.String(), cfg.Log.BodyPreviewMax),
-		//	Stream:          stream,
-		//	SSEEventCount:   bw.sseCount,
-		//}
-		//if err := db.Create(&row).Error; err != nil {
-		//	log.Warn("persist request_log failed", zap.Error(err), zap.String("request_id", reqID))
-		//}
 	}
+}
+
+// injectElapsedMS 向 JSON 对象响应注入 elapsed_ms；非对象则原样返回。
+func injectElapsedMS(body []byte, ms int64) []byte {
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return body
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return body
+	}
+	m["elapsed_ms"] = ms
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func itoa64(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
 }
 
 func truncate(s string, max int) string {

@@ -139,6 +139,7 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput) (*AnalyzeOutput,
 	}
 	ensureFailureCode(&out.Result)
 	expandNonBanAccountLists(&out.Result)
+	rejectMixedKeyWordTypes(&out.Result)
 	normalizeRefundAmounts(&out.Result)
 	return out, nil
 }
@@ -213,6 +214,22 @@ func trimAccountIDs(ids []string) []string {
 	return out
 }
 
+// rejectMixedKeyWordTypes 同一次结果只允许一种 KeyWordType；混用则 code=1。
+func rejectMixedKeyWordTypes(r *Result) {
+	if r == nil || r.Code != 0 || len(r.Data) <= 1 {
+		return
+	}
+	first := r.Data[0].KeyWordType
+	for i := 1; i < len(r.Data); i++ {
+		if r.Data[i].KeyWordType != first {
+			r.Code = 1
+			r.Msg = "同一条消息只能包含同一种操作类型，请分开发送（例如不要把充值与尽可能退写在一起）。"
+			r.Data = []Item{}
+			return
+		}
+	}
+}
+
 // normalizeRefundAmounts 退款类意图的 icon_amount 强制为负（已为负或 0 则不动）。
 func normalizeRefundAmounts(r *Result) {
 	if r == nil || r.Code != 0 {
@@ -246,6 +263,7 @@ func ParseResultJSON(content string) (*Result, error) {
 		return nil, err
 	}
 	expandNonBanAccountLists(&r)
+	rejectMixedKeyWordTypes(&r)
 	normalizeRefundAmounts(&r)
 	return &r, nil
 }

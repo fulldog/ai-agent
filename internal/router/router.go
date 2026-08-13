@@ -101,7 +101,10 @@ func Setup(application *app.App) *gin.Engine {
 	}
 
 	r.NoRoute(func(c *gin.Context) {
-		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"code": "not_found", "message": "route not found"}})
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":      gin.H{"code": "not_found", "message": "route not found"},
+			"request_id": c.Writer.Header().Get("X-Request-ID"),
+		})
 	})
 	return r
 }
