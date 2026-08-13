@@ -138,6 +138,8 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput) (*AnalyzeOutput,
 		out.Data = []Item{}
 	}
 	ensureFailureCode(&out.Result)
+	expandNonBanAccountLists(&out.Result)
+	normalizeRefundAmounts(&out.Result)
 	return out, nil
 }
 
@@ -153,6 +155,75 @@ func ensureFailureCode(r *Result) {
 		}
 		if strings.TrimSpace(r.Msg) == "" {
 			r.Msg = "暂时无法按账户操作模版识别，请换种说法或直接提问"
+		}
+	}
+}
+
+// expandNonBanAccountLists 非封停场景若误用 media_account_ids，拆成多条 data（每账户一条）。
+func expandNonBanAccountLists(r *Result) {
+	if r == nil || r.Code != 0 || len(r.Data) == 0 {
+		return
+	}
+	out := make([]Item, 0, len(r.Data))
+	for _, it := range r.Data {
+		kt := KeyWordType(it.KeyWordType)
+		if isForbiddenKeyWord(kt) {
+			if it.MediaAccountIDs == nil {
+				it.MediaAccountIDs = []string{}
+			}
+			out = append(out, it)
+			continue
+		}
+		ids := trimAccountIDs(it.MediaAccountIDs)
+		if len(ids) == 0 {
+			it.MediaAccountIDs = []string{}
+			out = append(out, it)
+			continue
+		}
+		for _, id := range ids {
+			cp := it
+			cp.MediaAccountID = id
+			cp.MediaAccountIDs = []string{}
+			out = append(out, cp)
+		}
+	}
+	r.Data = out
+}
+
+func isForbiddenKeyWord(kt KeyWordType) bool {
+	switch kt {
+	case WxForbiddenPermanent, WxForbiddenConfirm, WxForbiddenCancel:
+		return true
+	default:
+		return false
+	}
+}
+
+func trimAccountIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// normalizeRefundAmounts 退款类意图的 icon_amount 强制为负（已为负或 0 则不动）。
+func normalizeRefundAmounts(r *Result) {
+	if r == nil || r.Code != 0 {
+		return
+	}
+	for i := range r.Data {
+		switch KeyWordType(r.Data[i].KeyWordType) {
+		case Return, ReturnAll, BatchReturn, TransferTryBestType:
+			if r.Data[i].IconAmount.IsPositive() {
+				r.Data[i].IconAmount = r.Data[i].IconAmount.Neg()
+			}
 		}
 	}
 }
@@ -174,6 +245,8 @@ func ParseResultJSON(content string) (*Result, error) {
 	if err := json.Unmarshal([]byte(s), &r); err != nil {
 		return nil, err
 	}
+	expandNonBanAccountLists(&r)
+	normalizeRefundAmounts(&r)
 	return &r, nil
 }
 
