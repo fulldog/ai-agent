@@ -297,13 +297,16 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
     {
       "media_account_id": "12345",
       "media_account_id_in": "",
-      "phone": "",
+      "Mobile": "",
       "icon_amount": 100,
       "TransferTryBest": false,
       "media_account_ids": [],
       "KeyWordType": 10,
       "KeyWordTypeStr": "充值",
-      "remark": ""
+      "ForbiddenReason": "",
+      "AuthCode": "",
+      "CopyNumber": 0,
+      "CopyTaskNo": ""
     }
   ],
   "provider": "qwen",
@@ -314,7 +317,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 }
 ```
 
-`KeyWordType` 对齐 `EnumWeChat_KeyWordType`。`phone` 仅短信授权使用，勿与 `media_account_id` 混用。`remark` 用于封停原因、授权验证码等。每次请求独立解析、无上下文。若无法识别为充/退/转等操作意图：`code=1`，`data=[]`，`msg` 为模型对用户问题的正常自然语言回答（HTTP 仍为 200）。
+`KeyWordType` 对齐 `EnumWeChat_KeyWordType`。`Mobile` 仅短信授权使用，勿与 `media_account_id` 混用。封停原因用 `ForbiddenReason`，授权码用 `AuthCode`，复制数量用 `CopyNumber`，复制任务编号用 `CopyTaskNo`。每次请求独立解析、无上下文。若无法识别为充/退/转等操作意图：`code=1`，`data=[]`，`msg` 为模型对用户问题的正常自然语言回答（HTTP 仍为 200）。
 
 ---
 

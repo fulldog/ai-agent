@@ -1,6 +1,10 @@
 package intent
 
-import "github.com/shopspring/decimal"
+import (
+	"encoding/json"
+
+	"github.com/shopspring/decimal"
+)
 
 // KeyWordType 对齐 C# EnumWeChat_KeyWordType（微信助手关键字意图）。
 type KeyWordType int
@@ -29,13 +33,33 @@ const (
 type Item struct {
 	MediaAccountID   string          `json:"media_account_id"`
 	MediaAccountIDIn string          `json:"media_account_id_in"`
-	Phone            string          `json:"phone"` // 短信授权手机号，与 media_account_id 互不混用
+	Mobile           string          `json:"Mobile"` // 短信授权手机号，与 media_account_id 互不混用
 	IconAmount       decimal.Decimal `json:"icon_amount"`
 	TransferTryBest  bool            `json:"TransferTryBest"`
 	MediaAccountIDs  []string        `json:"media_account_ids"`
 	KeyWordType      int             `json:"KeyWordType"`
 	KeyWordTypeStr   string          `json:"KeyWordTypeStr"`
-	Remark           string          `json:"remark"` // 封停原因、授权验证码等补充
+	ForbiddenReason  string          `json:"ForbiddenReason"`  // 封停原因（业务问题|素材问题）
+	AuthCode         string          `json:"AuthCode"`         // 短信授权验证码
+	CopyNumber       int             `json:"CopyNumber"`       // 复制账户数量
+	CopyTaskNo       string          `json:"CopyTaskNo"`       // 复制账户任务编号
+	Remark           string          `json:"remark,omitempty"` // 兼容旧输出；规范化后清空
+}
+
+// UnmarshalJSON 兼容旧字段 phone → Mobile。
+func (it *Item) UnmarshalJSON(b []byte) error {
+	type alias Item
+	aux := struct {
+		Phone string `json:"phone"`
+		*alias
+	}{alias: (*alias)(it)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if it.Mobile == "" && aux.Phone != "" {
+		it.Mobile = aux.Phone
+	}
+	return nil
 }
 
 // Result 大模型固定 JSON 外壳。

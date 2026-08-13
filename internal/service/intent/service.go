@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
@@ -141,6 +142,7 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput) (*AnalyzeOutput,
 	expandNonBanAccountLists(&out.Result)
 	rejectMixedKeyWordTypes(&out.Result)
 	normalizeRefundAmounts(&out.Result)
+	normalizeDedicatedFields(&out.Result)
 	return out, nil
 }
 
@@ -245,6 +247,37 @@ func normalizeRefundAmounts(r *Result) {
 	}
 }
 
+// normalizeDedicatedFields 将专用字段落到 ForbiddenReason/AuthCode/CopyNumber/CopyTaskNo，并兼容旧 remark/icon_amount/media_account_id。
+func normalizeDedicatedFields(r *Result) {
+	if r == nil || r.Code != 0 {
+		return
+	}
+	for i := range r.Data {
+		it := &r.Data[i]
+		switch KeyWordType(it.KeyWordType) {
+		case WxForbiddenPermanent, WxForbiddenConfirm, WxForbiddenCancel:
+			if strings.TrimSpace(it.ForbiddenReason) == "" && strings.TrimSpace(it.Remark) != "" {
+				it.ForbiddenReason = strings.TrimSpace(it.Remark)
+			}
+		case SMSAuthCheck:
+			if strings.TrimSpace(it.AuthCode) == "" && strings.TrimSpace(it.Remark) != "" {
+				it.AuthCode = strings.TrimSpace(it.Remark)
+			}
+		case WxCopy:
+			if it.CopyNumber == 0 && it.IconAmount.IsPositive() {
+				it.CopyNumber = int(it.IconAmount.IntPart())
+				it.IconAmount = decimal.Zero
+			}
+		case WxCopyQuery:
+			if strings.TrimSpace(it.CopyTaskNo) == "" && strings.TrimSpace(it.MediaAccountID) != "" {
+				it.CopyTaskNo = strings.TrimSpace(it.MediaAccountID)
+				it.MediaAccountID = ""
+			}
+		}
+		it.Remark = ""
+	}
+}
+
 func stripCodeFence(content string) string {
 	s := strings.TrimSpace(content)
 	s = strings.TrimPrefix(s, "```json")
@@ -265,6 +298,7 @@ func ParseResultJSON(content string) (*Result, error) {
 	expandNonBanAccountLists(&r)
 	rejectMixedKeyWordTypes(&r)
 	normalizeRefundAmounts(&r)
+	normalizeDedicatedFields(&r)
 	return &r, nil
 }
 

@@ -412,7 +412,7 @@ paths:
                       properties:
                         media_account_id: { type: string }
                         media_account_id_in: { type: string }
-                        phone: { type: string, description: 短信授权手机号，勿与 media_account_id 混用 }
+                        Mobile: { type: string, description: 短信授权手机号，勿与 media_account_id 混用 }
                         icon_amount: { type: number }
                         TransferTryBest: { type: boolean }
                         media_account_ids:
@@ -420,7 +420,10 @@ paths:
                           items: { type: string }
                         KeyWordType: { type: integer }
                         KeyWordTypeStr: { type: string }
-                        remark: { type: string, description: 封停原因、授权验证码等 }
+                        ForbiddenReason: { type: string, description: 封停原因（业务问题|素材问题） }
+                        AuthCode: { type: string, description: 短信授权验证码 }
+                        CopyNumber: { type: integer, description: 复制账户数量 }
+                        CopyTaskNo: { type: string, description: 复制账户任务编号 }
                   provider: { type: string }
                   model: { type: string }
         "400":
