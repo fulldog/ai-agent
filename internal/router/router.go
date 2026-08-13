@@ -46,6 +46,7 @@ func Setup(application *app.App) *gin.Engine {
 	// ---------- 业务 Handler ----------
 	convH := &handler.ConversationHandler{Chat: application.Chat}
 	chatH := &handler.ChatHandler{Chat: application.Chat, FileExtract: application.FileExtract, DB: application.DB}
+	intentH := &handler.IntentHandler{Intent: application.Intent}
 	agentH := &handler.AgentHandler{Agent: application.Agent}
 	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, FileExtract: application.FileExtract}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
@@ -61,9 +62,10 @@ func Setup(application *app.App) *gin.Engine {
 	{
 		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
 
-		// 无库可用：文件分析
+		// 无库可用：文件分析、意图分析
 		v1.POST("/chat/analyze", chatH.Analyze)
 		v1.POST("/chat/analyze/stream", chatH.AnalyzeStream)
+		v1.POST("/chat/intent", intentH.AnalyzeIntent)
 
 		// 以下依赖 PostgreSQL
 		dbGroup := v1.Group("")

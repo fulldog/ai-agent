@@ -8,6 +8,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
+	"github.com/webapp/go-app/ai-agent/internal/service/intent"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
@@ -27,6 +28,7 @@ type App struct {
 	RAG         *rag.Service
 	Corpus      *corpus.Service
 	Chat        *chat.Service
+	Intent      *intent.Service
 	Agent       *agent.Service
 	Eino        *eino.Runtime
 	Extract     *extract.Extractor
@@ -48,6 +50,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 	ragSvc := rag.New(db, embedClient)
 	corpusSvc := corpus.New(db, cfg, embedClient)
 	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog)
+	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
 	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:           cfg.OCR.Enabled,
@@ -76,6 +79,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		RAG:         ragSvc,
 		Corpus:      corpusSvc,
 		Chat:        chatSvc,
+		Intent:      intentSvc,
 		Agent:       agentSvc,
 		Eino:        rt,
 		Extract:     extractor,

@@ -367,6 +367,66 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/chat/intent:
+    post:
+      tags: [Chat]
+      summary: 自然语言意图分析（默认 qwen，不写库）
+      description: |
+        解析微信助手口语：充值/退币/转账等。固定返回 code/msg/data。
+        KeyWordType 对齐 EnumWeChat_KeyWordType。同一次输入仅允许一种操作大类；转账禁止批量。
+      operationId: chatIntent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, description: 用户口语原文 }
+                provider: { type: string, description: 默认 qwen }
+                model: { type: string }
+                max_tokens: { type: integer }
+            example:
+              text: "432432432充13"
+              provider: qwen
+      responses:
+        "200":
+          description: 业务结果看 body.code（0 成功 / 1 失败）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: integer }
+                  msg: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        media_account_id: { type: string }
+                        media_account_id_in: { type: string }
+                        phone: { type: string, description: 短信授权手机号，勿与 media_account_id 混用 }
+                        icon_amount: { type: number }
+                        TransferTryBest: { type: boolean }
+                        media_account_ids:
+                          type: array
+                          items: { type: string }
+                        KeyWordType: { type: integer }
+                        KeyWordTypeStr: { type: string }
+                        remark: { type: string, description: 封停原因、授权验证码等 }
+                  provider: { type: string }
+                  model: { type: string }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/chat/analyze/stream:
     post:
       tags: [Chat]

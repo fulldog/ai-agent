@@ -41,6 +41,7 @@
 | `GET /health`（`db: disabled`） | 会话 / 补全 / Agent / 语料 / RAG / 请求日志查询 |
 | `GET /api/v1/models` | |
 | `POST /api/v1/chat/analyze`、`/chat/analyze/stream` | |
+| `POST /api/v1/chat/intent` | |
 
 无库时 analyze：**不写** `file_extractions` / `llm_call_logs` / 会话消息；附件与抽取 txt 仍可落盘；完整 prompt/回复仍写 `logs/llm-*.log`；无抽取缓存（每次重新识别/上传）。勿传 `conversation_id`。样例配置见 `configs/config.minimal.example.yaml`。
 
@@ -54,7 +55,7 @@
 | `/chat/completions`、`/chat/completions/stream` | **必填**（必含 `conversation_id`） |
 | `/chat/analyze*` 且带 `conversation_id` | **必填** |
 | `/agent/runs*` 且带 `conversation_id` | **必填** |
-| 无 `conversation_id` 的 analyze、models、语料/RAG 等 | 不要求 |
+| 无 `conversation_id` 的 analyze、intent、models、语料/RAG 等 | 不要求 |
 
 - 缺头：`400`，`code=uid_required`
 - 会话不属于该 uid（或不存在）：`404`，`code=not_found`（不区分）
@@ -261,6 +262,51 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 过长正文默认截断约 8 万字（`truncated: true`）。扫描版 PDF 需本机 OCR。
 
+### POST `/api/v1/chat/intent`
+
+用户自然语言意图分析（**不写库**）。默认厂商 **`qwen`**，也可传 `provider` / `model`。
+
+适合「乐推小助手」口语模版：授权、充值、退币、转账、永久封停、查余额、复制账户等。同一次输入只允许一种操作大类；转账禁止批量。提示词见代码 `internal/service/intent/prompt.go`。
+
+```json
+{
+  "text": "12345充100",
+  "provider": "qwen",
+  "model": "qwen-plus"
+}
+```
+
+**响应** `200`（业务结果看 `code`）
+
+```json
+{
+  "code": 0,
+  "msg": "",
+  "data": [
+    {
+      "media_account_id": "12345",
+      "media_account_id_in": "",
+      "phone": "",
+      "icon_amount": 100,
+      "TransferTryBest": false,
+      "media_account_ids": [],
+      "KeyWordType": 10,
+      "KeyWordTypeStr": "充值",
+      "remark": ""
+    }
+  ],
+  "provider": "qwen",
+  "model": "qwen-plus",
+  "prompt_tokens": 100,
+  "completion_tokens": 50,
+  "request_id": "uuid"
+}
+```
+
+`KeyWordType` 对齐 `EnumWeChat_KeyWordType`。`phone` 仅短信授权使用，勿与 `media_account_id` 混用。`remark` 用于封停原因、授权验证码等。每次请求独立解析、无上下文。若无法识别为充/退/转等操作意图：`code=1`，`data=[]`，`msg` 为模型对用户问题的正常自然语言回答（HTTP 仍为 200）。
+
+---
+
 ### POST `/api/v1/chat/analyze/stream`
 
 同上，SSE：`delta` / `done` / `error`。结构化结果在 `done` 的 `data` 里；抽字段场景更推荐同步接口。
@@ -438,6 +484,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Chat Stream | POST | `/api/v1/chat/completions/stream` | 是 |
 | Chat Analyze | POST | `/api/v1/chat/analyze` | 是 |
 | Chat Analyze Stream | POST | `/api/v1/chat/analyze/stream` | 是 |
+| Chat Intent | POST | `/api/v1/chat/intent` | 是 |
 | Agent | POST | `/api/v1/agent/runs` | 是 |
 | Agent Stream | POST | `/api/v1/agent/runs/stream` | 是 |
 | Agent Run | GET | `/api/v1/agent/runs/:id` | 是 |
