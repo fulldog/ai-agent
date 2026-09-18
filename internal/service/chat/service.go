@@ -458,7 +458,6 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		return nil, nil, nil, err
 	}
 	var llmMsgs []llm.Message
-	system := conv.SystemPrompt
 	corpusID := in.CorpusID
 	if corpusID == nil {
 		corpusID = conv.CorpusID
@@ -474,18 +473,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 			hits = found
 		}
 	}
-	if len(hits) > 0 {
-		var b strings.Builder
-		b.WriteString("Use the following knowledge context when relevant:\n")
-		for i, h := range hits {
-			b.WriteString(fmt.Sprintf("[%d] %s\n", i+1, h.Content))
-		}
-		if system != "" {
-			system = system + "\n\n" + b.String()
-		} else {
-			system = b.String()
-		}
-	}
+	system := mergeSystem(s.replyStyle(), conv.SystemPrompt, ragContext(hits))
 	if system != "" {
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}

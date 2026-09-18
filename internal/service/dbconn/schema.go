@@ -1,0 +1,75 @@
+package dbconn
+
+import (
+	"context"
+	"fmt"
+	"strings"
+)
+
+const listTablesSQL = `
+SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND (? = '' OR TABLE_NAME LIKE ? ESCAPE '\\' OR TABLE_COMMENT LIKE ? ESCAPE '\\')
+ORDER BY TABLE_NAME
+LIMIT ?`
+
+const listColumnsSQL = `
+SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = ?
+ORDER BY ORDINAL_POSITION`
+
+const listColumnsInSchemaSQL = `
+SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = ?
+  AND TABLE_NAME = ?
+ORDER BY ORDINAL_POSITION`
+
+// Schema 列出当前库表或指定表的列（含注释，作为数据字典）。
+func (c *Client) Schema(ctx context.Context, keyword, table string) (string, error) {
+	if c == nil || c.db == nil {
+		return "", fmt.Errorf("业务库未配置")
+	}
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+	tx, err := c.beginRead(ctx)
+	if err != nil {
+		return "", fmt.Errorf("开启只读事务: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	table = strings.TrimSpace(table)
+	if table != "" {
+		schemaName, tableName, err := splitTableIdent(table)
+		if err != nil {
+			return "", err
+		}
+		query := listColumnsSQL
+		args := []any{tableName}
+		if schemaName != "" {
+			query = listColumnsInSchemaSQL
+			args = []any{schemaName, tableName}
+		}
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return "", fmt.Errorf("查询列信息失败: %w", err)
+		}
+		defer rows.Close()
+		return encodeRows(rows, maxSchemaRows)
+	}
+
+	kw := strings.TrimSpace(keyword)
+	pat := ""
+	if kw != "" {
+		pat = likeContains(kw)
+	}
+	rows, err := tx.QueryContext(ctx, listTablesSQL, kw, pat, pat, maxSchemaRows)
+	if err != nil {
+		return "", fmt.Errorf("查询表信息失败: %w", err)
+	}
+	defer rows.Close()
+	return encodeRows(rows, maxSchemaRows)
+}

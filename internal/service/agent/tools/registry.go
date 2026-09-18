@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 )
 
@@ -21,13 +22,26 @@ func NewRegistry(list ...Tool) *Registry {
 	return r
 }
 
-// Default 内置工具集（knowledge_search / current_time / calculator）。
-func Default() *Registry {
-	return NewRegistry(
+func builtin(c *dbconn.Client) []Tool {
+	list := []Tool{
 		KnowledgeSearch{},
 		CurrentTime{},
 		Calculator{},
-	)
+	}
+	if c != nil {
+		list = append(list, DBConn{Client: c})
+	}
+	return list
+}
+
+// Default 内置工具集（不含业务库）。
+func Default() *Registry {
+	return NewRegistry(builtin(nil)...)
+}
+
+// WithDBConn 内置工具并注册 dbconn。
+func WithDBConn(c *dbconn.Client) *Registry {
+	return NewRegistry(builtin(c)...)
 }
 
 func (r *Registry) Specs(names []string) []llm.ToolSpec {

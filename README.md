@@ -166,7 +166,7 @@ npm run preview        # http://localhost:4173，同样按 .env 的 VITE_PROXY_T
 | 日志 | zap |
 | DB / 向量 | PostgreSQL + pgvector |
 | LLM | 多厂商 OpenAI 兼容（DeepSeek / 千问 / Kimi / 豆包）；默认 DeepSeek |
-| Agent | Tool Calling（`knowledge_search`、`current_time`、`calculator`） |
+| Agent | Tool Calling（`knowledge_search`、`current_time`、`calculator`、`dbconn`） |
 | Embedding | OpenAI 兼容（默认 Ollama） |
 | 鉴权 | `X-API-Key` |
 | 钉钉 | Stream Mode + AI 流式卡片（见 [DINGTALK.md](docs/DINGTALK.md)） |

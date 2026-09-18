@@ -13,6 +13,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/metrics"
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
+	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
@@ -36,16 +37,20 @@ type Service struct {
 	llmLog   *zap.Logger // 完整 prompt/回复 → logs/llm-*.log
 }
 
-func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger) *Service {
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger, bizDB *dbconn.Client) *Service {
 	if llmLog == nil {
 		llmLog = zap.NewNop()
+	}
+	reg := tools.Default()
+	if bizDB != nil {
+		reg = tools.WithDBConn(bizDB)
 	}
 	return &Service{
 		db:       db,
 		cfg:      cfg,
 		pool:     pool,
 		rag:      ragSvc,
-		registry: tools.Default(),
+		registry: reg,
 		llmLog:   llmLog,
 	}
 }
@@ -214,11 +219,11 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		return nil, err
 	}
 
+	toolSpecs := s.registry.Specs(toolNames)
 	msgs := []llm.Message{
-		{Role: "system", Content: "你是有用的 AI 助手。需要准确信息时请调用工具，并根据工具结果作答。"},
+		{Role: "system", Content: agentSystemPrompt(toolSpecs)},
 		{Role: "user", Content: in.Input},
 	}
-	toolSpecs := s.registry.Specs(toolNames)
 	toolEnv := &tools.Env{
 		CorpusID:    in.CorpusID,
 		TopK:        in.TopK,
@@ -359,4 +364,18 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		RunID: run.ID, Output: final, StepCount: stepIndex,
 		PromptTokens: promptTokens, CompletionTokens: completionTokens, Status: "succeeded",
 	}, nil
+}
+
+const (
+	baseAgentPrompt   = "你是有用的 AI 助手。需要准确信息时请调用工具，并根据工具结果作答。回答简洁直接，先给结论；不要套话、不要重复问题或工具原文。"
+	dbconnAgentPrompt = "按问题需要选用工具；不需要业务数据时不要调用 dbconn。若需要查询业务数据库：先用 knowledge_search 查找口径或规则；再用 dbconn 的 schema 对照表与列注释选定表和列；最后组织只读 SELECT 并调用 dbconn 的 query。语料未命中或无法对应到表时，说明缺什么，不要编造表名或数据。"
+)
+
+func agentSystemPrompt(specs []llm.ToolSpec) string {
+	for _, spec := range specs {
+		if spec.Function.Name == "dbconn" {
+			return baseAgentPrompt + "\n\n" + dbconnAgentPrompt
+		}
+	}
+	return baseAgentPrompt
 }

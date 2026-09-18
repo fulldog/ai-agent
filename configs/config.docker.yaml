@@ -68,6 +68,16 @@ agent:
     - knowledge_search
     - current_time
     - calculator
+    - dbconn
+
+dbconn:
+  enabled: true
+  driver: mysql
+  dsn: "" # 或环境变量 BIZ_DATABASE_URL
+  max_open_conns: 5
+  max_idle_conns: 2
+  max_rows: 50
+  timeout_seconds: 15
 
 ocr:
   enabled: true

@@ -23,6 +23,7 @@ type Config struct {
 	Metrics    MetricsConfig    `yaml:"metrics"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
 	DingTalk   DingTalkConfig   `yaml:"dingtalk"`
+	DBConn     DBConnConfig     `yaml:"dbconn"`
 }
 
 // DingTalkConfig 钉钉 Stream 机器人（群内 @ 后 RAG 流式回复）。
@@ -115,6 +116,8 @@ type LLMConfig struct {
 	TimeoutSeconds  int    `yaml:"timeout_seconds"`
 	// MaxHistory 每次对话请求带入的历史消息条数上限（不含当前 user / system）。<=0 时归一为 10。
 	MaxHistory int `yaml:"max_history"`
+	// SystemPrompt 对话默认风格（钉钉/控制台）。空则使用代码内置的精简回答提示。
+	SystemPrompt string `yaml:"system_prompt"`
 	// Providers 多厂商；key 为 deepseek / qwen / kimi / doubao / openai_compat 等。
 	Providers map[string]LLMProviderConfig `yaml:"providers"`
 }
@@ -138,6 +141,25 @@ type RAGConfig struct {
 type AgentConfig struct {
 	MaxSteps     int      `yaml:"max_steps"`
 	DefaultTools []string `yaml:"default_tools"`
+}
+
+// DBConnConfig 独立 MySQL 业务库（Agent dbconn 工具）。勿填 ai-agent 自身的 PostgreSQL DSN。
+type DBConnConfig struct {
+	Enabled        *bool  `yaml:"enabled"`
+	Driver         string `yaml:"driver"` // 仅 mysql
+	DSN            string `yaml:"dsn"`
+	MaxOpenConns   int    `yaml:"max_open_conns"`
+	MaxIdleConns   int    `yaml:"max_idle_conns"`
+	MaxRows        int    `yaml:"max_rows"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
+}
+
+// IsEnabled 是否启用业务库。未配 enabled 时以 DSN 非空为准。
+func (c DBConnConfig) IsEnabled() bool {
+	if c.Enabled != nil {
+		return *c.Enabled && strings.TrimSpace(c.DSN) != ""
+	}
+	return strings.TrimSpace(c.DSN) != ""
 }
 
 type OCRConfig struct {
@@ -251,7 +273,14 @@ func defaultConfig() *Config {
 		},
 		Agent: AgentConfig{
 			MaxSteps:     8,
-			DefaultTools: []string{"knowledge_search", "current_time", "calculator"},
+			DefaultTools: []string{"knowledge_search", "current_time", "calculator", "dbconn"},
+		},
+		DBConn: DBConnConfig{
+			Driver:         "mysql",
+			MaxOpenConns:   5,
+			MaxIdleConns:   2,
+			MaxRows:        50,
+			TimeoutSeconds: 15,
 		},
 		OCR: OCRConfig{
 			Enabled:           true,
@@ -349,6 +378,9 @@ func (c *Config) applyEnv() {
 	setProviderKey("doubao", "ARK_API_KEY")
 	setProviderKey("doubao", "DOUBAO_API_KEY")
 
+	if v := os.Getenv("BIZ_DATABASE_URL"); v != "" {
+		c.DBConn.DSN = v
+	}
 	if v := os.Getenv("DINGTALK_CLIENT_ID"); v != "" {
 		c.DingTalk.ClientID = v
 	}
@@ -424,6 +456,22 @@ func (c *Config) normalize() {
 	}
 	if c.Agent.MaxSteps <= 0 {
 		c.Agent.MaxSteps = 8
+	}
+	c.DBConn.Driver = strings.ToLower(strings.TrimSpace(c.DBConn.Driver))
+	if c.DBConn.Driver == "" {
+		c.DBConn.Driver = "mysql"
+	}
+	if c.DBConn.MaxOpenConns <= 0 {
+		c.DBConn.MaxOpenConns = 5
+	}
+	if c.DBConn.MaxIdleConns <= 0 {
+		c.DBConn.MaxIdleConns = 2
+	}
+	if c.DBConn.MaxRows <= 0 {
+		c.DBConn.MaxRows = 50
+	}
+	if c.DBConn.TimeoutSeconds <= 0 {
+		c.DBConn.TimeoutSeconds = 15
 	}
 	if strings.TrimSpace(c.OCR.TesseractPath) == "" {
 		c.OCR.TesseractPath = "tesseract"

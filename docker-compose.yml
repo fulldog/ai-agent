@@ -21,6 +21,7 @@ services:
       # 仅当部署脚本需要改写库地址时才会设置；空则完全使用挂载的 config.yaml
       DATABASE_URL: ${DATABASE_URL:-}
       DATABASE_ENABLED: ${DATABASE_ENABLED:-}
+      BIZ_DATABASE_URL: ${BIZ_DATABASE_URL:-}
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml:ro
       - ./data/logs:/app/logs

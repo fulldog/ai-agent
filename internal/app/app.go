@@ -1,11 +1,14 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/webapp/go-app/ai-agent/internal/ai/eino"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
+	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/dingtalk"
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
@@ -35,6 +38,7 @@ type App struct {
 	Extract     *extract.Extractor
 	FileExtract *fileextract.Service
 	DingTalk    *dingtalk.Bot
+	DBConn      *dbconn.Client
 }
 
 func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*App, error) {
@@ -53,7 +57,15 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 	corpusSvc := corpus.New(db, cfg, embedClient)
 	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog)
 	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
-	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog)
+	var bizDB *dbconn.Client
+	if cfg.DBConn.IsEnabled() {
+		opened, err := dbconn.Open(cfg.DBConn)
+		if err != nil {
+			return nil, fmt.Errorf("open dbconn: %w", err)
+		}
+		bizDB = opened
+	}
+	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:           cfg.OCR.Enabled,
 		TesseractPath:     cfg.OCR.TesseractPath,
@@ -88,5 +100,6 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		Extract:     extractor,
 		FileExtract: fileExtractSvc,
 		DingTalk:    dtBot,
+		DBConn:      bizDB,
 	}, nil
 }

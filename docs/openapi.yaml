@@ -545,6 +545,7 @@ paths:
                 - knowledge_search
                 - current_time
                 - calculator
+                - dbconn
               rag:
                 corpus_id: "00000000-0000-0000-0000-000000000002"
                 top_k: 5
@@ -1232,7 +1233,7 @@ components:
           type: array
           items:
             type: string
-            enum: [knowledge_search, current_time, calculator]
+            enum: [knowledge_search, current_time, calculator, dbconn]
         rag:
           $ref: "#/components/schemas/AgentRAGOptions"
 

@@ -178,6 +178,39 @@ func TestAlsoStdoutDefaultsByMode(t *testing.T) {
 	}
 }
 
+func TestDBConnIsEnabledAndEnv(t *testing.T) {
+	f, ttrue := false, true
+	if (DBConnConfig{Enabled: &f, DSN: "user:p@tcp(127.0.0.1:3306)/biz"}).IsEnabled() {
+		t.Fatal("enabled:false should disable")
+	}
+	if (DBConnConfig{Enabled: &ttrue}).IsEnabled() {
+		t.Fatal("enabled:true with empty dsn should disable")
+	}
+	if !(DBConnConfig{DSN: "user:p@tcp(127.0.0.1:3306)/biz"}).IsEnabled() {
+		t.Fatal("non-empty dsn should enable when enabled unset")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dbconn.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BIZ_DATABASE_URL", "user:pass@tcp(127.0.0.1:3306)/biz")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DBConn.DSN != "user:pass@tcp(127.0.0.1:3306)/biz" {
+		t.Fatalf("BIZ_DATABASE_URL: %q", cfg.DBConn.DSN)
+	}
+	if cfg.DBConn.Driver != "mysql" || cfg.DBConn.MaxRows != 50 || cfg.DBConn.TimeoutSeconds != 15 {
+		t.Fatalf("dbconn defaults: %#v", cfg.DBConn)
+	}
+	if !cfg.DBConn.IsEnabled() {
+		t.Fatal("env dsn should enable dbconn")
+	}
+}
+
 func TestDingTalkEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dt.yaml")

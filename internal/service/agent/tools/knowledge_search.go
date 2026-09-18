@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
+	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 )
 
 // KnowledgeSearch 在 RAG 知识库中检索相关片段。
@@ -19,7 +20,7 @@ func (KnowledgeSearch) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "knowledge_search",
-			Description: "在知识库（RAG）中检索与问题相关的文本片段",
+			Description: "在知识库（RAG）中检索与问题相关的文本片段；未指定 corpus_id 时检索全部语料库",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -44,14 +45,19 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 	if env == nil || env.RAG == nil {
 		return "", fmt.Errorf("知识库服务未就绪")
 	}
-	if env.CorpusID == nil {
-		return "", fmt.Errorf("knowledge_search 需要提供 corpus_id")
-	}
 	topK := env.TopK
 	if topK <= 0 {
 		topK = env.DefaultTopK
 	}
-	hits, err := env.RAG.Search(ctx, *env.CorpusID, p.Query, topK)
+	var (
+		hits []rag.Hit
+		err  error
+	)
+	if env.CorpusID != nil {
+		hits, err = env.RAG.Search(ctx, *env.CorpusID, p.Query, topK)
+	} else {
+		hits, err = env.RAG.SearchInCorpora(ctx, nil, p.Query, topK)
+	}
 	if err != nil {
 		return "", err
 	}

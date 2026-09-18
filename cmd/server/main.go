@@ -91,6 +91,7 @@ func main() {
 			zap.String("mode", cfg.Server.Mode),
 			zap.Bool("log_stdout", alsoStdout),
 			zap.Bool("database_enabled", cfg.Database.IsEnabled()),
+			zap.Bool("dbconn_enabled", cfg.DBConn.IsEnabled()),
 			zap.String("llm_default_provider", cfg.LLM.DefaultProvider),
 			zap.String("llm_default_model", cfg.LLM.DefaultModel),
 			zap.Bool("llm_default_key_set", cfg.LLM.APIKey != ""),
@@ -106,6 +107,9 @@ func main() {
 	botCancel()
 	if application.DingTalk != nil {
 		application.DingTalk.Stop()
+	}
+	if application.DBConn != nil {
+		_ = application.DBConn.Close()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

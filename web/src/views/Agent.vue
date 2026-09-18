@@ -21,7 +21,7 @@
           <el-input-number v-model="maxSteps" :min="1" :max="20" />
         </el-form-item>
         <el-form-item label="语料">
-          <el-select v-model="corpusId" clearable filterable placeholder="knowledge_search 用" style="width: 180px">
+          <el-select v-model="corpusId" clearable filterable placeholder="可选，不选则搜全部语料" style="width: 180px">
             <el-option v-for="c in corpora" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
@@ -30,6 +30,7 @@
             <el-checkbox label="knowledge_search" value="knowledge_search" />
             <el-checkbox label="current_time" value="current_time" />
             <el-checkbox label="calculator" value="calculator" />
+            <el-checkbox label="dbconn" value="dbconn" />
           </el-checkbox-group>
         </el-form-item>
       </el-form>
@@ -88,7 +89,7 @@ const models = useModelsStore();
 const settings = useSettingsStore();
 const input = ref("");
 const maxSteps = ref(8);
-const tools = ref(["knowledge_search", "current_time", "calculator"]);
+const tools = ref(["knowledge_search", "current_time", "calculator", "dbconn"]);
 const conversationId = ref("");
 const corpusId = ref("");
 const convs = ref<Conversation[]>([]);
@@ -100,7 +101,7 @@ let abortCtl: AbortController | null = null;
 
 const hero: HeroItem[] = [
   { icon: MagicStick, title: "工具循环", desc: "模型自行决定调用哪个工具、调用几轮", tone: "blue" },
-  { icon: Tools, title: "内置工具", desc: "knowledge_search、current_time、calculator", tone: "green" },
+  { icon: Tools, title: "内置工具", desc: "knowledge_search、current_time、calculator、dbconn", tone: "green" },
   { icon: Connection, title: "流式事件", desc: "SSE 推送 tool_call / tool_result / delta", tone: "purple" },
   { icon: View, title: "运行回溯", desc: "完成后到「Agent 历史」查看每次运行的步骤", tone: "orange" },
 ];

@@ -1,6 +1,6 @@
 # AI Agent 配置样例（复制为 config.yaml 后填写；勿提交真实密钥）
 # 环境变量可覆盖：DEEPSEEK_API_KEY、DASHSCOPE_API_KEY、MOONSHOT_API_KEY、ARK_API_KEY、API_KEYS、
-# DATABASE_URL / PG_DSN、DATABASE_ENABLED=false（最小化部署，不连库）
+# DATABASE_URL / PG_DSN、DATABASE_ENABLED=false（最小化部署，不连库）、BIZ_DATABASE_URL（MySQL 业务库）
 
 server:
   addr: ":18090"
@@ -28,11 +28,14 @@ database:
   auto_migrate: true
 
 llm:
+  system_prompt: "回答简洁直接，不要套话。"
   # 默认厂商；请求未传 provider 时使用
   default_provider: qwen
   timeout_seconds: 120
   # 每次对话请求带入的最近历史消息条数（不含当前问题 / system）
   max_history: 10
+  # 可选：覆盖默认「简洁作答」系统提示（钉钉/控制台对话）
+  # system_prompt: "回答简洁直接，不要套话。"
   # 多厂商（OpenAI 兼容协议）。也可用环境变量注入 key：
   #   DEEPSEEK_API_KEY / DASHSCOPE_API_KEY|QWEN_API_KEY / MOONSHOT_API_KEY|KIMI_API_KEY / ARK_API_KEY|DOUBAO_API_KEY
   providers:
@@ -76,6 +79,18 @@ agent:
     - knowledge_search
     - current_time
     - calculator
+    - dbconn
+
+# 独立 MySQL 业务库（Agent dbconn 工具，只读查询）。勿填本服务 PostgreSQL。
+# 也可用环境变量 BIZ_DATABASE_URL 覆盖 dsn。未填 dsn 则不注册该工具。
+dbconn:
+  enabled: true
+  driver: mysql
+  dsn: "" # 例: user:pass@tcp(127.0.0.1:3306)/biz?charset=utf8mb4&parseTime=true&loc=Local
+  max_open_conns: 5
+  max_idle_conns: 2
+  max_rows: 50
+  timeout_seconds: 15
 
 # 文档解析：pdf/docx 文本提取；图片与扫描版 PDF 走 OCR（需本机安装工具，Linux/Windows 均可）
 ocr:

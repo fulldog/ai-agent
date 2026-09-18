@@ -74,7 +74,7 @@ type Env struct {
    在 `internal/service/agent/tools/` 新增文件（如 `weather.go`），实现 `Tool`：
    - `Name()` / `Spec()`（中文描述）/ `Exec(...)`
 2. **注册**  
-   在 `registry.go` 的 `Default()` 中加入该工具实例。
+   在 `registry.go` 的 `Default()` 中加入该工具实例；需要额外依赖时用 `WithDBConn` 这类构造函数按条件注册。
 3. **默认启用（可选）**  
    - `configs/config.example.yaml` → `agent.default_tools`  
    - `internal/config/config.go` 中 `Agent.DefaultTools` 默认值（如需与 example 一致）  
@@ -158,6 +158,9 @@ func Default() *Registry {
 		ExampleTool{}, // 新增
 	)
 }
+
+// 需要业务库时：tools.WithDBConn(client)
+
 ```
 
 配置：
@@ -169,7 +172,7 @@ agent:
     - knowledge_search
     - current_time
     - calculator
-    - example_tool   # 需要默认开启时再加
+    - dbconn   # 需要默认开启且已配置 dbconn.dsn 时再加
 ```
 
 请求覆盖：
@@ -187,9 +190,12 @@ agent:
 
 | 名称 | 说明 | 依赖 Env / 请求 |
 |------|------|-----------------|
-| `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | 需要 `rag.corpus_id`；`top_k` 可选 |
+| `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | `rag.corpus_id` 可选；未传则检索全部语料 |
 | `current_time` | 获取服务器当前时间（RFC3339） | 无 |
 | `calculator` | 简单四则运算 `a op b`（`+ - * /`） | 无 |
+| `dbconn` | 查 MySQL 业务库数据字典（`information_schema` 注释）或执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
+
+`dbconn` 由模型按题意自行决定是否调用，不绑定具体业务问法。需要查库时建议：先 `knowledge_search` 取口径，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。仅允许单条只读 SELECT；请使用只读账号。
 
 另有一份 **MCP Server** 实现（stdio），工具名同为 `calculator`，逻辑共用 `tools.Calc`：见 [MCP.md](./MCP.md)。
 
@@ -234,7 +240,7 @@ HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./opena
 | 路径 | 内容 |
 |------|------|
 | `internal/service/agent/tools/tool.go` | `Tool` / `Env` |
-| `internal/service/agent/tools/registry.go` | 注册与 `Default()` |
+| `internal/service/agent/tools/registry.go` | 注册、`Default()`、`WithDBConn` |
 | `internal/service/agent/tools/*.go` | 各工具实现 |
 | `cmd/mcp-calculator` | Calculator 的 MCP（stdio）实现 |
 | `docs/MCP.md` | MCP 接入说明 |
