@@ -70,7 +70,7 @@
 | `/chat/analyze*` 且带 `conversation_id` | 同上 |
 | `/agent/runs`（POST / stream） | 普通密钥 **必填**（写入运行 uid）；管理员密钥可省略 |
 | `/agent/runs`（GET 列表）、`/agent/runs/:id` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
-| `/logs/requests*` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
+| `/logs/requests*`、`/stats/tokens` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
 | 无 `conversation_id` 的 analyze、intent、models、语料/RAG 等 | 不要求 |
 
 - 缺头：`400`，`code=uid_required`（管理员密钥在查询类接口上除外）
@@ -498,6 +498,14 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 
 单条详情（含更完整 body 预览）。钉钉 Stream 入站也会写入 `request_logs`（`method=STREAM`，`path=/dingtalk/bot/messages`，`request_id` 为钉钉 `msgId`）。详情额外返回 `llm_calls`：同一 `request_id` 下的 `llm_call_logs` 摘要（完整 prompt/回复仍在 `logs/llm-*.log`）。
 
+### GET `/api/v1/stats/tokens`
+
+按模型汇总 `llm_call_logs` 的 prompt / completion token。时区 `Asia/Shanghai`：今日为当天 0 点起，本周为周一 0 点起，本月为当月 1 日 0 点起。
+
+普通密钥仅统计本人 `request_logs.uid` 关联到的调用；管理员密钥默认全库，可用 Query `uid` 过滤。
+
+响应含 `items`（每行一个 provider+model）、`totals`（累计 / 日 / 周 / 月）、`timezone`、`day_from` / `week_from` / `month_from`。
+
 ---
 
 ## 9. 接口一览
@@ -522,6 +530,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Reindex | POST | `/api/v1/corpora/:id/reindex` | 是 |
 | RAG | POST | `/api/v1/rag/search` | 是 |
 | Logs | GET | `/api/v1/logs/requests` | 是 |
+| Token Stats | GET | `/api/v1/stats/tokens` | 是 |
 
 钉钉群机器人 **不是 HTTP API**：进程内 Stream 收消息，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。
 

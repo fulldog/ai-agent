@@ -847,6 +847,54 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/stats/tokens:
+    get:
+      tags: [Logs]
+      summary: 按模型汇总 Token 消耗
+      description: 统计 llm_call_logs。时区 Asia/Shanghai。普通密钥仅本人 uid；管理员可用 Query uid 过滤。
+      operationId: tokenUsage
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UserIdHeader"
+        - name: uid
+          in: query
+          description: 仅管理员密钥生效
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 按模型汇总
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timezone:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        provider:
+                          type: string
+                        model:
+                          type: string
+                        all:
+                          $ref: "#/components/schemas/Usage"
+                        day:
+                          $ref: "#/components/schemas/Usage"
+                        week:
+                          $ref: "#/components/schemas/Usage"
+                        month:
+                          $ref: "#/components/schemas/Usage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/logs/requests:
     get:
       tags: [Logs]

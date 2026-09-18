@@ -9,6 +9,32 @@ export interface Usage {
   total_tokens?: number;
 }
 
+export interface TokenBucket {
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface TokenUsageItem {
+  provider: string;
+  model: string;
+  all: TokenBucket;
+  day: TokenBucket;
+  week: TokenBucket;
+  month: TokenBucket;
+}
+
+export interface TokenUsage {
+  timezone?: string;
+  day_from?: string;
+  week_from?: string;
+  month_from?: string;
+  items: TokenUsageItem[];
+  totals: Pick<TokenUsageItem, "all" | "day" | "week" | "month">;
+  scope_admin?: boolean;
+}
+
 export interface Health {
   status: string;
   db: string;

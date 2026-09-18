@@ -99,6 +99,7 @@ func Setup(application *app.App) *gin.Engine {
 
 			dbGroup.GET("/logs/requests", logsH.ListRequests)
 			dbGroup.GET("/logs/requests/:id", logsH.GetRequest)
+			dbGroup.GET("/stats/tokens", logsH.TokenUsage)
 		}
 	}
 

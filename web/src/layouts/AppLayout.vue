@@ -1,6 +1,6 @@
 <template>
   <el-container class="shell">
-    <el-aside width="208px" class="aside">
+    <el-aside width="220px" class="aside">
       <div class="brand">
         <el-icon class="brand-icon"><Cpu /></el-icon>
         <span>AI Agent 控制台</span>
@@ -9,33 +9,46 @@
         <el-menu-item index="/">
           <el-icon><Odometer /></el-icon><span>概览</span>
         </el-menu-item>
-        <el-menu-item index="/chat" :disabled="dbOff">
-          <el-icon><ChatDotRound /></el-icon><span>对话</span>
-        </el-menu-item>
-        <el-menu-item index="/conversations" :disabled="dbOff">
-          <el-icon><Files /></el-icon><span>会话</span>
-        </el-menu-item>
-        <el-menu-item index="/agent" :disabled="dbOff">
-          <el-icon><MagicStick /></el-icon><span>Agent</span>
-        </el-menu-item>
-        <el-menu-item index="/corpus" :disabled="dbOff">
-          <el-icon><Collection /></el-icon><span>知识库</span>
-        </el-menu-item>
-        <el-menu-item index="/rag" :disabled="dbOff">
-          <el-icon><Search /></el-icon><span>RAG 检索</span>
-        </el-menu-item>
-        <el-menu-item index="/analyze">
-          <el-icon><Document /></el-icon><span>文件分析</span>
-        </el-menu-item>
-        <el-menu-item index="/intent">
-          <el-icon><Aim /></el-icon><span>意图解析</span>
-        </el-menu-item>
-        <el-menu-item index="/logs" :disabled="dbOff">
-          <el-icon><Tickets /></el-icon><span>请求日志</span>
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon><span>连接设置</span>
-        </el-menu-item>
+        <el-sub-menu index="session">
+          <template #title>
+            <el-icon><ChatDotRound /></el-icon>
+            <span>会话</span>
+          </template>
+          <el-menu-item index="/chat" :disabled="dbOff">对话</el-menu-item>
+          <el-menu-item index="/conversations" :disabled="dbOff">会话历史</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="agent">
+          <template #title>
+            <el-icon><MagicStick /></el-icon>
+            <span>Agent</span>
+          </template>
+          <el-menu-item index="/agent" :disabled="dbOff">Agent</el-menu-item>
+          <el-menu-item index="/agent/runs" :disabled="dbOff">Agent 历史</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="knowledge">
+          <template #title>
+            <el-icon><Collection /></el-icon>
+            <span>知识库</span>
+          </template>
+          <el-menu-item index="/corpus" :disabled="dbOff">知识库</el-menu-item>
+          <el-menu-item index="/rag" :disabled="dbOff">RAG 检索</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="capability">
+          <template #title>
+            <el-icon><Aim /></el-icon>
+            <span>能力</span>
+          </template>
+          <el-menu-item index="/analyze">文件分析</el-menu-item>
+          <el-menu-item index="/intent">意图解析</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="system">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统</span>
+          </template>
+          <el-menu-item index="/logs" :disabled="dbOff">请求日志</el-menu-item>
+          <el-menu-item index="/settings">连接设置</el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-container>
@@ -78,13 +91,9 @@ import {
   ChatDotRound,
   Collection,
   Cpu,
-  Document,
-  Files,
   MagicStick,
   Odometer,
-  Search,
   Setting,
-  Tickets,
 } from "@element-plus/icons-vue";
 import { useModelsStore } from "@/stores/models";
 import { useSettingsStore } from "@/stores/settings";
@@ -94,10 +103,11 @@ const models = useModelsStore();
 const settings = useSettingsStore();
 
 const subtitles: Record<string, string> = {
-  "/": "服务健康与已配置的模型厂商",
+  "/": "服务健康、模型厂商与 Token 消耗",
   "/chat": "多轮流式对话，可挂载知识库做 RAG",
   "/conversations": "查询会话；admin_api_keys 可看全部用户",
-  "/agent": "工具调用循环；下方列表可回溯历史运行",
+  "/agent": "工具调用循环，查看每一步的调用与结果",
+  "/agent/runs": "回溯历史 Agent 运行，点查看打开步骤抽屉",
   "/corpus": "语料库与文档管理，上传后自动分块索引",
   "/rag": "向量检索调试，按相似度查看命中分块",
   "/analyze": "上传 PDF / Word / 图片，抽取结构化字段",
@@ -136,6 +146,7 @@ onMounted(() => {
 .aside {
   background: #fff;
   border-right: 1px solid var(--border);
+  overflow: auto;
 }
 
 .brand {
@@ -155,6 +166,11 @@ onMounted(() => {
 
 .side-menu {
   border-right: none;
+}
+
+.side-menu :deep(.el-sub-menu .el-menu-item) {
+  min-width: 0;
+  padding-left: 48px !important;
 }
 
 .header {
