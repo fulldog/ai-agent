@@ -32,3 +32,16 @@ func ElapsedMs(c *gin.Context) int64 {
 	}
 	return time.Since(start).Milliseconds()
 }
+
+// IsAdminContext 当前请求是否使用了 admin_api_keys 中的密钥。
+func IsAdminContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	v, ok := c.Get(string(CtxIsAdmin))
+	if !ok {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
+}

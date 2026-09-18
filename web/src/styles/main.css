@@ -1,0 +1,200 @@
+:root {
+  --page-bg: #f5f7fa;
+  --panel-bg: #ffffff;
+  --border: #e4e7ed;
+  --text: #303133;
+  --text-muted: #909399;
+  --brand: #409eff;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--page-bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* 页面容器 */
+.page {
+  padding: 16px 20px 24px;
+}
+
+.page-pad {
+  padding: 16px 20px 24px;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+/* 顶部功能卡片行 */
+.hero-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hero-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+
+.hero-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-size: 16px;
+}
+
+.hero-icon.blue {
+  background: #ecf5ff;
+  color: #409eff;
+}
+.hero-icon.green {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+.hero-icon.purple {
+  background: #f5f0fd;
+  color: #8e5cf7;
+}
+.hero-icon.orange {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.hero-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.hero-desc {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 查询工具条 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px 2px;
+  margin-bottom: 12px;
+}
+
+.toolbar .el-form-item {
+  margin-bottom: 12px;
+}
+
+.toolbar-summary {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* 表格卡片 */
+.table-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pager-total {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 状态点 */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--text-muted);
+}
+.status-dot.ok {
+  background: #67c23a;
+}
+.status-dot.warn {
+  background: #e6a23c;
+}
+.status-dot.err {
+  background: #f56c6c;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.md-body p {
+  margin: 0.4em 0;
+}
+
+.md-body pre {
+  background: #f6f8fa;
+  border: 1px solid var(--border);
+  padding: 10px;
+  border-radius: 6px;
+  overflow: auto;
+}
+
+.md-body code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.json-block {
+  background: #f6f8fa;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+}

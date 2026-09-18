@@ -169,6 +169,7 @@ type RequestLog struct {
 	ID              uuid.UUID  `gorm:"type:uuid;primaryKey;comment:日志ID" json:"id"`
 	RequestID       string     `gorm:"type:text;uniqueIndex;comment:请求追踪ID" json:"request_id"`
 	APIKeyID        string     `gorm:"type:text;comment:调用方API Key标识(脱敏)" json:"api_key_id"`
+	UID             string     `gorm:"type:text;index;comment:请求头X-User-Id" json:"uid,omitempty"`
 	Method          string     `gorm:"type:text;comment:HTTP方法" json:"method"`
 	Path            string     `gorm:"type:text;comment:请求路径" json:"path"`
 	PathTemplate    string     `gorm:"type:text;comment:路由模板" json:"path_template"`

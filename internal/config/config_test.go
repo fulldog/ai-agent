@@ -58,6 +58,25 @@ func TestResolveLLM(t *testing.T) {
 	}
 }
 
+func TestCORSAllowOrigins(t *testing.T) {
+	empty := ServerConfig{}
+	if !empty.CORSAllowAll() {
+		t.Fatal("empty cors_origins should allow all origins")
+	}
+	star := ServerConfig{CORSOrigins: []string{"*"}}
+	if !star.CORSAllowAll() {
+		t.Fatal("* should allow all origins")
+	}
+	cfg := ServerConfig{CORSOrigins: []string{"  ", "http://example.test:3000"}}
+	if cfg.CORSAllowAll() {
+		t.Fatal("explicit origin should not allow all")
+	}
+	got := cfg.CORSAllowOrigins()
+	if len(got) != 1 || got[0] != "http://example.test:3000" {
+		t.Fatalf("whitelist, got %#v", got)
+	}
+}
+
 func TestDatabaseIsEnabled(t *testing.T) {
 	f, ttrue := false, true
 	if (DatabaseConfig{Enabled: &f}).IsEnabled() {

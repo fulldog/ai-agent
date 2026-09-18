@@ -58,19 +58,25 @@
 
 ### 1.5 会话 uid 隔离
 
-通过请求头 **`X-User-Id`** 标识终端用户；会话按 `uid` 隔离（同一 API Key 下多用户互不可见）。
+通过请求头 **`X-User-Id`** 标识终端用户；会话按 `uid` 隔离（同一普通 API Key 下多用户互不可见）。
+
+当请求使用 **`auth.admin_api_keys` 中的 `X-API-Key`** 时，可查看/删除全部用户的会话与消息，并查询全部请求日志；可用 Query `uid` 按用户过滤。管理员权限只看密钥，**与 `X-User-Id` 取值无关**。创建会话仍须带 `X-User-Id`，该值会写入新会话的 uid。
 
 | 接口 | `X-User-Id` |
 |------|-------------|
-| 会话 CRUD、消息列表 | **必填** |
-| `/chat/completions`、`/chat/completions/stream` | **必填**（必含 `conversation_id`） |
-| `/chat/analyze*` 且带 `conversation_id` | **必填** |
-| `/agent/runs*` 且带 `conversation_id` | **必填** |
+| 创建会话 | **必填**（写入 uid） |
+| 列出会话、详情、删除、消息列表 | 普通密钥 **必填**；管理员密钥可省略，并可跨用户 |
+| `/chat/completions`、`/chat/completions/stream` | 普通密钥 **必填** 且会话须属于该 uid；管理员密钥可在任意会话上补全 |
+| `/chat/analyze*` 且带 `conversation_id` | 同上 |
+| `/agent/runs*` 且带 `conversation_id` | 同上 |
+| `/logs/requests*` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
 | 无 `conversation_id` 的 analyze、intent、models、语料/RAG 等 | 不要求 |
 
-- 缺头：`400`，`code=uid_required`
-- 会话不属于该 uid（或不存在）：`404`，`code=not_found`（不区分）
-- 历史无 `uid` 的旧会话：列表不可见，按 id 访问亦 404
+- 缺头：`400`，`code=uid_required`（管理员密钥在查询类接口上除外）
+- 会话不属于该 uid（或不存在）：`404`，`code=not_found`（不区分）；管理员密钥除外
+- 历史无 `uid` 的旧会话：普通密钥列表不可见、按 id 访问亦 404；管理员密钥可见
+
+`GET /api/v1/models` 响应含 `is_admin`，表示当前 `X-API-Key` 是否为管理员密钥。
 
 ### 1.6 SSE 约定
 
@@ -115,7 +121,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ## 3. 会话 Conversations
 
-均需 Header：`X-API-Key` + **`X-User-Id`**。列表/读写仅返回当前 uid 的会话。
+均需 Header：`X-API-Key`。普通密钥另需 **`X-User-Id`**，仅返回该 uid 的会话。管理员密钥（`admin_api_keys`）可列出全库，并用 Query `uid` 过滤。创建会话仍须 `X-User-Id`。
 
 ### POST `/api/v1/conversations`
 
@@ -133,19 +139,21 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### GET `/api/v1/conversations`
 
-当前 uid 的会话列表。Query：`limit`（默认 20）、`offset`（实现可固定分页）。
+当前 uid 的会话列表（管理员密钥为全库）。Query：`limit`（默认 20，最大 200）、`offset`、`uid`（仅管理员密钥时生效，按用户过滤）。
+
+响应含 `items`、`total`、`limit`、`offset`、`scope_admin`。
 
 ### GET `/api/v1/conversations/:id`
 
-详情；不属于当前 uid → `404`。
+详情；不属于当前 uid → `404`。管理员密钥时按 id 直查。
 
 ### DELETE `/api/v1/conversations/:id`
 
-删除会话（软删）；不属于当前 uid → `404`。
+删除会话（软删）；不属于当前 uid → `404`。管理员密钥时可删任意会话。
 
 ### GET `/api/v1/conversations/:id/messages`
 
-消息列表；先校验会话归属。
+消息列表；先校验会话归属。管理员密钥时按 id 读取。
 
 ---
 
@@ -155,11 +163,11 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### GET `/api/v1/models`
 
-列出 YAML 中配置的厂商（含是否已配 key，**不含密钥**）。
+列出 YAML 中配置的厂商（含是否已配 key，**不含密钥**）。响应另含 `is_admin`（当前密钥是否在 `admin_api_keys`）。
 
 ### POST `/api/v1/chat/completions`
 
-同步补全（非流式）。**必填** `X-User-Id`；`conversation_id` 须属于该 uid，否则 `404`。
+同步补全（非流式）。普通密钥 **必填** `X-User-Id`，且 `conversation_id` 须属于该 uid，否则 `404`。管理员密钥可对任意会话补全。
 
 ```json
 {
@@ -194,13 +202,13 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### POST `/api/v1/chat/completions/stream`
 
-流式补全。请求体同同步接口（含 `X-User-Id` 要求）。SSE 事件：`delta`、`done`、`error`。
+流式补全。请求体同同步接口（含 `X-User-Id` / 管理员密钥规则）。SSE 事件：`delta`、`done`、`error`。
 
 ### POST `/api/v1/chat/analyze`
 
 **上传文件直接交给大模型分析，不写入语料库。**  
 适合：合同 PDF 抽字段，一次性返回 JSON。  
-带 `conversation_id` 时须 `X-User-Id` 且会话属该 uid；无会话时可省略。
+带 `conversation_id` 时：普通密钥须 `X-User-Id` 且会话属该 uid；管理员密钥可关联任意会话。无会话时可省略。
 
 #### 合同抽字段示例（推荐）
 
@@ -333,7 +341,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 ### POST `/api/v1/agent/runs`
 
-同步 Agent 运行（适合短任务）。带 `conversation_id` 时须 `X-User-Id`。
+同步 Agent 运行（适合短任务）。带 `conversation_id` 时：普通密钥须 `X-User-Id`；管理员密钥可关联任意会话。
 
 ```json
 {
@@ -473,7 +481,7 @@ multipart 响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`�
 
 ### GET `/api/v1/logs/requests`
 
-查询请求日志（需 API Key；可选仅 admin key）。
+查询请求日志（需 `X-API-Key`）。普通密钥另需 `X-User-Id`，仅返回该 uid 的记录；管理员密钥可查全部，并用 Query `uid` 过滤。
 
 Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`、`from`、`to`、`path`。
 

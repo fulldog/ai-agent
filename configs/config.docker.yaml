@@ -6,6 +6,8 @@
 server:
   addr: ":18090"
   mode: release
+  # CORS：留空或 ["*"] 允许所有来源
+  cors_origins: []
 
 auth:
   api_keys:

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
+	"github.com/webapp/go-app/ai-agent/internal/model"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -112,6 +114,7 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 			zap.String("method", c.Request.Method),
 			zap.String("path", c.Request.URL.Path),
 			zap.String("path_template", pathTemplate),
+			zap.String("uid", UIDFromContext(c)),
 			zap.String("body", bodyStr),
 			zap.Int("status", c.Writer.Status()),
 			zap.Duration("latency", latency),
@@ -120,6 +123,29 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 			zap.Bool("stream", stream),
 			zap.Int("bytes_out_preview", bw.buf.Len()),
 		)
+
+		if db != nil && strings.HasPrefix(pathTemplate, "/api/v1") && !strings.HasPrefix(pathTemplate, "/api/v1/logs") {
+			apiKeyIDStr, _ := apiKeyID.(string)
+			row := model.RequestLog{
+				RequestID:       reqID,
+				APIKeyID:        apiKeyIDStr,
+				UID:             UIDFromContext(c),
+				Method:          c.Request.Method,
+				Path:            c.Request.URL.Path,
+				PathTemplate:    pathTemplate,
+				Status:          c.Writer.Status(),
+				LatencyMs:       elapsedMs,
+				RequestBody:     bodyStr,
+				ResponsePreview: truncate(bw.buf.String(), cfg.Log.BodyPreviewMax),
+				Stream:          stream,
+				SSEEventCount:   bw.sseCount,
+				ConversationID:  parseBodyUUID(reqBody, "conversation_id"),
+				AgentRunID:      parseJSONUUID(bw.buf.Bytes(), "run_id"),
+			}
+			go func(r model.RequestLog) {
+				_ = db.Create(&r).Error
+			}(row)
+		}
 	}
 }
 
@@ -172,4 +198,31 @@ func truncate(s string, max int) string {
 
 func endsWith(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+func parseBodyUUID(body []byte, key string) *uuid.UUID {
+	return parseJSONUUID(body, key)
+}
+
+func parseJSONUUID(raw []byte, key string) *uuid.UUID {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil
+	}
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil
+	}
+	return &id
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/webapp/go-app/ai-agent/internal/middleware"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
@@ -23,7 +24,7 @@ type ChatHandler struct {
 }
 
 func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
-	uid, ok := requireUID(c)
+	uid, admin, ok := bindUID(c, false)
 	if !ok {
 		return chat.CompleteInput{}, false
 	}
@@ -52,6 +53,7 @@ func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
 	in := chat.CompleteInput{
 		ConversationID: cid,
 		UID:            uid,
+		Admin:          admin,
 		Message:        req.Message,
 		Provider:       req.Provider,
 		Model:          req.Model,
@@ -172,7 +174,7 @@ func parseBoolForm(v string) bool {
 
 func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 	ct := c.ContentType()
-	in := chat.AnalyzeInput{RequestID: requestID(c)}
+	in := chat.AnalyzeInput{RequestID: requestID(c), Admin: middleware.IsAdminContext(c)}
 
 	if strings.HasPrefix(ct, "multipart/form-data") {
 		in.Message = strings.TrimSpace(c.PostForm("message"))
@@ -203,11 +205,12 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 				writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
 				return chat.AnalyzeInput{}, false
 			}
-			uid, ok := requireUID(c)
+			uid, admin, ok := bindUID(c, false)
 			if !ok {
 				return chat.AnalyzeInput{}, false
 			}
 			in.UID = uid
+			in.Admin = admin
 			id, err := uuid.Parse(cid)
 			if err != nil {
 				writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -307,11 +310,12 @@ func (h *ChatHandler) parseAnalyze(c *gin.Context) (chat.AnalyzeInput, bool) {
 			writeError(c, http.StatusBadRequest, "bad_request", "conversation_id 需要数据库；最小化部署请勿传该字段")
 			return chat.AnalyzeInput{}, false
 		}
-		uid, ok := requireUID(c)
+		uid, admin, ok := bindUID(c, false)
 		if !ok {
 			return chat.AnalyzeInput{}, false
 		}
 		in.UID = uid
+		in.Admin = admin
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")

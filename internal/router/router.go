@@ -18,7 +18,8 @@ func Setup(application *app.App) *gin.Engine {
 	}
 
 	r := gin.New()
-	// 全局中间件：panic 恢复 → 请求日志落库/zap → Prometheus HTTP 指标
+	// 全局中间件：CORS → panic 恢复 → 请求日志落库/zap → Prometheus HTTP 指标
+	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.Recover(application.Log))
 	accessLog := application.AccessLog
 	if accessLog == nil {

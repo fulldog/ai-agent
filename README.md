@@ -111,6 +111,35 @@ go run ./cmd/server -config configs/config.yaml
 
 默认示例 Key（见配置）：`change-me-api-key`。
 
+## 前端控制台
+
+仓库 `web/` 是 Vue 3 + Vite 控制台（对话 SSE、Agent、知识库、RAG、文件分析、意图、请求日志）。不嵌入 Go 二进制。
+
+**开发（Vite 将 `/api`、`/health` 代理到后端）：**
+
+代理地址读 `web/.env` 的 `VITE_PROXY_TARGET`，默认 `http://127.0.0.1:18090`。修改后需重启 `npm run dev` / `npm run preview`。
+
+```powershell
+cd web
+copy .env.example .env   # 已有 .env 可跳过
+npm install
+npm run dev
+```
+
+浏览器打开 `http://localhost:5173`。先到「连接设置」填写 `X-API-Key`（示例 `change-me-api-key`）和 `X-User-Id`（任意非空字符串，用于会话隔离）。API Base 留空即可走代理。
+
+若控制台不走代理、直连 `http://127.0.0.1:18090`，默认 CORS 允许所有来源。若要收紧，在 `server.cors_origins` 填写具体 Origin。
+
+**构建与本地预览：**
+
+```bash
+cd web
+npm run build          # 产物 web/dist，可用 nginx 反代 /api 到后端
+npm run preview        # http://localhost:4173，同样按 .env 的 VITE_PROXY_TARGET 代理 /api、/health
+```
+
+自行部署 `web/dist` 时，静态服务器需把 `/api`、`/health` 反代到后端；否则请在控制台「连接设置」填写 API Base 直连（默认 CORS 已允许任意 Origin）。
+
 ## 文档
 
 | 文档 | 说明 |
@@ -140,6 +169,7 @@ go run ./cmd/server -config configs/config.yaml
 | Embedding | OpenAI 兼容（默认 Ollama） |
 | 鉴权 | `X-API-Key` |
 | 监控 | Prometheus `/metrics` |
+| 控制台 | Vue 3 + Vite + TypeScript + Element Plus（`web/`） |
 
 ## 实现里程碑
 

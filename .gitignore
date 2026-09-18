@@ -11,4 +11,4 @@ data/
 .vscode/
 *.log
 .env
-vendor/
+web/node_modules/

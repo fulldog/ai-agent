@@ -50,6 +50,7 @@ func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, l
 type RunInput struct {
 	ConversationID *uuid.UUID
 	UID            string
+	Admin          bool
 	Input          string
 	Provider       string
 	Model          string
@@ -88,12 +89,16 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		maxSteps = s.cfg.Agent.MaxSteps
 	}
 	if in.ConversationID != nil {
-		uid := strings.TrimSpace(in.UID)
-		if uid == "" {
-			return nil, fmt.Errorf("conversation not found")
-		}
 		var conv model.Conversation
-		if err := s.db.First(&conv, "id = ? AND uid = ?", *in.ConversationID, uid).Error; err != nil {
+		q := s.db.Where("id = ?", *in.ConversationID)
+		if !in.Admin {
+			uid := strings.TrimSpace(in.UID)
+			if uid == "" {
+				return nil, fmt.Errorf("conversation not found")
+			}
+			q = q.Where("uid = ?", uid)
+		}
+		if err := q.First(&conv).Error; err != nil {
 			return nil, fmt.Errorf("conversation not found")
 		}
 	}

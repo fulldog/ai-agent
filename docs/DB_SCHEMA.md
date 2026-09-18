@@ -245,6 +245,7 @@ LIMIT $3;
 | stream | BOOLEAN | 是否 SSE 流式 |
 | sse_event_count | INT | SSE 事件数 |
 | conversation_id | UUID NULL | 关联会话ID |
+| uid | TEXT | 请求头 `X-User-Id` |
 | agent_run_id | UUID NULL | 关联 Agent 运行ID |
 | error_message | TEXT NULL | 错误信息 |
 | created_at | TIMESTAMPTZ | 创建时间 |

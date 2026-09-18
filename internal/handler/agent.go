@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/webapp/go-app/ai-agent/internal/middleware"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 )
 
@@ -32,14 +33,15 @@ func (h *AgentHandler) parse(c *gin.Context) (agent.RunInput, bool) {
 	}
 	in := agent.RunInput{
 		Input: req.Input, Provider: req.Provider, Model: req.Model, MaxSteps: req.MaxSteps,
-		Tools: req.Tools, RequestID: requestID(c),
+		Tools: req.Tools, RequestID: requestID(c), Admin: middleware.IsAdminContext(c),
 	}
 	if req.ConversationID != "" {
-		uid, ok := requireUID(c)
+		uid, admin, ok := bindUID(c, false)
 		if !ok {
 			return agent.RunInput{}, false
 		}
 		in.UID = uid
+		in.Admin = admin
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")

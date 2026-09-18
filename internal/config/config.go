@@ -27,6 +27,42 @@ type Config struct {
 type ServerConfig struct {
 	Addr string `yaml:"addr"`
 	Mode string `yaml:"mode"`
+	// CORSOrigins 浏览器 Origin 白名单。空或含 * 时允许所有来源；填写具体 Origin 则仅放行这些源。
+	CORSOrigins []string `yaml:"cors_origins"`
+}
+
+func (s ServerConfig) corsOriginList() []string {
+	out := make([]string, 0, len(s.CORSOrigins))
+	for _, o := range s.CORSOrigins {
+		o = strings.TrimSpace(o)
+		if o == "" {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// CORSAllowAll 未配置 cors_origins，或列表中含 * 时允许任意 Origin。
+func (s ServerConfig) CORSAllowAll() bool {
+	list := s.corsOriginList()
+	if len(list) == 0 {
+		return true
+	}
+	for _, o := range list {
+		if o == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// CORSAllowOrigins 在未放开全部来源时返回白名单。
+func (s ServerConfig) CORSAllowOrigins() []string {
+	if s.CORSAllowAll() {
+		return nil
+	}
+	return s.corsOriginList()
 }
 
 type AuthConfig struct {

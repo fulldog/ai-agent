@@ -60,15 +60,66 @@ func (s *Service) CreateConversation(in CreateConversationInput) (*model.Convers
 }
 
 func (s *Service) ListConversations(uid string, limit, offset int) ([]model.Conversation, error) {
+	rows, _, err := s.QueryConversations(uid, false, limit, offset)
+	return rows, err
+}
+
+// QueryConversations 分页列出会话。all=true 时列出全库（可选 uid 过滤）；否则必须带 uid。
+func (s *Service) QueryConversations(uid string, all bool, limit, offset int) ([]model.Conversation, int64, error) {
 	uid = strings.TrimSpace(uid)
-	if uid == "" {
-		return nil, fmt.Errorf("uid required")
+	if !all && uid == "" {
+		return nil, 0, fmt.Errorf("uid required")
 	}
 	if limit <= 0 {
 		limit = 20
 	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := s.db.Model(&model.Conversation{})
+	if uid != "" {
+		q = q.Where("uid = ?", uid)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var rows []model.Conversation
-	err := s.db.Where("uid = ?", uid).Order("created_at desc").Limit(limit).Offset(offset).Find(&rows).Error
+	err := q.Order("created_at desc").Limit(limit).Offset(offset).Find(&rows).Error
+	return rows, total, err
+}
+
+func (s *Service) GetConversationByID(id uuid.UUID) (*model.Conversation, error) {
+	var c model.Conversation
+	if err := s.db.First(&c, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (s *Service) DeleteConversationByID(id uuid.UUID) error {
+	res := s.db.Where("id = ?", id).Delete(&model.Conversation{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *Service) ListMessagesByID(conversationID uuid.UUID, limit int) ([]model.Message, error) {
+	if _, err := s.GetConversationByID(conversationID); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var rows []model.Message
+	err := s.db.Where("conversation_id = ?", conversationID).Order("created_at asc").Limit(limit).Find(&rows).Error
 	return rows, err
 }
 
@@ -114,6 +165,7 @@ func (s *Service) ListMessages(conversationID uuid.UUID, uid string, limit int) 
 type CompleteInput struct {
 	ConversationID uuid.UUID
 	UID            string
+	Admin          bool
 	Message        string
 	Provider       string
 	Model          string
@@ -291,11 +343,22 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 }
 
 func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Conversation, []model.Message, []llm.Message, error) {
-	conv, err := s.GetConversation(in.ConversationID, in.UID)
+	var conv *model.Conversation
+	var err error
+	if in.Admin {
+		conv, err = s.GetConversationByID(in.ConversationID)
+	} else {
+		conv, err = s.GetConversation(in.ConversationID, in.UID)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	history, err := s.ListMessages(conv.ID, in.UID, 100)
+	var history []model.Message
+	if in.Admin {
+		history, err = s.ListMessagesByID(conv.ID, 100)
+	} else {
+		history, err = s.ListMessages(conv.ID, in.UID, 100)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -358,6 +421,7 @@ const defaultAnalyzeMaxRunes = 80000
 type AnalyzeInput struct {
 	ConversationID *uuid.UUID
 	UID            string
+	Admin          bool
 	Message        string
 	Fields         []string
 	ResponseJSON   bool
@@ -402,7 +466,13 @@ func (s *Service) Analyze(ctx context.Context, in AnalyzeInput, onDelta func(str
 		return nil, fmt.Errorf("请提供 message（自定义问题）或 fields（要抽取的字段列表）")
 	}
 	if in.ConversationID != nil {
-		if _, err := s.GetConversation(*in.ConversationID, in.UID); err != nil {
+		var err error
+		if in.Admin {
+			_, err = s.GetConversationByID(*in.ConversationID)
+		} else {
+			_, err = s.GetConversation(*in.ConversationID, in.UID)
+		}
+		if err != nil {
 			return nil, fmt.Errorf("conversation not found")
 		}
 	}
