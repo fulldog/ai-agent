@@ -29,9 +29,7 @@ database:
 
 llm:
   # 默认厂商；请求未传 provider 时使用
-  default_provider: deepseek
-  # 兼容旧字段（与 default_provider / 默认厂商扁平配置等价）
-  provider: deepseek
+  default_provider: qwen
   timeout_seconds: 120
   # 多厂商（OpenAI 兼容协议）。也可用环境变量注入 key：
   #   DEEPSEEK_API_KEY / DASHSCOPE_API_KEY|QWEN_API_KEY / MOONSHOT_API_KEY|KIMI_API_KEY / ARK_API_KEY|DOUBAO_API_KEY
@@ -125,3 +123,11 @@ request_log:
   enabled: true
   # 是否把 request body 写入 PostgreSQL request_logs
   persist_body: true
+
+# 钉钉 Stream 机器人。环境变量：DINGTALK_ENABLED、DINGTALK_CLIENT_ID、
+# DINGTALK_CLIENT_SECRET、DINGTALK_CARD_TEMPLATE_ID
+dingtalk:
+  enabled: false
+  client_id: ""         # 凭证与基础信息的 Client ID（旧称 AppKey）
+  client_secret: ""     # 同一应用的 Client Secret
+  card_template_id: ""  # 可选；留空则整段回复走 sessionWebhook

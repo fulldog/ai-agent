@@ -38,10 +38,7 @@
         <el-input-number v-model="topK" :min="1" :max="20" :disabled="!ragEnabled" />
       </div>
       <el-scrollbar class="msgs" ref="scrollRef">
-        <div v-for="m in messages" :key="m.id" class="msg" :class="m.role">
-          <div class="role">{{ m.role }}</div>
-          <div class="md-body" v-html="renderMarkdown(m.content)" />
-        </div>
+        <ChatThread :messages="messages" empty-text="选择或新建会话后开始对话" />
       </el-scrollbar>
       <div class="composer">
         <el-input v-model="draft" type="textarea" :rows="3" placeholder="输入消息，Enter 发送（Shift+Enter 换行）" @keydown="onKey" />
@@ -60,7 +57,7 @@ import { nextTick, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { requestJSON, formatAPIError } from "@/api/client";
 import { postSSE } from "@/api/sse";
-import { renderMarkdown } from "@/lib/markdown";
+import ChatThread from "@/components/ChatThread.vue";
 import { useModelsStore } from "@/stores/models";
 import { useSettingsStore } from "@/stores/settings";
 import type { Conversation, Corpus, Message } from "@/api/types";
@@ -318,21 +315,6 @@ onMounted(async () => {
 .msgs {
   flex: 1;
   padding: 16px;
-}
-.msg {
-  margin-bottom: 16px;
-}
-.msg .role {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-}
-.msg.user .md-body {
-  background: #ecf5ff;
-  padding: 8px 12px;
-  border-radius: 6px;
-  display: inline-block;
 }
 .composer {
   border-top: 1px solid var(--border);

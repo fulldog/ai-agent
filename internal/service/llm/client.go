@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -126,7 +125,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		err = fmt.Errorf("llm error %d: %s", resp.StatusCode, string(raw))
+		err = parseAPIError(resp.StatusCode, raw)
 		return nil, err
 	}
 	var parsed completionResponse
@@ -177,7 +176,7 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest, onChunk func(S
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(resp.Body)
-		err = fmt.Errorf("llm stream error %d: %s", resp.StatusCode, string(raw))
+		err = parseAPIError(resp.StatusCode, raw)
 		return nil, err
 	}
 

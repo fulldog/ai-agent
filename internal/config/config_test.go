@@ -38,6 +38,25 @@ llm:
 	if len(cfg.Auth.APIKeys) != 2 {
 		t.Fatalf("api keys override failed: %#v", cfg.Auth.APIKeys)
 	}
+	if cfg.LLM.DefaultProvider != "qwen" {
+		t.Fatalf("default provider: %q", cfg.LLM.DefaultProvider)
+	}
+}
+
+func TestLegacyLLMProviderField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.yaml")
+	content := "database:\n  dsn: postgres://x\nllm:\n  provider: kimi\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.DefaultProvider != "kimi" {
+		t.Fatalf("legacy provider should map to default_provider, got %q", cfg.LLM.DefaultProvider)
+	}
 }
 
 func TestResolveLLM(t *testing.T) {
@@ -121,5 +140,24 @@ func TestAlsoStdoutDefaultsByMode(t *testing.T) {
 	proCfg := writeAndLoad("pro")
 	if proCfg.Log.AlsoStdout == nil || *proCfg.Log.AlsoStdout {
 		t.Fatalf("pro should also_stdout=false, got %#v", proCfg.Log.AlsoStdout)
+	}
+}
+
+func TestDingTalkEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dt.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DINGTALK_ENABLED", "true")
+	t.Setenv("DINGTALK_CLIENT_ID", "cid")
+	t.Setenv("DINGTALK_CLIENT_SECRET", "csecret")
+	t.Setenv("DINGTALK_CARD_TEMPLATE_ID", "tpl")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DingTalk.Enabled || cfg.DingTalk.ClientID != "cid" || cfg.DingTalk.CardTemplateID != "tpl" {
+		t.Fatalf("dingtalk env: %#v", cfg.DingTalk)
 	}
 }

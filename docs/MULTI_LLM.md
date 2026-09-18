@@ -6,7 +6,7 @@
 
 ```yaml
 llm:
-  default_provider: deepseek
+  default_provider: qwen
   timeout_seconds: 120
   providers:
     deepseek:
@@ -27,7 +27,7 @@ llm:
       default_model: "ep-xxxx"   # 方舟接入点 ID 或模型名
 ```
 
-兼容旧写法：仅配置顶层 `llm.provider` / `base_url` / `api_key` / `default_model`，会合并进默认厂商。
+兼容旧写法：仅配置顶层 `llm.provider`（等同 `default_provider`）或 `base_url` / `api_key` / `default_model`，会合并进默认厂商。新配置只写 `default_provider`。
 
 也可在 `providers` 下增加自定义 key（任意名字），填兼容网关的 `base_url` + `api_key`。
 

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -33,10 +34,12 @@ func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, l
 }
 
 type CreateConversationInput struct {
-	UID          string
-	Title        string
-	SystemPrompt string
-	CorpusID     *uuid.UUID
+	UID              string
+	Title            string
+	SystemPrompt     string
+	CorpusID         *uuid.UUID
+	Channel          string
+	ChannelSessionID string
 }
 
 func (s *Service) CreateConversation(in CreateConversationInput) (*model.Conversation, error) {
@@ -45,10 +48,12 @@ func (s *Service) CreateConversation(in CreateConversationInput) (*model.Convers
 		return nil, fmt.Errorf("uid required")
 	}
 	c := &model.Conversation{
-		UID:          uid,
-		Title:        in.Title,
-		SystemPrompt: in.SystemPrompt,
-		CorpusID:     in.CorpusID,
+		UID:              uid,
+		Title:            in.Title,
+		SystemPrompt:     in.SystemPrompt,
+		CorpusID:         in.CorpusID,
+		Channel:          strings.TrimSpace(in.Channel),
+		ChannelSessionID: strings.TrimSpace(in.ChannelSessionID),
 	}
 	if c.Title == "" {
 		c.Title = "conversation"
@@ -57,6 +62,42 @@ func (s *Service) CreateConversation(in CreateConversationInput) (*model.Convers
 		return nil, err
 	}
 	return c, nil
+}
+
+// FindOrCreateByChannel 按 uid + 通道 + 通道会话 ID 复用会话（钉钉群/单聊隔离）。
+func (s *Service) FindOrCreateByChannel(in CreateConversationInput) (*model.Conversation, error) {
+	uid := strings.TrimSpace(in.UID)
+	ch := strings.TrimSpace(in.Channel)
+	sid := strings.TrimSpace(in.ChannelSessionID)
+	if uid == "" {
+		return nil, fmt.Errorf("uid required")
+	}
+	if ch == "" || sid == "" {
+		return nil, fmt.Errorf("channel and channel_session_id required")
+	}
+	var c model.Conversation
+	err := s.db.Where("uid = ? AND channel = ? AND channel_session_id = ?", uid, ch, sid).First(&c).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	if err == nil {
+		updates := map[string]any{}
+		if in.Title != "" && c.Title != in.Title {
+			updates["title"] = in.Title
+		}
+		if in.CorpusID != nil && (c.CorpusID == nil || *c.CorpusID != *in.CorpusID) {
+			updates["corpus_id"] = *in.CorpusID
+			c.CorpusID = in.CorpusID
+		}
+		if len(updates) > 0 {
+			_ = s.db.Model(&c).Updates(updates).Error
+		}
+		return &c, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	return s.CreateConversation(in)
 }
 
 func (s *Service) ListConversations(uid string, limit, offset int) ([]model.Conversation, error) {
@@ -173,6 +214,7 @@ type CompleteInput struct {
 	MaxTokens      int
 	RAGEnabled     bool
 	CorpusID       *uuid.UUID
+	RAGHits        []rag.Hit
 	TopK           int
 	RequestID      string
 }
@@ -201,6 +243,22 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 		Temperature: in.Temperature,
 		MaxTokens:   in.MaxTokens,
 	})
+	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
+		s.llmLog.Warn("retry llm without rag after content inspection")
+		retry := in
+		retry.RAGEnabled = false
+		retry.RAGHits = nil
+		_, _, retryMsgs, perr := s.prepare(ctx, retry)
+		if perr == nil {
+			llmMsgs = retryMsgs
+			resp, err = client.Chat(ctx, llm.ChatRequest{
+				Model:       modelName,
+				Messages:    llmMsgs,
+				Temperature: in.Temperature,
+				MaxTokens:   in.MaxTokens,
+			})
+		}
+	}
 	status := "ok"
 	errMsg := ""
 	if err != nil {
@@ -274,17 +332,31 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 		return nil, err
 	}
 	start := time.Now()
-	resp, err := client.ChatStream(ctx, llm.ChatRequest{
-		Model:       modelName,
-		Messages:    llmMsgs,
-		Temperature: in.Temperature,
-		MaxTokens:   in.MaxTokens,
-	}, func(ev llm.StreamEvent) error {
-		if ev.Content != "" && onDelta != nil {
-			return onDelta(ev.Content)
+	streamFn := func(msgs []llm.Message) (*llm.ChatResponse, error) {
+		return client.ChatStream(ctx, llm.ChatRequest{
+			Model:       modelName,
+			Messages:    msgs,
+			Temperature: in.Temperature,
+			MaxTokens:   in.MaxTokens,
+		}, func(ev llm.StreamEvent) error {
+			if ev.Content != "" && onDelta != nil {
+				return onDelta(ev.Content)
+			}
+			return nil
+		})
+	}
+	resp, err := streamFn(llmMsgs)
+	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
+		s.llmLog.Warn("retry llm stream without rag after content inspection")
+		retry := in
+		retry.RAGEnabled = false
+		retry.RAGHits = nil
+		_, _, retryMsgs, perr := s.prepare(ctx, retry)
+		if perr == nil {
+			llmMsgs = retryMsgs
+			resp, err = streamFn(llmMsgs)
 		}
-		return nil
-	})
+	}
 	status := "ok"
 	errMsg := ""
 	if err != nil {
@@ -368,23 +440,27 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 	if corpusID == nil {
 		corpusID = conv.CorpusID
 	}
-	if in.RAGEnabled && corpusID != nil && s.rag != nil {
+	hits := in.RAGHits
+	if in.RAGEnabled && len(hits) == 0 && corpusID != nil && s.rag != nil {
 		topK := in.TopK
 		if topK <= 0 {
 			topK = s.cfg.RAG.TopK
 		}
-		hits, rerr := s.rag.Search(ctx, *corpusID, in.Message, topK)
-		if rerr == nil && len(hits) > 0 {
-			var b strings.Builder
-			b.WriteString("Use the following knowledge context when relevant:\n")
-			for i, h := range hits {
-				b.WriteString(fmt.Sprintf("[%d] %s\n", i+1, h.Content))
-			}
-			if system != "" {
-				system = system + "\n\n" + b.String()
-			} else {
-				system = b.String()
-			}
+		found, rerr := s.rag.Search(ctx, *corpusID, in.Message, topK)
+		if rerr == nil {
+			hits = found
+		}
+	}
+	if len(hits) > 0 {
+		var b strings.Builder
+		b.WriteString("Use the following knowledge context when relevant:\n")
+		for i, h := range hits {
+			b.WriteString(fmt.Sprintf("[%d] %s\n", i+1, h.Content))
+		}
+		if system != "" {
+			system = system + "\n\n" + b.String()
+		} else {
+			system = b.String()
 		}
 	}
 	if system != "" {

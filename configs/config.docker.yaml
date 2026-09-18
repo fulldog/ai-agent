@@ -26,8 +26,7 @@ database:
   auto_migrate: true
 
 llm:
-  default_provider: deepseek
-  provider: deepseek
+  default_provider: qwen
   timeout_seconds: 120
   providers:
     deepseek:
@@ -107,3 +106,9 @@ metrics:
 request_log:
   enabled: true
   persist_body: true
+
+dingtalk:
+  enabled: false
+  client_id: ""
+  client_secret: ""
+  card_template_id: ""

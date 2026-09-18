@@ -13,6 +13,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/middleware"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
+	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/pkg/extract"
 	"gorm.io/gorm"
 )
@@ -88,7 +89,7 @@ func (h *ChatHandler) Completions(c *gin.Context) {
 			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
 			return
 		}
-		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		writeError(c, http.StatusBadRequest, "bad_request", llm.PublicMessage(err))
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -118,8 +119,8 @@ func (h *ChatHandler) CompletionsStream(c *gin.Context) {
 		return writeSSE(c, "delta", gin.H{"content": delta})
 	})
 	if err != nil {
-		msg := err.Error()
-		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(msg, "record not found") {
+		msg := llm.PublicMessage(err)
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "record not found") {
 			msg = "conversation not found"
 		}
 		_ = writeSSE(c, "error", gin.H{"message": msg})
@@ -372,7 +373,7 @@ func (h *ChatHandler) Analyze(c *gin.Context) {
 			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
 			return
 		}
-		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		writeError(c, http.StatusBadRequest, "bad_request", llm.PublicMessage(err))
 		return
 	}
 	c.JSON(http.StatusOK, analyzeResponse(res))
@@ -394,7 +395,7 @@ func (h *ChatHandler) AnalyzeStream(c *gin.Context) {
 		return writeSSE(c, "delta", gin.H{"content": delta})
 	})
 	if err != nil {
-		_ = writeSSE(c, "error", gin.H{"message": err.Error()})
+		_ = writeSSE(c, "error", gin.H{"message": llm.PublicMessage(err)})
 		return
 	}
 	_ = writeSSE(c, "done", analyzeResponse(res))

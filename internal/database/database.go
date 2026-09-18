@@ -63,8 +63,12 @@ func migrate(db *gorm.DB) error {
 	); err != nil {
 		return fmt.Errorf("automigrate: %w", err)
 	}
-	var dim int
-	_ = db.Raw(`SELECT 1`).Scan(&dim)
+	if err := db.Exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_uid_channel_session
+ON conversations (uid, channel, channel_session_id)
+WHERE deleted_at IS NULL AND channel <> '' AND channel_session_id <> ''`).Error; err != nil {
+		return fmt.Errorf("channel session unique index: %w", err)
+	}
 	return nil
 }
 

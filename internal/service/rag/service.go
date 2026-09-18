@@ -24,18 +24,28 @@ func New(db *gorm.DB, embedClient *embed.Client) *Service {
 type Hit struct {
 	ChunkID    uuid.UUID `json:"chunk_id"`
 	DocumentID uuid.UUID `json:"document_id"`
+	CorpusID   uuid.UUID `json:"corpus_id,omitempty"`
 	Content    string    `json:"content"`
 	Score      float64   `json:"score"`
 	Metadata   string    `json:"metadata"`
 }
 
 func (s *Service) Search(ctx context.Context, corpusID uuid.UUID, query string, topK int) ([]Hit, error) {
+	return s.SearchInCorpora(ctx, []uuid.UUID{corpusID}, query, topK)
+}
+
+// SearchInCorpora 在指定语料库中向量检索；corpusIDs 为空则检索全部已入库分块。
+func (s *Service) SearchInCorpora(ctx context.Context, corpusIDs []uuid.UUID, query string, topK int) ([]Hit, error) {
 	start := time.Now()
 	status := "ok"
 	defer func() {
 		metrics.RAGSearch.WithLabelValues(status).Inc()
 		metrics.RAGDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
 	}()
+	if s.db == nil || s.embed == nil {
+		status = "error"
+		return nil, fmt.Errorf("rag not configured")
+	}
 	if topK <= 0 {
 		topK = 5
 	}
@@ -48,18 +58,31 @@ func (s *Service) Search(ctx context.Context, corpusID uuid.UUID, query string, 
 	type row struct {
 		ID         uuid.UUID
 		DocumentID uuid.UUID
+		CorpusID   uuid.UUID
 		Content    string
 		Metadata   string
 		Distance   float64
 	}
 	var rows []row
-	err = s.db.WithContext(ctx).Raw(`
-SELECT id, document_id, content, COALESCE(metadata::text, '{}') AS metadata,
+	args := []any{vecLit}
+	where := "embedding IS NOT NULL"
+	if len(corpusIDs) > 0 {
+		ph := make([]string, len(corpusIDs))
+		for i, id := range corpusIDs {
+			ph[i] = "?"
+			args = append(args, id)
+		}
+		where += " AND corpus_id IN (" + strings.Join(ph, ",") + ")"
+	}
+	args = append(args, vecLit, topK)
+	q := fmt.Sprintf(`
+SELECT id, document_id, corpus_id, content, COALESCE(metadata::text, '{}') AS metadata,
        (embedding <=> ?::vector) AS distance
 FROM chunks
-WHERE corpus_id = ? AND embedding IS NOT NULL
+WHERE %s
 ORDER BY embedding <=> ?::vector
-LIMIT ?`, vecLit, corpusID, vecLit, topK).Scan(&rows).Error
+LIMIT ?`, where)
+	err = s.db.WithContext(ctx).Raw(q, args...).Scan(&rows).Error
 	if err != nil {
 		status = "error"
 		return nil, err
@@ -69,6 +92,7 @@ LIMIT ?`, vecLit, corpusID, vecLit, topK).Scan(&rows).Error
 		hits = append(hits, Hit{
 			ChunkID:    r.ID,
 			DocumentID: r.DocumentID,
+			CorpusID:   r.CorpusID,
 			Content:    r.Content,
 			Score:      r.Distance,
 			Metadata:   r.Metadata,

@@ -74,11 +74,13 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | title | TEXT | 会话标题 |
 | system_prompt | TEXT | 系统提示词（可空） |
 | corpus_id | UUID NULL | 默认绑定的语料库ID（RAG） |
+| channel | TEXT 默认 `''` | 来源通道；空=控制台，`dingtalk`=钉钉机器人 |
+| channel_session_id | TEXT 默认 `''` | 通道内会话 ID（钉钉 `conversationId`） |
 | created_at | TIMESTAMPTZ | 创建时间 |
 | updated_at | TIMESTAMPTZ | 更新时间 |
 | deleted_at | TIMESTAMPTZ NULL | 软删除时间 |
 
-索引：`deleted_at`；`(uid, created_at)`（按用户列表）；建议按 `created_at DESC` 查询。
+索引：`deleted_at`；`(uid, created_at)`（按用户列表）；部分唯一索引 `(uid, channel, channel_session_id)`（仅 `channel` 与 `channel_session_id` 均非空，控制台会话不受影响）。
 
 ### 3.2 messages（会话消息表）
 

@@ -63,12 +63,8 @@
       </div>
     </div>
 
-    <el-drawer v-model="drawer" :title="drawerTitle" size="50%">
-      <div v-for="m in messages" :key="m.id" class="msg">
-        <div class="role">{{ m.role }} · {{ formatTime(m.created_at) }}</div>
-        <div class="md-body" v-html="renderMarkdown(m.content)" />
-      </div>
-      <p v-if="drawer && !messages.length" class="muted">暂无消息</p>
+    <el-drawer v-model="drawer" :title="drawerTitle" size="560px">
+      <ChatThread :messages="messages" empty-text="暂无消息" show-time />
     </el-drawer>
   </div>
 </template>
@@ -78,7 +74,7 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { ChatLineSquare, Delete, Search, User } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
-import { renderMarkdown } from "@/lib/markdown";
+import ChatThread from "@/components/ChatThread.vue";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
 import type { Conversation, Message } from "@/api/types";
@@ -183,14 +179,3 @@ onMounted(() => {
   void load();
 });
 </script>
-
-<style scoped>
-.msg {
-  margin-bottom: 14px;
-}
-.role {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-}
-</style>

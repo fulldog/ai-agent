@@ -6,6 +6,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
+	"github.com/webapp/go-app/ai-agent/internal/service/dingtalk"
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
 	"github.com/webapp/go-app/ai-agent/internal/service/intent"
@@ -33,6 +34,7 @@ type App struct {
 	Eino        *eino.Runtime
 	Extract     *extract.Extractor
 	FileExtract *fileextract.Service
+	DingTalk    *dingtalk.Bot
 }
 
 func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*App, error) {
@@ -67,6 +69,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		CollapseCJKSpaces: cfg.OCR.CollapseCJKSpaces,
 	})
 	fileExtractSvc := fileextract.New(db, extractor, cfg.Storage.AttachmentsDir, cfg)
+	dtBot := dingtalk.New(cfg, chatSvc, ragSvc, corpusSvc, log)
 	return &App{
 		Config:      cfg,
 		DB:          db,
@@ -84,5 +87,6 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		Eino:        rt,
 		Extract:     extractor,
 		FileExtract: fileExtractSvc,
+		DingTalk:    dtBot,
 	}, nil
 }

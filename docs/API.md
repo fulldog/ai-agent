@@ -515,6 +515,8 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | RAG | POST | `/api/v1/rag/search` | 是 |
 | Logs | GET | `/api/v1/logs/requests` | 是 |
 
+钉钉群机器人 **不是 HTTP API**：进程内 Stream 收消息，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。
+
 ---
 
 ## 10. 里程碑对应

@@ -22,6 +22,16 @@ type Config struct {
 	Log        LogConfig        `yaml:"log"`
 	Metrics    MetricsConfig    `yaml:"metrics"`
 	RequestLog RequestLogConfig `yaml:"request_log"`
+	DingTalk   DingTalkConfig   `yaml:"dingtalk"`
+}
+
+// DingTalkConfig 钉钉 Stream 机器人（群内 @ 后 RAG 流式回复）。
+// 发卡片/群消息时的 robotCode 与 Client ID 相同，无需单独配置。
+type DingTalkConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	ClientID       string `yaml:"client_id"`
+	ClientSecret   string `yaml:"client_secret"`
+	CardTemplateID string `yaml:"card_template_id"`
 }
 
 type ServerConfig struct {
@@ -200,11 +210,9 @@ func defaultConfig() *Config {
 			AutoMigrate:  true,
 		},
 		LLM: LLMConfig{
-			DefaultProvider: "deepseek",
-			Provider:        "deepseek",
-			BaseURL:         "https://api.deepseek.com/v1",
-			DefaultModel:    "deepseek-v4-flash",
-			TimeoutSeconds:  120,
+			BaseURL:        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			DefaultModel:   "qwen-plus",
+			TimeoutSeconds: 120,
 			Providers: map[string]LLMProviderConfig{
 				"deepseek": {
 					BaseURL:      "https://api.deepseek.com/v1",
@@ -334,6 +342,24 @@ func (c *Config) applyEnv() {
 	setProviderKey("kimi", "KIMI_API_KEY")
 	setProviderKey("doubao", "ARK_API_KEY")
 	setProviderKey("doubao", "DOUBAO_API_KEY")
+
+	if v := os.Getenv("DINGTALK_CLIENT_ID"); v != "" {
+		c.DingTalk.ClientID = v
+	}
+	if v := os.Getenv("DINGTALK_CLIENT_SECRET"); v != "" {
+		c.DingTalk.ClientSecret = v
+	}
+	if v := os.Getenv("DINGTALK_CARD_TEMPLATE_ID"); v != "" {
+		c.DingTalk.CardTemplateID = v
+	}
+	if v := os.Getenv("DINGTALK_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			c.DingTalk.Enabled = true
+		case "0", "false", "no", "off":
+			c.DingTalk.Enabled = false
+		}
+	}
 }
 
 func providerPreset(name string) (baseURL, model string) {
@@ -437,6 +463,9 @@ func (c *Config) normalize() {
 	if c.Extract.TimeoutSeconds <= 0 {
 		c.Extract.TimeoutSeconds = 180
 	}
+	c.DingTalk.ClientID = strings.TrimSpace(c.DingTalk.ClientID)
+	c.DingTalk.ClientSecret = strings.TrimSpace(c.DingTalk.ClientSecret)
+	c.DingTalk.CardTemplateID = strings.TrimSpace(c.DingTalk.CardTemplateID)
 
 	c.normalizeLLMProviders()
 }
@@ -451,10 +480,9 @@ func (c *Config) normalizeLLMProviders() {
 		defName = strings.TrimSpace(c.LLM.Provider)
 	}
 	if defName == "" {
-		defName = "deepseek"
+		defName = "qwen"
 	}
 	c.LLM.DefaultProvider = defName
-	c.LLM.Provider = defName
 
 	// 兼容旧扁平 llm.api_key / base_url / default_model → 合并进默认厂商
 	p := c.LLM.Providers[defName]

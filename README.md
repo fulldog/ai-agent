@@ -153,6 +153,7 @@ npm run preview        # http://localhost:4173，同样按 .env 的 VITE_PROXY_T
 | [docs/POSTGRES.md](docs/POSTGRES.md) | PostgreSQL + pgvector 安装与 DATABASE_URL |
 | [docs/DOCKER.md](docs/DOCKER.md) | **Docker 完整部署：开机/重启自动 git pull + 编译** |
 | [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) | 表结构 / 向量列与索引 |
+| [docs/DINGTALK.md](docs/DINGTALK.md) | 钉钉 Stream 机器人：@ 后 RAG + AI 卡片流式回复 |
 | [configs/config.example.yaml](configs/config.example.yaml) | 配置样例 |
 | [deploy/prometheus/scrape.example.yml](deploy/prometheus/scrape.example.yml) | Prometheus 抓取示例 |
 | 本文件 [附录 A](#附录-a：rag-参数调教说明) | RAG 分块 / top_k / 索引 / Embedding 调教 |
@@ -168,6 +169,7 @@ npm run preview        # http://localhost:4173，同样按 .env 的 VITE_PROXY_T
 | Agent | Tool Calling（`knowledge_search`、`current_time`、`calculator`） |
 | Embedding | OpenAI 兼容（默认 Ollama） |
 | 鉴权 | `X-API-Key` |
+| 钉钉 | Stream Mode + AI 流式卡片（见 [DINGTALK.md](docs/DINGTALK.md)） |
 | 监控 | Prometheus `/metrics` |
 | 控制台 | Vue 3 + Vite + TypeScript + Element Plus（`web/`） |
 

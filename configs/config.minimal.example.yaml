@@ -16,7 +16,7 @@ database:
   enabled: false
 
 llm:
-  default_provider: deepseek
+  default_provider: qwen
   timeout_seconds: 120
   providers:
     deepseek:

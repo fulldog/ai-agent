@@ -67,6 +67,18 @@ func main() {
 	}
 	engine := router.Setup(application)
 
+	botCtx, botCancel := context.WithCancel(context.Background())
+	defer botCancel()
+	if application.DingTalk != nil && application.DingTalk.Enabled() {
+		if !cfg.Database.IsEnabled() {
+			log.Fatal("dingtalk bot requires database")
+		}
+		if err := application.DingTalk.Start(botCtx); err != nil {
+			log.Fatal("start dingtalk bot", zap.Error(err))
+		}
+		log.Info("dingtalk bot enabled")
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
 		Handler:           engine,
@@ -91,6 +103,10 @@ func main() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
+	botCancel()
+	if application.DingTalk != nil {
+		application.DingTalk.Stop()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
