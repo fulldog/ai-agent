@@ -44,11 +44,6 @@
             <el-button type="primary" :loading="running" @click="run">运行</el-button>
             <el-button v-if="running" @click="stop">停止</el-button>
           </div>
-          <el-divider />
-          <div style="display: flex; gap: 8px">
-            <el-input v-model="runId" placeholder="run_id 查询历史运行" />
-            <el-button @click="loadRun">加载</el-button>
-          </div>
         </div>
       </el-col>
       <el-col :span="14">
@@ -74,11 +69,79 @@
         </div>
       </el-col>
     </el-row>
+
+    <div class="table-card" style="margin-top: 12px">
+      <div class="toolbar" style="margin-bottom: 12px; padding: 0; border: none; background: transparent">
+        <el-form inline @submit.prevent>
+          <el-form-item v-if="models.isAdmin" label="UID">
+            <el-input v-model="filterUid" clearable placeholder="留空列出全部用户" style="width: 180px" />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="filterStatus" clearable placeholder="全部" style="width: 120px">
+              <el-option label="成功" value="succeeded" />
+              <el-option label="失败" value="failed" />
+              <el-option label="运行中" value="running" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="输入">
+            <el-input v-model="keyword" clearable placeholder="按输入过滤当前页" style="width: 180px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="listLoading" @click="reloadRuns">查询</el-button>
+            <el-button @click="resetRuns">重置</el-button>
+          </el-form-item>
+        </el-form>
+        <div class="toolbar-summary">
+          {{ models.isAdmin ? "管理员密钥可查看全部用户" : "仅当前 X-User-Id 的运行" }}
+          · 共 {{ runTotal }} 次，当前第 {{ runPage }} 页
+        </div>
+      </div>
+      <el-table
+        :data="runRows"
+        v-loading="listLoading"
+        stripe
+        highlight-current-row
+        empty-text="暂无运行记录"
+        @row-click="openRun"
+      >
+        <el-table-column prop="created_at" label="时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column v-if="models.isAdmin" prop="uid" label="UID" width="120" show-overflow-tooltip />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <span><i class="status-dot" :class="statusTone(row.status)"></i>{{ statusLabel(row.status) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="model" label="模型" width="160" show-overflow-tooltip />
+        <el-table-column label="步数" width="80" prop="step_count" />
+        <el-table-column label="输入" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.input || "-" }}</template>
+        </el-table-column>
+        <el-table-column prop="id" label="run_id" min-width="260" show-overflow-tooltip />
+        <el-table-column label="操作" width="80" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click.stop="openRun(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pager">
+        <span class="pager-total">共 {{ runTotal }} 条</span>
+        <el-pagination
+          background
+          layout="prev, pager, next, jumper"
+          :total="runTotal"
+          :page-size="runLimit"
+          :current-page="runPage"
+          @current-change="onRunPage"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { Connection, MagicStick, Tools, View } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
@@ -86,9 +149,11 @@ import { postSSE } from "@/api/sse";
 import { renderMarkdown } from "@/lib/markdown";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
-import type { Conversation, Corpus } from "@/api/types";
+import { useSettingsStore } from "@/stores/settings";
+import type { AgentRun, AgentStep, Conversation, Corpus } from "@/api/types";
 
 const models = useModelsStore();
+const settings = useSettingsStore();
 const input = ref("");
 const maxSteps = ref(8);
 const tools = ref(["knowledge_search", "current_time", "calculator"]);
@@ -100,17 +165,107 @@ const running = ref(false);
 const events = ref<{ event: string; text: string }[]>([]);
 const finalOut = ref("");
 const runId = ref("");
+const filterUid = ref("");
+const filterStatus = ref("");
+const keyword = ref("");
+const allRuns = ref<AgentRun[]>([]);
+const runTotal = ref(0);
+const runLimit = 20;
+const runPage = ref(1);
+const listLoading = ref(false);
 let abortCtl: AbortController | null = null;
 
 const hero: HeroItem[] = [
   { icon: MagicStick, title: "工具循环", desc: "模型自行决定调用哪个工具、调用几轮", tone: "blue" },
   { icon: Tools, title: "内置工具", desc: "knowledge_search、current_time、calculator", tone: "green" },
   { icon: Connection, title: "流式事件", desc: "SSE 推送 tool_call / tool_result / delta", tone: "purple" },
-  { icon: View, title: "运行回溯", desc: "用 run_id 加载历史运行的每一步记录", tone: "orange" },
+  { icon: View, title: "运行回溯", desc: "下方列表可翻看历史运行，点一行加载步骤", tone: "orange" },
 ];
+
+const runRows = computed(() => {
+  const kw = keyword.value.trim().toLowerCase();
+  if (!kw) return allRuns.value;
+  return allRuns.value.filter((r) => (r.input || "").toLowerCase().includes(kw));
+});
+
+function formatTime(v: string): string {
+  if (!v) return "-";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleString("zh-CN", { hour12: false });
+}
+
+function statusTone(s: string): string {
+  if (s === "succeeded") return "ok";
+  if (s === "failed") return "err";
+  return "warn";
+}
+
+function statusLabel(s: string): string {
+  if (s === "succeeded") return "成功";
+  if (s === "failed") return "失败";
+  if (s === "running") return "运行中";
+  return s || "-";
+}
+
+async function loadRuns() {
+  listLoading.value = true;
+  const params = new URLSearchParams();
+  params.set("limit", String(runLimit));
+  params.set("offset", String((runPage.value - 1) * runLimit));
+  if (models.isAdmin && filterUid.value.trim()) params.set("uid", filterUid.value.trim());
+  if (filterStatus.value) params.set("status", filterStatus.value);
+  try {
+    const data = await requestJSON<{ items: AgentRun[]; total: number }>(`/api/v1/agent/runs?${params.toString()}`);
+    allRuns.value = data.items || [];
+    runTotal.value = data.total || 0;
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    listLoading.value = false;
+  }
+}
+
+function reloadRuns() {
+  runPage.value = 1;
+  void loadRuns();
+}
+
+function resetRuns() {
+  filterUid.value = "";
+  filterStatus.value = "";
+  keyword.value = "";
+  reloadRuns();
+}
+
+function onRunPage(p: number) {
+  runPage.value = p;
+  void loadRuns();
+}
+
+function applyRun(run: AgentRun, steps: AgentStep[]) {
+  runId.value = run.id;
+  events.value = (steps || []).map((s) => ({
+    event: s.kind,
+    text: `${s.tool_name || ""}\n${s.output_text || ""}`.trim(),
+  }));
+  finalOut.value = run.output || "";
+}
+
+async function openRun(row: AgentRun) {
+  try {
+    const data = await requestJSON<{ run: AgentRun; steps: AgentStep[] }>(`/api/v1/agent/runs/${row.id}`);
+    applyRun(data.run, data.steps || []);
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  }
+}
 
 async function run() {
   if (!input.value.trim()) return;
+  if (!models.isAdmin && !settings.userId) {
+    ElMessage.warning("请先在连接设置填写 X-User-Id");
+    return;
+  }
   running.value = true;
   events.value = [];
   finalOut.value = "";
@@ -157,28 +312,12 @@ async function run() {
   } finally {
     running.value = false;
     abortCtl = null;
+    void loadRuns();
   }
 }
 
 function stop() {
   abortCtl?.abort();
-}
-
-async function loadRun() {
-  if (!runId.value) return;
-  try {
-    const data = await requestJSON<{
-      run: { output: string; id: string };
-      steps: { kind: string; tool_name?: string; output_text?: string }[];
-    }>(`/api/v1/agent/runs/${runId.value}`);
-    events.value = (data.steps || []).map((s) => ({
-      event: s.kind,
-      text: `${s.tool_name || ""}\n${s.output_text || ""}`,
-    }));
-    finalOut.value = data.run?.output || "";
-  } catch (e) {
-    ElMessage.error(formatAPIError(e));
-  }
 }
 
 onMounted(async () => {
@@ -193,5 +332,6 @@ onMounted(async () => {
   } catch {
     corpora.value = [];
   }
+  void loadRuns();
 });
 </script>

@@ -68,7 +68,8 @@
 | 列出会话、详情、删除、消息列表 | 普通密钥 **必填**；管理员密钥可省略，并可跨用户 |
 | `/chat/completions`、`/chat/completions/stream` | 普通密钥 **必填** 且会话须属于该 uid；管理员密钥可在任意会话上补全 |
 | `/chat/analyze*` 且带 `conversation_id` | 同上 |
-| `/agent/runs*` 且带 `conversation_id` | 同上 |
+| `/agent/runs`（POST / stream） | 普通密钥 **必填**（写入运行 uid）；管理员密钥可省略 |
+| `/agent/runs`（GET 列表）、`/agent/runs/:id` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
 | `/logs/requests*` | 普通密钥 **必填**，仅本人 uid；管理员密钥可查全部并用 Query `uid` 过滤 |
 | 无 `conversation_id` 的 analyze、intent、models、语料/RAG 等 | 不要求 |
 
@@ -339,9 +340,15 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 工具名、中文描述约定、**如何新增 Tool** 见 [AGENT_TOOLS.md](./AGENT_TOOLS.md)。
 
+### GET `/api/v1/agent/runs`
+
+当前 uid 的 Agent 运行列表（管理员密钥为全库）。Query：`limit`（默认 20，最大 200）、`offset`、`uid`（仅管理员密钥时生效）、`status`（`running` / `succeeded` / `failed`）、`conversation_id`。
+
+响应含 `items`、`total`、`limit`、`offset`、`scope_admin`。无 uid 的历史运行：管理员可见；普通密钥仅当该运行绑定了自己的会话时可见。
+
 ### POST `/api/v1/agent/runs`
 
-同步 Agent 运行（适合短任务）。带 `conversation_id` 时：普通密钥须 `X-User-Id`；管理员密钥可关联任意会话。
+同步 Agent 运行（适合短任务）。普通密钥须 `X-User-Id`（写入运行 uid）；带 `conversation_id` 时会话须属于该 uid。管理员密钥可省略 `X-User-Id`，并可关联任意会话。
 
 ```json
 {
@@ -382,7 +389,7 @@ data: {"status":"ok","run_id":"uuid"}
 
 ### GET `/api/v1/agent/runs/:id`
 
-查询某次 Agent 运行及步骤（调试/审计）。
+查询某次 Agent 运行及步骤（调试/审计）。不属于当前 uid → `404`。管理员密钥时按 id 直查。
 
 ---
 
@@ -509,6 +516,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Chat Intent | POST | `/api/v1/chat/intent` | 是 |
 | Agent | POST | `/api/v1/agent/runs` | 是 |
 | Agent Stream | POST | `/api/v1/agent/runs/stream` | 是 |
+| Agent Runs | GET | `/api/v1/agent/runs` | 是 |
 | Agent Run | GET | `/api/v1/agent/runs/:id` | 是 |
 | Corpus | CRUD + upload | `/api/v1/corpora`、`.../documents` | 是 |
 | Reindex | POST | `/api/v1/corpora/:id/reindex` | 是 |

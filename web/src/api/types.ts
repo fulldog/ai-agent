@@ -109,6 +109,7 @@ export interface RequestLog {
 
 export interface AgentRun {
   id: string;
+  uid?: string;
   conversation_id?: string;
   input: string;
   output: string;
@@ -120,6 +121,7 @@ export interface AgentRun {
   prompt_tokens: number;
   completion_tokens: number;
   created_at: string;
+  finished_at?: string;
 }
 
 export interface AgentStep {

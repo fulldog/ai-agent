@@ -83,6 +83,7 @@ func Setup(application *app.App) *gin.Engine {
 
 			dbGroup.POST("/agent/runs", agentH.Run)
 			dbGroup.POST("/agent/runs/stream", agentH.RunStream)
+			dbGroup.GET("/agent/runs", agentH.List)
 			dbGroup.GET("/agent/runs/:id", agentH.Get)
 
 			dbGroup.POST("/corpora", corpusH.Create)

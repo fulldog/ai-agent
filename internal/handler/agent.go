@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/middleware"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent"
+	"gorm.io/gorm"
 )
 
 type AgentHandler struct {
@@ -31,17 +34,15 @@ func (h *AgentHandler) parse(c *gin.Context) (agent.RunInput, bool) {
 		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
 		return agent.RunInput{}, false
 	}
+	uid, admin, ok := bindUID(c, false)
+	if !ok {
+		return agent.RunInput{}, false
+	}
 	in := agent.RunInput{
 		Input: req.Input, Provider: req.Provider, Model: req.Model, MaxSteps: req.MaxSteps,
-		Tools: req.Tools, RequestID: requestID(c), Admin: middleware.IsAdminContext(c),
+		Tools: req.Tools, RequestID: requestID(c), UID: uid, Admin: admin,
 	}
 	if req.ConversationID != "" {
-		uid, admin, ok := bindUID(c, false)
-		if !ok {
-			return agent.RunInput{}, false
-		}
-		in.UID = uid
-		in.Admin = admin
 		id, err := uuid.Parse(req.ConversationID)
 		if err != nil {
 			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
@@ -105,15 +106,56 @@ func (h *AgentHandler) RunStream(c *gin.Context) {
 	}
 }
 
+func (h *AgentHandler) List(c *gin.Context) {
+	admin := middleware.IsAdminContext(c)
+	filter := ""
+	if admin {
+		filter = strings.TrimSpace(c.Query("uid"))
+	} else {
+		uid, ok := requireUID(c)
+		if !ok {
+			return
+		}
+		filter = uid
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	in := agent.ListRunsInput{UID: filter, All: admin, Limit: limit, Offset: offset, Status: c.Query("status")}
+	if v := strings.TrimSpace(c.Query("conversation_id")); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "bad_request", "invalid conversation_id")
+			return
+		}
+		in.ConversationID = &id
+	}
+	rows, total, err := h.Agent.ListRuns(in)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"items": rows, "total": total, "limit": clampLimit(limit), "offset": max0(offset), "scope_admin": admin,
+	})
+}
+
 func (h *AgentHandler) Get(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
 		return
 	}
-	run, steps, err := h.Agent.GetRun(id)
+	uid, admin, ok := bindUID(c, false)
+	if !ok {
+		return
+	}
+	run, steps, err := h.Agent.GetRunFor(id, uid, admin)
 	if err != nil {
-		writeError(c, http.StatusNotFound, "not_found", "run not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "run not found")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"run": run, "steps": steps})

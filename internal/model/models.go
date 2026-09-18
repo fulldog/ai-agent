@@ -122,6 +122,7 @@ func (c *Chunk) BeforeCreate(tx *gorm.DB) error {
 // AgentRun 一次 Agent 运行记录。
 type AgentRun struct {
 	ID               uuid.UUID  `gorm:"type:uuid;primaryKey;comment:运行ID" json:"id"`
+	UID              string     `gorm:"type:text;not null;default:'';index:idx_agent_runs_uid_created,priority:1;comment:所属用户UID(X-User-Id)" json:"uid"`
 	ConversationID   *uuid.UUID `gorm:"type:uuid;index;comment:关联会话ID(可选)" json:"conversation_id,omitempty"`
 	Input            string     `gorm:"type:text;comment:用户输入" json:"input"`
 	Output           string     `gorm:"type:text;comment:最终输出" json:"output"`
@@ -132,7 +133,7 @@ type AgentRun struct {
 	ErrorMessage     string     `gorm:"type:text;comment:失败错误信息" json:"error_message,omitempty"`
 	PromptTokens     int        `gorm:"comment:累计prompt token" json:"prompt_tokens"`
 	CompletionTokens int        `gorm:"comment:累计completion token" json:"completion_tokens"`
-	CreatedAt        time.Time  `gorm:"comment:创建时间" json:"created_at"`
+	CreatedAt        time.Time  `gorm:"index:idx_agent_runs_uid_created,priority:2;comment:创建时间" json:"created_at"`
 	FinishedAt       *time.Time `gorm:"comment:结束时间" json:"finished_at,omitempty"`
 }
 

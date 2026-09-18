@@ -97,7 +97,7 @@ const subtitles: Record<string, string> = {
   "/": "服务健康与已配置的模型厂商",
   "/chat": "多轮流式对话，可挂载知识库做 RAG",
   "/conversations": "查询会话；admin_api_keys 可看全部用户",
-  "/agent": "工具调用循环，查看每一步的调用与结果",
+  "/agent": "工具调用循环；下方列表可回溯历史运行",
   "/corpus": "语料库与文档管理，上传后自动分块索引",
   "/rag": "向量检索调试，按相似度查看命中分块",
   "/analyze": "上传 PDF / Word / 图片，抽取结构化字段",

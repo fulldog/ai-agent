@@ -63,7 +63,7 @@
       </div>
     </div>
 
-    <el-drawer v-model="drawer" :title="drawerTitle" size="560px">
+    <el-drawer v-model="drawer" :title="drawerTitle" size="45%">
       <ChatThread :messages="messages" empty-text="暂无消息" show-time />
     </el-drawer>
   </div>

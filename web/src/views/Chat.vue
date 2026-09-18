@@ -1,6 +1,6 @@
 <template>
-  <div class="chat-page">
-    <aside class="conv-list">
+  <div ref="pageRef" class="chat-page">
+    <aside class="conv-list" :style="{ width: listWidth + 'px' }">
       <div class="conv-toolbar">
         <el-button type="primary" size="small" @click="createConv">新建会话</el-button>
         <el-button size="small" @click="loadConvs">刷新</el-button>
@@ -25,6 +25,15 @@
         <p v-if="!convs.length" class="muted" style="padding: 12px">暂无会话</p>
       </el-scrollbar>
     </aside>
+    <div
+      class="resize-handle"
+      :class="{ dragging: resizing }"
+      title="拖动调整会话列表宽度"
+      @pointerdown="onResizePointerDown"
+      @pointermove="onResizePointerMove"
+      @pointerup="onResizePointerUp"
+      @pointercancel="onResizePointerUp"
+    />
     <section class="chat-main">
       <div class="chat-opts">
         <el-select v-model="models.selectedProvider" placeholder="厂商" style="width: 140px" @change="models.onProviderChange">
@@ -53,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { requestJSON, formatAPIError } from "@/api/client";
 import { postSSE } from "@/api/sse";
@@ -76,7 +85,50 @@ const topK = ref(5);
 const corpora = ref<Corpus[]>([]);
 const usageText = ref("");
 const scrollRef = ref();
+const pageRef = ref<HTMLElement | null>(null);
+const LIST_WIDTH_KEY = "ai-agent-chat-list-width";
+const LIST_WIDTH_DEFAULT = 240;
+const LIST_WIDTH_MIN = 180;
+const LIST_WIDTH_MAX = 720;
+const listWidth = ref(readListWidth());
+const resizing = ref(false);
+let dragStartX = 0;
+let dragStartW = 0;
 let abortCtl: AbortController | null = null;
+
+function readListWidth(): number {
+  const n = Number(localStorage.getItem(LIST_WIDTH_KEY));
+  if (!Number.isFinite(n)) return LIST_WIDTH_DEFAULT;
+  return Math.min(LIST_WIDTH_MAX, Math.max(LIST_WIDTH_MIN, n));
+}
+
+function clampListWidth(w: number): number {
+  const pageW = pageRef.value?.clientWidth ?? 960;
+  const max = Math.min(LIST_WIDTH_MAX, Math.max(LIST_WIDTH_MIN, pageW - 360));
+  return Math.min(max, Math.max(LIST_WIDTH_MIN, w));
+}
+
+function onResizePointerDown(e: PointerEvent) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  resizing.value = true;
+  dragStartX = e.clientX;
+  dragStartW = listWidth.value;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  document.body.classList.add("is-col-resizing");
+}
+
+function onResizePointerMove(e: PointerEvent) {
+  if (!resizing.value) return;
+  listWidth.value = clampListWidth(dragStartW + e.clientX - dragStartX);
+}
+
+function onResizePointerUp() {
+  if (!resizing.value) return;
+  resizing.value = false;
+  document.body.classList.remove("is-col-resizing");
+  localStorage.setItem(LIST_WIDTH_KEY, String(listWidth.value));
+}
 
 async function loadConvs() {
   try {
@@ -232,9 +284,14 @@ function abort() {
 }
 
 onMounted(async () => {
+  listWidth.value = clampListWidth(listWidth.value);
   await models.refresh().catch(() => undefined);
   await loadConvs();
   await loadCorpora();
+});
+
+onUnmounted(() => {
+  document.body.classList.remove("is-col-resizing");
 });
 </script>
 
@@ -250,11 +307,30 @@ onMounted(async () => {
   overflow: hidden;
 }
 .conv-list {
-  width: 240px;
-  border-right: 1px solid var(--border);
+  flex: none;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: #fafbfc;
+}
+.resize-handle {
+  width: 6px;
+  flex: none;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+  z-index: 2;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: var(--border);
+}
+.resize-handle:hover::after,
+.resize-handle.dragging::after {
+  inset: 0 1px;
+  background: var(--brand);
 }
 .conv-toolbar {
   padding: 10px;
@@ -325,5 +401,13 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+</style>
+
+<style>
+body.is-col-resizing,
+body.is-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 </style>

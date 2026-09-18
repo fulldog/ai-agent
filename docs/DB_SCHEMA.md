@@ -202,6 +202,7 @@ LIMIT $3;
 | 列 | 类型 | 说明 |
 |----|------|------|
 | id | UUID PK | 运行ID |
+| uid | TEXT | 所属用户 UID（`X-User-Id`） |
 | conversation_id | UUID NULL | 关联会话ID（可选） |
 | input | TEXT | 用户输入 |
 | output | TEXT | 最终输出 |
@@ -214,6 +215,8 @@ LIMIT $3;
 | completion_tokens | INT | 累计 completion token |
 | created_at | TIMESTAMPTZ | 创建时间 |
 | finished_at | TIMESTAMPTZ NULL | 结束时间 |
+
+索引：`(uid, created_at)`、`status`、`conversation_id`。
 
 ### 3.7 agent_steps（Agent 步骤明细表）
 
