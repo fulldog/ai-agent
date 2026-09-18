@@ -31,6 +31,8 @@ llm:
   # 默认厂商；请求未传 provider 时使用
   default_provider: qwen
   timeout_seconds: 120
+  # 每次对话请求带入的最近历史消息条数（不含当前问题 / system）
+  max_history: 10
   # 多厂商（OpenAI 兼容协议）。也可用环境变量注入 key：
   #   DEEPSEEK_API_KEY / DASHSCOPE_API_KEY|QWEN_API_KEY / MOONSHOT_API_KEY|KIMI_API_KEY / ARK_API_KEY|DOUBAO_API_KEY
   providers:
@@ -65,6 +67,8 @@ rag:
   chunk_overlap: 120
   # pgvector 索引：none | ivfflat | hnsw（数据量小可 none，生产建议 hnsw）
   vector_index: hnsw
+  # 余弦距离上限（越小越相似）。钉钉检索超过该值视为未命中；0 表示不过滤
+  max_distance: 0.55
 
 agent:
   max_steps: 8

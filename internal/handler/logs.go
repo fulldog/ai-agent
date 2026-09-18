@@ -76,6 +76,11 @@ func (h *LogsHandler) ListRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": rows, "total": total, "scope_admin": admin})
 }
 
+type requestLogDetail struct {
+	model.RequestLog
+	LLMCalls []model.LLMCallLog `json:"llm_calls"`
+}
+
 func (h *LogsHandler) GetRequest(c *gin.Context) {
 	uid, admin, ok := bindUID(c, false)
 	if !ok {
@@ -95,5 +100,9 @@ func (h *LogsHandler) GetRequest(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "not_found", "log not found")
 		return
 	}
-	c.JSON(http.StatusOK, row)
+	out := requestLogDetail{RequestLog: row, LLMCalls: []model.LLMCallLog{}}
+	if row.RequestID != "" {
+		_ = h.DB.Where("request_id = ?", row.RequestID).Order("created_at asc").Find(&out.LLMCalls).Error
+	}
+	c.JSON(http.StatusOK, out)
 }

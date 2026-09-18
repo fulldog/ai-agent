@@ -16,47 +16,66 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 const (
 	channelDingTalk   = "dingtalk"
 	streamMinInterval = 300 * time.Millisecond
+	corpusMissReply   = "语料库未收录相关知识"
 )
 
 type Bot struct {
-	cfg    config.DingTalkConfig
-	ragTop int
-	log    *zap.Logger
-	chat   *chat.Service
-	rag    *rag.Service
-	corpus *corpus.Service
-	api    *openAPI
-	dedup  *msgDeduper
+	cfg         config.DingTalkConfig
+	ragTop      int
+	maxDistance float64
+	persistBody bool
+	previewMax  int
+	log         *zap.Logger
+	access      *zap.Logger
+	db          *gorm.DB
+	chat        *chat.Service
+	rag         *rag.Service
+	corpus      *corpus.Service
+	api         *openAPI
+	dedup       *msgDeduper
 
 	mu   sync.Mutex
 	sess *streamSession
 }
 
-func New(cfg *config.Config, chatSvc *chat.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log *zap.Logger) *Bot {
+func New(cfg *config.Config, chatSvc *chat.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log, accessLog *zap.Logger, db *gorm.DB) *Bot {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	if accessLog == nil {
+		accessLog = log
+	}
 	if cfg == nil {
-		return &Bot{log: log, dedup: newMsgDeduper(0)}
+		return &Bot{log: log, access: accessLog, db: db, dedup: newMsgDeduper(0)}
 	}
 	top := cfg.RAG.TopK
 	if top <= 0 {
 		top = 5
 	}
+	preview := cfg.Log.BodyPreviewMax
+	if preview <= 0 {
+		preview = 4096
+	}
 	return &Bot{
-		cfg:    cfg.DingTalk,
-		ragTop: top,
-		log:    log.With(zap.String("component", "dingtalk")),
-		chat:   chatSvc,
-		rag:    ragSvc,
-		corpus: corpusSvc,
-		api:    newOpenAPI(cfg.DingTalk.ClientID, cfg.DingTalk.ClientSecret),
-		dedup:  newMsgDeduper(10 * time.Minute),
+		cfg:         cfg.DingTalk,
+		ragTop:      top,
+		maxDistance: cfg.RAG.MaxDistance,
+		persistBody: cfg.RequestLog.PersistBody,
+		previewMax:  preview,
+		log:         log.With(zap.String("component", "dingtalk")),
+		access:      accessLog.With(zap.String("component", "dingtalk")),
+		db:          db,
+		chat:        chatSvc,
+		rag:         ragSvc,
+		corpus:      corpusSvc,
+		api:         newOpenAPI(cfg.DingTalk.ClientID, cfg.DingTalk.ClientSecret),
+		dedup:       newMsgDeduper(10 * time.Minute),
 	}
 }
 
@@ -105,6 +124,7 @@ func (b *Bot) runStream(ctx context.Context) {
 		b.mu.Lock()
 		b.sess = sess
 		b.mu.Unlock()
+		sess.log = b.log
 		b.log.Info("dingtalk stream connected")
 		err = sess.serve(ctx, func(data *botCallback) {
 			b.onMessage(ctx, data)
@@ -197,9 +217,14 @@ func (b *Bot) onMessage(parent context.Context, data *botCallback) {
 		return
 	}
 	if isGroup(data.ConversationType) && !data.IsInAtList {
+		b.log.Debug("dingtalk skip: not in at list",
+			zap.String("request_id", data.MsgID),
+			zap.String("conversation_id", data.ConversationID),
+		)
 		return
 	}
 	if !b.dedup.First(data.MsgID) {
+		b.log.Info("dingtalk skip: duplicate msg", zap.String("request_id", data.MsgID))
 		return
 	}
 	go b.handle(parent, data)
@@ -209,22 +234,85 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 3*time.Minute)
 	defer cancel()
 
+	tr := newMsgTrace(data)
+	defer b.emitMsgLog(tr)
+
 	uid := strings.TrimSpace(data.SenderStaffID)
+	tr.uid = uid
+	b.recordStep(tr, stepReceive, eventReceive, map[string]any{
+		"uid":                  uid,
+		"sender_nick":          data.SenderNick,
+		"msg_type":             data.MsgType,
+		"ding_conversation_id": data.ConversationID,
+		"conversation_type":    data.ConversationType,
+		"group":                isGroup(data.ConversationType),
+		"raw_text":             previewText(data.Text.Content, b.previewMax),
+	},
+		zap.String("uid", uid),
+		zap.String("sender_nick", data.SenderNick),
+		zap.String("msg_type", data.MsgType),
+		zap.String("ding_conversation_id", data.ConversationID),
+		zap.String("conversation_type", data.ConversationType),
+		zap.Bool("group", isGroup(data.ConversationType)),
+		zap.String("raw_text", previewText(data.Text.Content, b.previewMax)),
+	)
 	if uid == "" {
-		_ = b.failReply(ctx, data, "无法识别发送者 userid（senderStaffId 为空），企业内部群且机器人已发布后才有该字段。")
+		tr.status = 400
+		tr.errMsg = "empty senderStaffId"
+		tr.reply = "无法识别发送者 userid（senderStaffId 为空），企业内部群且机器人已发布后才有该字段。"
+		_ = b.failReply(ctx, data, tr.reply)
 		return
 	}
 	if !strings.EqualFold(data.MsgType, "text") {
-		_ = b.failReply(ctx, data, "暂只支持文字消息。")
+		tr.status = 400
+		tr.errMsg = "unsupported msg type"
+		tr.reply = "暂只支持文字消息。"
+		_ = b.failReply(ctx, data, tr.reply)
 		return
 	}
 	query := cleanQuery(data.Text.Content)
+	tr.query = query
 	if query == "" {
-		_ = b.failReply(ctx, data, "请 @我 并输入问题。")
+		tr.status = 400
+		tr.errMsg = "empty query"
+		tr.reply = "请 @我 并输入问题。"
+		_ = b.failReply(ctx, data, tr.reply)
 		return
 	}
 
-	corpusID, hits := b.retrieve(ctx, query)
+	forceOnline := wantsOnlineSearch(query)
+	ragQuery := stripOnlineRequest(query)
+	if ragQuery == "" {
+		ragQuery = query
+	}
+	tr.ragQuery = ragQuery
+	tr.forceOnline = forceOnline
+	corpusID, hits := b.retrieve(ctx, ragQuery)
+	tr.corpusID = corpusID
+	tr.hitCount = len(hits)
+	tr.hitScores = hitScores(hits)
+	hitsDetail := ragHitLogs(hits, b.previewMax)
+	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
+		"query":        ragQuery,
+		"force_online": forceOnline,
+		"hits":         len(hits),
+		"scores":       tr.hitScores,
+		"corpus_id":    uuidString(corpusID),
+		"hits_detail":  hitsDetail,
+	},
+		zap.String("query", ragQuery),
+		zap.Bool("force_online", forceOnline),
+		zap.Int("hits", len(hits)),
+		zap.Float64s("scores", tr.hitScores),
+		zap.String("corpus_id", uuidString(corpusID)),
+		zap.Any("hits_detail", hitsDetail),
+	)
+	if isCorpusMiss(hits, forceOnline) {
+		tr.outcome = "corpus_miss"
+		tr.reply = corpusMissReply
+		_ = b.failReply(ctx, data, corpusMissReply)
+		return
+	}
 	title := strings.TrimSpace(data.ConversationTitle)
 	if title == "" {
 		if isGroup(data.ConversationType) {
@@ -244,23 +332,51 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		ChannelSessionID: data.ConversationID,
 	})
 	if err != nil {
-		b.log.Error("find conversation", zap.Error(err))
-		_ = b.failReply(ctx, data, "创建会话失败，请稍后重试。")
+		b.log.Error("find conversation", zap.Error(err), zap.String("request_id", tr.requestID))
+		tr.status = 500
+		tr.errMsg = err.Error()
+		tr.reply = "创建会话失败，请稍后重试。"
+		_ = b.failReply(ctx, data, tr.reply)
 		return
 	}
+	tr.conversationID = &conv.ID
 
 	streamer := b.newStreamer(ctx, data)
 	var acc strings.Builder
 	lastFlush := time.Now()
+	enableSearch := len(hits) == 0 && forceOnline
+	tr.enableSearch = enableSearch
+	tr.outcome = "llm"
 	res, err := b.chat.CompleteStream(ctx, chat.CompleteInput{
 		ConversationID: conv.ID,
 		UID:            uid,
-		Message:        query,
-		RAGEnabled:     true,
+		Message:        ragQuery,
+		RAGEnabled:     len(hits) > 0,
 		CorpusID:       corpusID,
 		RAGHits:        hits,
 		TopK:           b.ragTop,
-		RequestID:      data.MsgID,
+		EnableSearch:   enableSearch,
+		RequestID:      tr.requestID,
+		LogLLMRequest: func(provider, model string, messages []llm.Message) {
+			turns := llmTurnLogs(messages, b.previewMax)
+			b.recordStep(tr, stepLLMRequest, eventLLMRequest, map[string]any{
+				"provider":        provider,
+				"model":           model,
+				"enable_search":   enableSearch,
+				"rag_enabled":     len(hits) > 0,
+				"conversation_id": conv.ID.String(),
+				"messages":        len(messages),
+				"conversation":    turns,
+			},
+				zap.String("provider", provider),
+				zap.String("model", model),
+				zap.Bool("enable_search", enableSearch),
+				zap.Bool("rag_enabled", len(hits) > 0),
+				zap.String("conversation_id", conv.ID.String()),
+				zap.Int("messages", len(messages)),
+				zap.Any("conversation", turns),
+			)
+		},
 	}, func(delta string) error {
 		acc.WriteString(delta)
 		now := time.Now()
@@ -271,11 +387,14 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		return streamer.update(acc.String(), false)
 	})
 	if err != nil {
-		b.log.Error("complete stream", zap.Error(err), zap.String("msg_id", data.MsgID))
+		b.log.Error("complete stream", zap.Error(err), zap.String("request_id", tr.requestID))
 		final := acc.String()
 		if final == "" {
 			final = llm.PublicMessage(err)
 		}
+		tr.status = 500
+		tr.errMsg = err.Error()
+		tr.reply = final
 		_ = streamer.finish(final, true)
 		return
 	}
@@ -286,6 +405,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 	if strings.TrimSpace(text) == "" {
 		text = "没有生成内容。"
 	}
+	tr.reply = text
 	_ = streamer.finish(text, false)
 }
 
@@ -294,7 +414,11 @@ func (b *Bot) retrieve(ctx context.Context, query string) (*uuid.UUID, []rag.Hit
 		return nil, nil
 	}
 	all, err := b.corpus.List()
-	if err != nil || len(all) == 0 {
+	if err != nil {
+		b.log.Warn("list corpora", zap.Error(err))
+		return nil, nil
+	}
+	if len(all) == 0 {
 		return nil, nil
 	}
 	matched := matchCorpora(query, all)
@@ -310,6 +434,7 @@ func (b *Bot) retrieve(ctx context.Context, query string) (*uuid.UUID, []rag.Hit
 		b.log.Warn("rag search", zap.Error(err))
 		return pinned, nil
 	}
+	hits = filterRelevant(hits, b.maxDistance)
 	if best := bestCorpusID(hits); best != nil {
 		pinned = best
 	}

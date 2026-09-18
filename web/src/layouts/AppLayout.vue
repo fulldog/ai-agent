@@ -102,7 +102,7 @@ const subtitles: Record<string, string> = {
   "/rag": "向量检索调试，按相似度查看命中分块",
   "/analyze": "上传 PDF / Word / 图片，抽取结构化字段",
   "/intent": "微信助手关键字意图解析",
-  "/logs": "HTTP 请求审计日志；管理员密钥可按用户筛选",
+  "/logs": "HTTP 与钉钉入站审计日志；详情含关联的 LLM 调用摘要",
   "/settings": "API Key、User Id 与后端地址",
 };
 

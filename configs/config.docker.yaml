@@ -28,6 +28,7 @@ database:
 llm:
   default_provider: qwen
   timeout_seconds: 120
+  max_history: 10
   providers:
     deepseek:
       base_url: "https://api.deepseek.com/v1"
@@ -59,6 +60,7 @@ rag:
   chunk_size: 800
   chunk_overlap: 120
   vector_index: hnsw
+  max_distance: 0.55
 
 agent:
   max_steps: 8

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 const (
@@ -81,6 +82,7 @@ type streamSession struct {
 	mu     sync.Mutex
 	closed bool
 	conn   *websocket.Conn
+	log    *zap.Logger
 }
 
 func (s *streamSession) writeJSON(v any) error {
@@ -232,6 +234,9 @@ func (s *streamSession) readLoop(onBot func(*botCallback)) error {
 func (s *streamSession) handleFrame(raw []byte, onBot func(*botCallback)) error {
 	frame, err := decodeFrame(raw)
 	if err != nil {
+		if s != nil && s.log != nil {
+			s.log.Warn("dingtalk stream frame decode", zap.Error(err), zap.Int("bytes", len(raw)))
+		}
 		return nil
 	}
 	ack, disconnect := ackForFrame(frame)
@@ -248,6 +253,9 @@ func (s *streamSession) handleFrame(raw []byte, onBot func(*botCallback)) error 
 	}
 	var data botCallback
 	if err := json.Unmarshal([]byte(frame.Data), &data); err != nil {
+		if s != nil && s.log != nil {
+			s.log.Warn("dingtalk bot callback unmarshal", zap.Error(err), zap.Int("bytes", len(frame.Data)))
+		}
 		return nil
 	}
 	if onBot != nil {

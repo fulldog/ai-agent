@@ -489,7 +489,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 
 ### GET `/api/v1/logs/requests/:id`
 
-单条详情（含更完整 body 预览）。
+单条详情（含更完整 body 预览）。钉钉 Stream 入站也会写入 `request_logs`（`method=STREAM`，`path=/dingtalk/bot/messages`，`request_id` 为钉钉 `msgId`）。详情额外返回 `llm_calls`：同一 `request_id` 下的 `llm_call_logs` 摘要（完整 prompt/回复仍在 `logs/llm-*.log`）。
 
 ---
 

@@ -41,6 +41,41 @@ llm:
 	if cfg.LLM.DefaultProvider != "qwen" {
 		t.Fatalf("default provider: %q", cfg.LLM.DefaultProvider)
 	}
+	if cfg.RAG.MaxDistance != 0.55 {
+		t.Fatalf("default rag.max_distance: %v", cfg.RAG.MaxDistance)
+	}
+	if cfg.LLM.MaxHistory != 10 {
+		t.Fatalf("default llm.max_history: %d", cfg.LLM.MaxHistory)
+	}
+}
+
+func TestMaxHistoryFromFileAndNormalize(t *testing.T) {
+	dir := t.TempDir()
+
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	cfg, err := Load(write("set.yaml", "database:\n  dsn: postgres://x\nllm:\n  max_history: 20\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.MaxHistory != 20 {
+		t.Fatalf("want 20, got %d", cfg.LLM.MaxHistory)
+	}
+
+	cfg, err = Load(write("zero.yaml", "database:\n  dsn: postgres://x\nllm:\n  max_history: 0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.MaxHistory != 10 {
+		t.Fatalf("zero should normalize to 10, got %d", cfg.LLM.MaxHistory)
+	}
 }
 
 func TestLegacyLLMProviderField(t *testing.T) {

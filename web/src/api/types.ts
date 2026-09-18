@@ -72,6 +72,22 @@ export interface RagHit {
   metadata: string;
 }
 
+export interface LLMCallLog {
+  id: string;
+  request_id: string;
+  conversation_id?: string;
+  provider: string;
+  model: string;
+  stream: boolean;
+  status: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  latency_ms: number;
+  request_summary?: string;
+  error_message?: string;
+  created_at: string;
+}
+
 export interface RequestLog {
   id: string;
   request_id: string;
@@ -88,6 +104,7 @@ export interface RequestLog {
   uid?: string;
   error_message?: string;
   created_at: string;
+  llm_calls?: LLMCallLog[];
 }
 
 export interface AgentRun {

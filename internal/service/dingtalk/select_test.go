@@ -33,3 +33,31 @@ func TestBestCorpusID(t *testing.T) {
 		t.Fatalf("got %#v", got)
 	}
 }
+
+func TestFilterRelevant(t *testing.T) {
+	t.Parallel()
+	hits := []rag.Hit{
+		{Content: "close", Score: 0.2},
+		{Content: "far", Score: 0.9},
+	}
+	got := filterRelevant(hits, 0.55)
+	if len(got) != 1 || got[0].Content != "close" {
+		t.Fatalf("got %#v", got)
+	}
+	if filterRelevant(hits, 0) == nil || len(filterRelevant(hits, 0)) != 2 {
+		t.Fatal("maxDistance<=0 should keep all hits")
+	}
+}
+
+func TestIsCorpusMiss(t *testing.T) {
+	t.Parallel()
+	if !isCorpusMiss(nil, false) {
+		t.Fatal("empty hits without online should miss")
+	}
+	if isCorpusMiss(nil, true) {
+		t.Fatal("empty hits with forced online should not miss")
+	}
+	if isCorpusMiss([]rag.Hit{{Content: "x"}}, false) {
+		t.Fatal("hits should not miss")
+	}
+}

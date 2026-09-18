@@ -8,6 +8,7 @@
 llm:
   default_provider: qwen
   timeout_seconds: 120
+  max_history: 10          # 每次请求带入的最近历史消息条数（不含当前问题 / system）
   providers:
     deepseek:
       base_url: "https://api.deepseek.com/v1"

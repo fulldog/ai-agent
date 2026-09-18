@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -203,6 +204,30 @@ func (s *Service) ListMessages(conversationID uuid.UUID, uid string, limit int) 
 	return rows, err
 }
 
+func (s *Service) maxHistory() int {
+	if s != nil && s.cfg != nil && s.cfg.LLM.MaxHistory > 0 {
+		return s.cfg.LLM.MaxHistory
+	}
+	return 10
+}
+
+// listRecentMessages 取最近 limit 条，再按时间正序返回，供 LLM 上下文使用。
+func (s *Service) listRecentMessages(conversationID uuid.UUID, limit int) ([]model.Message, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	var rows []model.Message
+	err := s.db.Where("conversation_id = ?", conversationID).
+		Order("created_at desc").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(rows)
+	return rows, nil
+}
+
 type CompleteInput struct {
 	ConversationID uuid.UUID
 	UID            string
@@ -216,7 +241,9 @@ type CompleteInput struct {
 	CorpusID       *uuid.UUID
 	RAGHits        []rag.Hit
 	TopK           int
+	EnableSearch   bool // 无语料命中且用户强制联网时，通义 enable_search
 	RequestID      string
+	LogLLMRequest  func(provider, model string, messages []llm.Message)
 }
 
 type CompleteResult struct {
@@ -236,13 +263,11 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	if err != nil {
 		return nil, err
 	}
+	if in.LogLLMRequest != nil {
+		in.LogLLMRequest(providerName, modelName, llmMsgs)
+	}
 	start := time.Now()
-	resp, err := client.Chat(ctx, llm.ChatRequest{
-		Model:       modelName,
-		Messages:    llmMsgs,
-		Temperature: in.Temperature,
-		MaxTokens:   in.MaxTokens,
-	})
+	resp, err := client.Chat(ctx, chatRequest(in, providerName, modelName, llmMsgs))
 	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm without rag after content inspection")
 		retry := in
@@ -251,12 +276,7 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 		_, _, retryMsgs, perr := s.prepare(ctx, retry)
 		if perr == nil {
 			llmMsgs = retryMsgs
-			resp, err = client.Chat(ctx, llm.ChatRequest{
-				Model:       modelName,
-				Messages:    llmMsgs,
-				Temperature: in.Temperature,
-				MaxTokens:   in.MaxTokens,
-			})
+			resp, err = client.Chat(ctx, chatRequest(retry, providerName, modelName, llmMsgs))
 		}
 	}
 	status := "ok"
@@ -327,18 +347,16 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	if err != nil {
 		return nil, err
 	}
+	if in.LogLLMRequest != nil {
+		in.LogLLMRequest(providerName, modelName, llmMsgs)
+	}
 	userMsg := model.Message{ConversationID: conv.ID, Role: "user", Content: in.Message}
 	if err := s.db.Create(&userMsg).Error; err != nil {
 		return nil, err
 	}
 	start := time.Now()
 	streamFn := func(msgs []llm.Message) (*llm.ChatResponse, error) {
-		return client.ChatStream(ctx, llm.ChatRequest{
-			Model:       modelName,
-			Messages:    msgs,
-			Temperature: in.Temperature,
-			MaxTokens:   in.MaxTokens,
-		}, func(ev llm.StreamEvent) error {
+		return client.ChatStream(ctx, chatRequest(in, providerName, modelName, msgs), func(ev llm.StreamEvent) error {
 			if ev.Content != "" && onDelta != nil {
 				return onDelta(ev.Content)
 			}
@@ -414,6 +432,16 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	}, nil
 }
 
+func chatRequest(in CompleteInput, providerName, modelName string, msgs []llm.Message) llm.ChatRequest {
+	return llm.ChatRequest{
+		Model:        modelName,
+		Messages:     msgs,
+		Temperature:  in.Temperature,
+		MaxTokens:    in.MaxTokens,
+		EnableSearch: in.EnableSearch && strings.EqualFold(providerName, "qwen"),
+	}
+}
+
 func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Conversation, []model.Message, []llm.Message, error) {
 	var conv *model.Conversation
 	var err error
@@ -425,12 +453,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	var history []model.Message
-	if in.Admin {
-		history, err = s.ListMessagesByID(conv.ID, 100)
-	} else {
-		history, err = s.ListMessages(conv.ID, in.UID, 100)
-	}
+	history, err := s.listRecentMessages(conv.ID, s.maxHistory())
 	if err != nil {
 		return nil, nil, nil, err
 	}

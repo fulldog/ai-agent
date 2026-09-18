@@ -46,3 +46,21 @@ func bestCorpusID(hits []rag.Hit) *uuid.UUID {
 	}
 	return nil
 }
+
+// filterRelevant 丢掉超过余弦距离上限的召回（Score 为 <=> 距离，越小越相似）。
+func filterRelevant(hits []rag.Hit, maxDistance float64) []rag.Hit {
+	if maxDistance <= 0 || len(hits) == 0 {
+		return hits
+	}
+	out := make([]rag.Hit, 0, len(hits))
+	for _, h := range hits {
+		if h.Score <= maxDistance {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func isCorpusMiss(hits []rag.Hit, forceOnline bool) bool {
+	return len(hits) == 0 && !forceOnline
+}

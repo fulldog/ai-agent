@@ -42,12 +42,29 @@ dingtalk:
 ## 消息处理
 
 1. 群聊仅处理 `isInAtList=true`；去掉 `@xxx` 得到 query。
-2. 若 query 命中语料库 **名称**，只检索这些库；否则在全部库上向量检索。
-3. `FindOrCreate` 会话：`channel=dingtalk`，`channel_session_id=conversationId`，`uid=senderStaffId`。
-4. `CompleteStream` + 预检索 hits；卡片节流更新，结束 `isFinalize=true`。
-5. 第一期仅文字消息。
+2. 先检索语料库：query 命中语料库 **名称** 时只搜这些库，否则在全部库上向量检索。余弦距离（`score`）大于 `rag.max_distance` 的片段视为未命中（默认 `0.55`；设为 `0` 则不过滤）。
+3. **无相关命中**时直接回复「语料库未收录相关知识」，不调用大模型。用户明确要求联网查询（如「联网查询」「请联网」「上网搜」「web search」）时除外：去掉这些用语后再检索；仍无命中则走大模型，并对通义开启 `enable_search`（`forced_search`）。
+4. `FindOrCreate` 会话：`channel=dingtalk`，`channel_session_id=conversationId`，`uid=senderStaffId`。
+5. 有语料命中（或强制联网）时 `CompleteStream`；卡片节流更新，结束 `isFinalize=true`。
+6. 第一期仅文字消息。
 
 企业内部群且机器人已上架后才会有 `senderStaffId`；为空时会提示无法识别用户。
+
+## 日志
+
+每条实际处理的钉钉消息共用同一个 `request_id`（钉钉 `msgId`，为空则生成 UUID），同步写入：
+
+1. 文本日志 `logs/info-*.log` 与 `logs/access-*.log`（`step=1..4`）
+2. 表 `request_logs`：同一 `request_id` 一行，收到消息时插入，后续步骤更新。`request_body` 为四步 JSON（receive / rag / llm_request / result），`response_preview` 为本次回复。`method=STREAM`，`path=/dingtalk/bot/messages`。
+
+| step | event | 内容 |
+|------|--------|------|
+| 1 | `dingtalk.receive` | 收到的原文、发送者、群/单聊 |
+| 2 | `dingtalk.rag` | 语料检索 query、命中条数、距离、分块内容 |
+| 3 | `dingtalk.llm_request` | 发给模型的对话；语料未命中且未强制联网时跳过 |
+| 4 | `dingtalk.result` | 本次回复、outcome、耗时、错误 |
+
+调用了大模型时，`llm_call_logs` 与 `logs/llm-*.log` 的 `request_id` 相同。控制台「日志」页可按路径 `/dingtalk/bot/messages` 筛选；点开详情可看 `request_body.steps` 与 `llm_calls`。
 
 ## Stream 建连失败（`systemError` / 系统错误）
 

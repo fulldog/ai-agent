@@ -51,6 +51,7 @@ type ChatRequest struct {
 	Tools          []ToolSpec
 	ToolChoice     string
 	ResponseFormat string // "" | "json_object" — OpenAI 兼容强制 JSON
+	EnableSearch   bool   // 通义 enable_search：强制联网检索
 }
 
 type ChatResponse struct {
@@ -279,6 +280,10 @@ func (c *Client) buildBody(req ChatRequest, stream bool) map[string]any {
 	}
 	if req.ResponseFormat == "json_object" {
 		body["response_format"] = map[string]any{"type": "json_object"}
+	}
+	if req.EnableSearch {
+		body["enable_search"] = true
+		body["search_options"] = map[string]any{"forced_search": true}
 	}
 	return body
 }

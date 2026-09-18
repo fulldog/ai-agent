@@ -242,7 +242,7 @@ LIMIT $3;
 | path_template | TEXT | 路由模板（如 `/api/v1/chat/completions/stream`） |
 | status | INT | HTTP 状态码 |
 | latency_ms | INT | 耗时毫秒 |
-| request_body | TEXT | 请求体摘要（可截断） |
+| request_body | TEXT | 请求体摘要（可截断）。钉钉入站为四步 JSON（`steps`：receive / rag / llm_request / result），`request_id` 与文本日志相同 |
 | response_preview | TEXT | 响应预览（流式为拼接预览） |
 | stream | BOOLEAN | 是否 SSE 流式 |
 | sse_event_count | INT | SSE 事件数 |

@@ -113,6 +113,8 @@ type LLMConfig struct {
 	APIKey          string `yaml:"api_key"`
 	DefaultModel    string `yaml:"default_model"`
 	TimeoutSeconds  int    `yaml:"timeout_seconds"`
+	// MaxHistory 每次对话请求带入的历史消息条数上限（不含当前 user / system）。<=0 时归一为 10。
+	MaxHistory int `yaml:"max_history"`
 	// Providers 多厂商；key 为 deepseek / qwen / kimi / doubao / openai_compat 等。
 	Providers map[string]LLMProviderConfig `yaml:"providers"`
 }
@@ -129,6 +131,8 @@ type RAGConfig struct {
 	ChunkSize    int    `yaml:"chunk_size"`
 	ChunkOverlap int    `yaml:"chunk_overlap"`
 	VectorIndex  string `yaml:"vector_index"`
+	// MaxDistance 余弦距离上限（越小越相似）。钉钉检索超过该值视为未命中；<=0 表示不过滤。
+	MaxDistance float64 `yaml:"max_distance"`
 }
 
 type AgentConfig struct {
@@ -213,6 +217,7 @@ func defaultConfig() *Config {
 			BaseURL:        "https://dashscope.aliyuncs.com/compatible-mode/v1",
 			DefaultModel:   "qwen-plus",
 			TimeoutSeconds: 120,
+			MaxHistory:     10,
 			Providers: map[string]LLMProviderConfig{
 				"deepseek": {
 					BaseURL:      "https://api.deepseek.com/v1",
@@ -242,6 +247,7 @@ func defaultConfig() *Config {
 			ChunkSize:    800,
 			ChunkOverlap: 120,
 			VectorIndex:  "hnsw",
+			MaxDistance:  0.55,
 		},
 		Agent: AgentConfig{
 			MaxSteps:     8,
@@ -409,6 +415,9 @@ func (c *Config) normalize() {
 	}
 	if c.LLM.TimeoutSeconds <= 0 {
 		c.LLM.TimeoutSeconds = 120
+	}
+	if c.LLM.MaxHistory <= 0 {
+		c.LLM.MaxHistory = 10
 	}
 	if c.Embed.Dimensions <= 0 {
 		c.Embed.Dimensions = 768

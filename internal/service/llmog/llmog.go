@@ -25,7 +25,9 @@ func Save(db *gorm.DB, log *zap.Logger, row *model.LLMCallLog, payload *Payload)
 		row.ID = uuid.New()
 	}
 	if db != nil {
-		_ = db.Create(row).Error
+		if err := db.Create(row).Error; err != nil && log != nil {
+			log.Error("save llm_call_logs", zap.Error(err), zap.String("request_id", row.RequestID))
+		}
 	}
 	writeTextLog(log, row, payload)
 }

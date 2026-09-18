@@ -222,6 +222,7 @@ Invoke-RestMethod -Method POST -Uri http://localhost:18090/api/v1/conversations 
 | `rag.chunk_size` | `800` | 分块大小（按 **rune/字符** 计，不是 token） |
 | `rag.chunk_overlap` | `120` | 相邻块重叠长度，减轻断句切碎 |
 | `rag.top_k` | `5` | 默认检索返回条数（注入 prompt 的上下文块数） |
+| `rag.max_distance` | `0.55` | 余弦距离上限；钉钉检索超过该值视为未命中，`0` 表示不过滤 |
 | `rag.vector_index` | `hnsw` | pgvector 索引：`none` / `ivfflat` / `hnsw` |
 | `ocr.min_pdf_text_len` | `40` | PDF 抽字过少时触发 OCR（间接影响扫描件入库质量） |
 
@@ -238,13 +239,15 @@ Invoke-RestMethod -Method POST -Uri http://localhost:18090/api/v1/conversations 
 
 改分块参数后，需对语料执行 **重新索引**（`POST /api/v1/corpora/{id}/reindex`），旧 chunk 不会自动按新参数重切。
 
-**2）检索条数 `top_k`**
+**2）检索条数 `top_k` / 钉钉命中阈值 `max_distance`**
 
 | 现象 | 调整 |
 |------|------|
 | 回答漏关键信息 | 增大到 8～12（注意 prompt 变长、费用/延迟上升） |
 | 回答啰嗦、串题 | 降到 3～5，并提高语料质量 |
 | Agent `knowledge_search` | 请求体 `rag.top_k` 可单独覆盖，不必改全局配置 |
+| 钉钉把不相关内容当命中 | 减小 `rag.max_distance`（如 0.45） |
+| 钉钉明明有语料却回「未收录」 | 增大 `rag.max_distance`，或设 `0` 关闭距离过滤 |
 
 **3）Embedding 模型与维度**
 
@@ -282,5 +285,6 @@ rag:
   chunk_size: 800
   chunk_overlap: 120
   vector_index: hnsw   # none | ivfflat | hnsw
+  max_distance: 0.55   # 钉钉：超过该余弦距离视为语料未命中；0=不过滤
 ```
 
