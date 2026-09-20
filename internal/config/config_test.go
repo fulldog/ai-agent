@@ -211,6 +211,42 @@ func TestDBConnIsEnabledAndEnv(t *testing.T) {
 	}
 }
 
+func TestDBConnSSHEnvAndDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ssh.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BIZ_DATABASE_URL", "user:pass@tcp(127.0.0.1:3306)/biz")
+	t.Setenv("BIZ_SSH_ENABLED", "true")
+	t.Setenv("BIZ_SSH_HOST", "jump.example.com")
+	t.Setenv("BIZ_SSH_PORT", "2222")
+	t.Setenv("BIZ_SSH_USER", "ops")
+	t.Setenv("BIZ_SSH_PASSWORD", "s3cret")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DBConn.SSH.IsEnabled() {
+		t.Fatal("BIZ_SSH_ENABLED should turn on ssh")
+	}
+	if cfg.DBConn.SSH.Host != "jump.example.com" || cfg.DBConn.SSH.Port != 2222 || cfg.DBConn.SSH.User != "ops" {
+		t.Fatalf("ssh env: %#v", cfg.DBConn.SSH)
+	}
+	if cfg.DBConn.SSH.Password != "s3cret" {
+		t.Fatalf("password: %q", cfg.DBConn.SSH.Password)
+	}
+	if cfg.DBConn.SSH.KeepaliveSeconds != 30 || cfg.DBConn.SSH.ReconnectWaitSeconds != 2 {
+		t.Fatalf("ssh keepalive defaults: %#v", cfg.DBConn.SSH)
+	}
+	if (DBConnSSHConfig{Enabled: false, Host: "x"}).IsEnabled() {
+		t.Fatal("ssh enabled:false should disable even if host is set")
+	}
+	if !(DBConnSSHConfig{Enabled: true}).IsEnabled() {
+		t.Fatal("ssh enabled:true should be on")
+	}
+}
+
 func TestDingTalkEnvOverride(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dt.yaml")

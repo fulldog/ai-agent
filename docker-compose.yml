@@ -22,6 +22,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       DATABASE_ENABLED: ${DATABASE_ENABLED:-}
       BIZ_DATABASE_URL: ${BIZ_DATABASE_URL:-}
+      BIZ_SSH_ENABLED: ${BIZ_SSH_ENABLED:-}
+      BIZ_SSH_HOST: ${BIZ_SSH_HOST:-}
+      BIZ_SSH_PORT: ${BIZ_SSH_PORT:-}
+      BIZ_SSH_USER: ${BIZ_SSH_USER:-}
+      BIZ_SSH_PASSWORD: ${BIZ_SSH_PASSWORD:-}
+      BIZ_SSH_KNOWN_HOSTS: ${BIZ_SSH_KNOWN_HOSTS:-}
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml:ro
       - ./data/logs:/app/logs

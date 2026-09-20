@@ -197,6 +197,8 @@ agent:
 
 `dbconn` 由模型按题意自行决定是否调用，不绑定具体业务问法。需要查库时建议：先 `knowledge_search` 取口径，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。仅允许单条只读 SELECT；请使用只读账号。
 
+`dbconn.ssh.enabled`（或 `BIZ_SSH_ENABLED`）为 SSH 开关：`true` 经隧道拨号，`false` 直连 MySQL。认证为**用户名 + 密码**（`ssh.user` / `ssh.password`，或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）。TCP/SSH 保活，断线后指数退避重连；查询遇瞬时网络错误会先重连再重试一次。DSN 里的主机是跳板机对端的 MySQL 地址。
+
 另有一份 **MCP Server** 实现（stdio），工具名同为 `calculator`，逻辑共用 `tools.Calc`：见 [MCP.md](./MCP.md)。
 
 需要 RAG 时请求示例：

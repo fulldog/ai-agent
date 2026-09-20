@@ -78,6 +78,15 @@ dbconn:
   max_idle_conns: 2
   max_rows: 50
   timeout_seconds: 15
+  ssh:
+    enabled: false # 或 BIZ_SSH_ENABLED=true
+    host: "" # 或 BIZ_SSH_HOST
+    port: 22
+    user: "" # 或 BIZ_SSH_USER
+    password: "" # 或 BIZ_SSH_PASSWORD
+    insecure_ignore_host_key: false
+    keepalive_seconds: 30
+    reconnect_wait_seconds: 2
 
 ocr:
   enabled: true

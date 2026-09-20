@@ -33,43 +33,43 @@ func (c *Client) Schema(ctx context.Context, keyword, table string) (string, err
 	if c == nil || c.db == nil {
 		return "", fmt.Errorf("业务库未配置")
 	}
-	ctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	tx, err := c.beginRead(ctx)
-	if err != nil {
-		return "", fmt.Errorf("开启只读事务: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	table = strings.TrimSpace(table)
-	if table != "" {
-		schemaName, tableName, err := splitTableIdent(table)
-		if err != nil {
-			return "", err
-		}
-		query := listColumnsSQL
-		args := []any{tableName}
-		if schemaName != "" {
-			query = listColumnsInSchemaSQL
-			args = []any{schemaName, tableName}
-		}
-		rows, err := tx.QueryContext(ctx, query, args...)
-		if err != nil {
-			return "", fmt.Errorf("查询列信息失败: %w", err)
-		}
-		defer rows.Close()
-		return encodeRows(rows, maxSchemaRows)
-	}
-
 	kw := strings.TrimSpace(keyword)
 	pat := ""
 	if kw != "" {
 		pat = likeContains(kw)
 	}
-	rows, err := tx.QueryContext(ctx, listTablesSQL, kw, pat, pat, maxSchemaRows)
-	if err != nil {
-		return "", fmt.Errorf("查询表信息失败: %w", err)
-	}
-	defer rows.Close()
-	return encodeRows(rows, maxSchemaRows)
+	return c.do(ctx, func(ctx context.Context) (string, error) {
+		tx, err := c.beginRead(ctx)
+		if err != nil {
+			return "", fmt.Errorf("开启只读事务: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		if table != "" {
+			schemaName, tableName, err := splitTableIdent(table)
+			if err != nil {
+				return "", err
+			}
+			query := listColumnsSQL
+			args := []any{tableName}
+			if schemaName != "" {
+				query = listColumnsInSchemaSQL
+				args = []any{schemaName, tableName}
+			}
+			rows, err := tx.QueryContext(ctx, query, args...)
+			if err != nil {
+				return "", fmt.Errorf("查询列信息失败: %w", err)
+			}
+			defer rows.Close()
+			return encodeRows(rows, maxSchemaRows)
+		}
+
+		rows, err := tx.QueryContext(ctx, listTablesSQL, kw, pat, pat, maxSchemaRows)
+		if err != nil {
+			return "", fmt.Errorf("查询表信息失败: %w", err)
+		}
+		defer rows.Close()
+		return encodeRows(rows, maxSchemaRows)
+	})
 }

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -145,13 +146,35 @@ type AgentConfig struct {
 
 // DBConnConfig 独立 MySQL 业务库（Agent dbconn 工具）。勿填 ai-agent 自身的 PostgreSQL DSN。
 type DBConnConfig struct {
-	Enabled        *bool  `yaml:"enabled"`
-	Driver         string `yaml:"driver"` // 仅 mysql
-	DSN            string `yaml:"dsn"`
-	MaxOpenConns   int    `yaml:"max_open_conns"`
-	MaxIdleConns   int    `yaml:"max_idle_conns"`
-	MaxRows        int    `yaml:"max_rows"`
-	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	Enabled        *bool           `yaml:"enabled"`
+	Driver         string          `yaml:"driver"` // 仅 mysql
+	DSN            string          `yaml:"dsn"`
+	MaxOpenConns   int             `yaml:"max_open_conns"`
+	MaxIdleConns   int             `yaml:"max_idle_conns"`
+	MaxRows        int             `yaml:"max_rows"`
+	TimeoutSeconds int             `yaml:"timeout_seconds"`
+	SSH            DBConnSSHConfig `yaml:"ssh"`
+}
+
+// DBConnSSHConfig 经跳板机 SSH 隧道访问业务 MySQL。必须把 enabled 设为 true 才走隧道。
+type DBConnSSHConfig struct {
+	Enabled               bool   `yaml:"enabled"`
+	Host                  string `yaml:"host"`
+	Port                  int    `yaml:"port"`
+	User                  string `yaml:"user"`
+	PrivateKeyPath        string `yaml:"private_key_path"`
+	PrivateKey            string `yaml:"private_key"`
+	Passphrase            string `yaml:"passphrase"`
+	Password              string `yaml:"password"`
+	KnownHostsPath        string `yaml:"known_hosts_path"`
+	InsecureIgnoreHostKey bool   `yaml:"insecure_ignore_host_key"`
+	KeepaliveSeconds      int    `yaml:"keepalive_seconds"`
+	ReconnectWaitSeconds  int    `yaml:"reconnect_wait_seconds"`
+}
+
+// IsEnabled 是否走 SSH 隧道。仅看 ssh.enabled 开关。
+func (c DBConnSSHConfig) IsEnabled() bool {
+	return c.Enabled
 }
 
 // IsEnabled 是否启用业务库。未配 enabled 时以 DSN 非空为准。
@@ -381,6 +404,31 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("BIZ_DATABASE_URL"); v != "" {
 		c.DBConn.DSN = v
 	}
+	if v := os.Getenv("BIZ_SSH_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			c.DBConn.SSH.Enabled = true
+		case "0", "false", "no", "off":
+			c.DBConn.SSH.Enabled = false
+		}
+	}
+	if v := os.Getenv("BIZ_SSH_HOST"); v != "" {
+		c.DBConn.SSH.Host = v
+	}
+	if v := os.Getenv("BIZ_SSH_PORT"); v != "" {
+		if p, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && p > 0 {
+			c.DBConn.SSH.Port = p
+		}
+	}
+	if v := os.Getenv("BIZ_SSH_USER"); v != "" {
+		c.DBConn.SSH.User = v
+	}
+	if v := os.Getenv("BIZ_SSH_PASSWORD"); v != "" {
+		c.DBConn.SSH.Password = v
+	}
+	if v := os.Getenv("BIZ_SSH_KNOWN_HOSTS"); v != "" {
+		c.DBConn.SSH.KnownHostsPath = v
+	}
 	if v := os.Getenv("DINGTALK_CLIENT_ID"); v != "" {
 		c.DingTalk.ClientID = v
 	}
@@ -472,6 +520,19 @@ func (c *Config) normalize() {
 	}
 	if c.DBConn.TimeoutSeconds <= 0 {
 		c.DBConn.TimeoutSeconds = 15
+	}
+	c.DBConn.SSH.Host = strings.TrimSpace(c.DBConn.SSH.Host)
+	c.DBConn.SSH.User = strings.TrimSpace(c.DBConn.SSH.User)
+	c.DBConn.SSH.PrivateKeyPath = strings.TrimSpace(c.DBConn.SSH.PrivateKeyPath)
+	c.DBConn.SSH.KnownHostsPath = strings.TrimSpace(c.DBConn.SSH.KnownHostsPath)
+	if c.DBConn.SSH.Port <= 0 {
+		c.DBConn.SSH.Port = 22
+	}
+	if c.DBConn.SSH.KeepaliveSeconds <= 0 {
+		c.DBConn.SSH.KeepaliveSeconds = 30
+	}
+	if c.DBConn.SSH.ReconnectWaitSeconds <= 0 {
+		c.DBConn.SSH.ReconnectWaitSeconds = 2
 	}
 	if strings.TrimSpace(c.OCR.TesseractPath) == "" {
 		c.OCR.TesseractPath = "tesseract"

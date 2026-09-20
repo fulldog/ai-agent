@@ -59,7 +59,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
 	var bizDB *dbconn.Client
 	if cfg.DBConn.IsEnabled() {
-		opened, err := dbconn.Open(cfg.DBConn)
+		opened, err := dbconn.Open(cfg.DBConn, log)
 		if err != nil {
 			return nil, fmt.Errorf("open dbconn: %w", err)
 		}
