@@ -27,11 +27,11 @@
         </el-form-item>
         <el-form-item label="工具">
           <el-checkbox-group v-model="tools">
-            <el-checkbox label="knowledge_search" value="knowledge_search" />
-            <el-checkbox label="current_time" value="current_time" />
-            <el-checkbox label="calculator" value="calculator" />
-            <el-checkbox label="dbconn" value="dbconn" />
+            <el-checkbox v-for="t in catalog" :key="t.name" :label="t.name" :value="t.name" :title="t.description">
+              {{ t.name }}
+            </el-checkbox>
           </el-checkbox-group>
+          <span v-if="!catalog.length" class="muted">暂无已注册工具</span>
         </el-form-item>
       </el-form>
     </div>
@@ -83,13 +83,14 @@ import { renderMarkdown } from "@/lib/markdown";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
 import { useSettingsStore } from "@/stores/settings";
-import type { Conversation, Corpus } from "@/api/types";
+import type { AgentTool, Conversation, Corpus } from "@/api/types";
 
 const models = useModelsStore();
 const settings = useSettingsStore();
 const input = ref("");
 const maxSteps = ref(8);
-const tools = ref(["knowledge_search", "current_time", "calculator", "dbconn"]);
+const tools = ref<string[]>([]);
+const catalog = ref<AgentTool[]>([]);
 const conversationId = ref("");
 const corpusId = ref("");
 const convs = ref<Conversation[]>([]);
@@ -101,7 +102,7 @@ let abortCtl: AbortController | null = null;
 
 const hero: HeroItem[] = [
   { icon: MagicStick, title: "工具循环", desc: "模型自行决定调用哪个工具、调用几轮", tone: "blue" },
-  { icon: Tools, title: "内置工具", desc: "knowledge_search、current_time、calculator、dbconn", tone: "green" },
+  { icon: Tools, title: "内置工具", desc: "从后端拉取已注册工具，默认勾选 default_tools", tone: "green" },
   { icon: Connection, title: "流式事件", desc: "SSE 推送 tool_call / tool_result / delta", tone: "purple" },
   { icon: View, title: "运行回溯", desc: "完成后到「Agent 历史」查看每次运行的步骤", tone: "orange" },
 ];
@@ -175,6 +176,16 @@ onMounted(async () => {
     corpora.value = (await requestJSON<{ items: Corpus[] }>("/api/v1/corpora")).items || [];
   } catch {
     corpora.value = [];
+  }
+  try {
+    const data = await requestJSON<{ items: AgentTool[] }>("/api/v1/agent/tools");
+    catalog.value = data.items || [];
+    const selected = catalog.value.filter((t) => t.default).map((t) => t.name);
+    tools.value = selected.length ? selected : catalog.value.map((t) => t.name);
+  } catch (e) {
+    catalog.value = [];
+    tools.value = [];
+    ElMessage.error(formatAPIError(e));
   }
 });
 </script>

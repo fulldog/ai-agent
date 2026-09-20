@@ -133,6 +133,12 @@ export interface RequestLog {
   llm_calls?: LLMCallLog[];
 }
 
+export interface AgentTool {
+  name: string;
+  description: string;
+  default?: boolean;
+}
+
 export interface AgentRun {
   id: string;
   uid?: string;

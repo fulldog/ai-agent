@@ -89,8 +89,8 @@ type Env struct {
 6. **联调**  
    `POST /api/v1/agent/runs`，请求体 `"tools": ["your_tool"]`，确认出现 `tool_call` / `tool_result`。
 
-未在 `Default()` 注册的工具，即使写了代码也不会出现在 Specs 中。  
-已注册但未列入 `default_tools` / 请求 `tools` 的工具，**不会**暴露给当次运行的模型。
+未在 `Default()` 注册的工具，即使写了代码也不会出现在 Specs 中，也**不会**出现在 `GET /api/v1/agent/tools`。  
+已注册但未列入 `default_tools` / 请求 `tools` 的工具，**不会**暴露给当次运行的模型；控制台勾选框只列出已注册项，`default=true` 对应 `default_tools`。
 
 ---
 

@@ -81,6 +81,7 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.POST("/chat/completions", chatH.Completions)
 			dbGroup.POST("/chat/completions/stream", chatH.CompletionsStream)
 
+			dbGroup.GET("/agent/tools", agentH.ListTools)
 			dbGroup.POST("/agent/runs", agentH.Run)
 			dbGroup.POST("/agent/runs/stream", agentH.RunStream)
 			dbGroup.GET("/agent/runs", agentH.List)

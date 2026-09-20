@@ -340,6 +340,12 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 工具名、中文描述约定、**如何新增 Tool** 见 [AGENT_TOOLS.md](./AGENT_TOOLS.md)。
 
+### GET `/api/v1/agent/tools`
+
+列出后端**实际注册**的工具（含中文 `description`）。`default=true` 表示出现在 `agent.default_tools` 中。未注册的配置项（例如注释掉的 `current_time`）不会出现。
+
+响应：`{ "items": [{ "name", "description", "default" }] }`。
+
 ### GET `/api/v1/agent/runs`
 
 当前 uid 的 Agent 运行列表（管理员密钥为全库）。Query：`limit`（默认 20，最大 200）、`offset`、`uid`（仅管理员密钥时生效）、`status`（`running` / `succeeded` / `failed`）、`conversation_id`。
@@ -524,6 +530,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Chat Analyze | POST | `/api/v1/chat/analyze` | 是 |
 | Chat Analyze Stream | POST | `/api/v1/chat/analyze/stream` | 是 |
 | Chat Intent | POST | `/api/v1/chat/intent` | 是 |
+| Agent Tools | GET | `/api/v1/agent/tools` | 是 |
 | Agent | POST | `/api/v1/agent/runs` | 是 |
 | Agent Stream | POST | `/api/v1/agent/runs/stream` | 是 |
 | Agent Runs | GET | `/api/v1/agent/runs` | 是 |

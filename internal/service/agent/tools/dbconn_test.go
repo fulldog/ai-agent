@@ -52,7 +52,7 @@ func TestDBConnArgs(t *testing.T) {
 
 func TestRegistryDBConn(t *testing.T) {
 	t.Parallel()
-	if n := len(tools.Default().Specs([]string{"dbconn", "calculator"})); n != 1 {
+	if n := len(tools.Default().Specs([]string{"dbconn", "knowledge_search"})); n != 1 {
 		t.Fatalf("default must hide dbconn, got %d specs", n)
 	}
 	if n := len(tools.WithDBConn(nil).Specs([]string{"dbconn"})); n != 0 {

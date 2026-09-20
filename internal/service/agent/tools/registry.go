@@ -12,12 +12,18 @@ import (
 // Registry 按名称注册与查找工具。
 type Registry struct {
 	byName map[string]Tool
+	order  []string
 }
 
 func NewRegistry(list ...Tool) *Registry {
-	r := &Registry{byName: make(map[string]Tool, len(list))}
+	r := &Registry{byName: make(map[string]Tool, len(list)), order: make([]string, 0, len(list))}
 	for _, t := range list {
-		r.byName[t.Name()] = t
+		name := t.Name()
+		if _, ok := r.byName[name]; ok {
+			continue
+		}
+		r.byName[name] = t
+		r.order = append(r.order, name)
 	}
 	return r
 }
@@ -25,8 +31,8 @@ func NewRegistry(list ...Tool) *Registry {
 func builtin(c *dbconn.Client) []Tool {
 	list := []Tool{
 		KnowledgeSearch{},
-		CurrentTime{},
-		Calculator{},
+		//CurrentTime{},
+		//Calculator{},
 	}
 	if c != nil {
 		list = append(list, DBConn{Client: c})
@@ -42,6 +48,23 @@ func Default() *Registry {
 // WithDBConn 内置工具并注册 dbconn。
 func WithDBConn(c *dbconn.Client) *Registry {
 	return NewRegistry(builtin(c)...)
+}
+
+type Info struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (r *Registry) List() []Info {
+	if r == nil {
+		return nil
+	}
+	out := make([]Info, 0, len(r.order))
+	for _, name := range r.order {
+		t := r.byName[name]
+		out = append(out, Info{Name: name, Description: t.Spec().Function.Description})
+	}
+	return out
 }
 
 func (r *Registry) Specs(names []string) []llm.ToolSpec {

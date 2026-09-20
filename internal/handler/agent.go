@@ -106,6 +106,10 @@ func (h *AgentHandler) RunStream(c *gin.Context) {
 	}
 }
 
+func (h *AgentHandler) ListTools(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": h.Agent.ListTools()})
+}
+
 func (h *AgentHandler) List(c *gin.Context) {
 	admin := middleware.IsAdminContext(c)
 	filter := ""

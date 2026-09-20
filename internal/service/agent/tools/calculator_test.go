@@ -22,11 +22,11 @@ func TestCalculator(t *testing.T) {
 
 func TestRegistrySpecsAndUnknown(t *testing.T) {
 	reg := tools.Default()
-	specs := reg.Specs([]string{"calculator", "missing", "current_time"})
-	if len(specs) != 2 {
+	specs := reg.Specs([]string{"knowledge_search", "missing", "current_time"})
+	if len(specs) != 1 {
 		t.Fatalf("len=%d", len(specs))
 	}
-	if specs[0].Function.Name != "calculator" {
+	if specs[0].Function.Name != "knowledge_search" {
 		t.Fatalf("name=%s", specs[0].Function.Name)
 	}
 	if specs[0].Function.Description == "" {

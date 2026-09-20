@@ -4,7 +4,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 )
 
 func TestNormalizeListRuns(t *testing.T) {
@@ -59,5 +61,18 @@ func TestRunUIDMatch(t *testing.T) {
 	}
 	if runUIDMatch(&model.AgentRun{}, "u1", false) {
 		t.Fatal("empty uid run is not owned")
+	}
+}
+
+func TestListToolsDefaultFlag(t *testing.T) {
+	t.Parallel()
+	s := &Service{
+		cfg:      &config.Config{},
+		registry: tools.Default(),
+	}
+	s.cfg.Agent.DefaultTools = []string{"knowledge_search", "current_time"}
+	got := s.ListTools()
+	if len(got) != 1 || got[0].Name != "knowledge_search" || !got[0].Default {
+		t.Fatalf("got %+v", got)
 	}
 }

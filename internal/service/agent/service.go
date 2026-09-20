@@ -79,6 +79,36 @@ type RunResult struct {
 	Status           string
 }
 
+type ToolInfo struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Default     bool   `json:"default"`
+}
+
+func (s *Service) ListTools() []ToolInfo {
+	if s == nil {
+		return nil
+	}
+	listed := s.registry.List()
+	var defaults []string
+	if s.cfg != nil {
+		defaults = s.cfg.Agent.DefaultTools
+	}
+	want := make(map[string]struct{}, len(defaults))
+	for _, n := range defaults {
+		want[n] = struct{}{}
+	}
+	out := make([]ToolInfo, 0, len(listed))
+	for _, t := range listed {
+		_, def := want[t.Name]
+		if len(want) == 0 {
+			def = true
+		}
+		out = append(out, ToolInfo{Name: t.Name, Description: t.Description, Default: def})
+	}
+	return out
+}
+
 type ListRunsInput struct {
 	UID            string
 	All            bool

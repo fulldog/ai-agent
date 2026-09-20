@@ -460,6 +460,38 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/agent/tools:
+    get:
+      tags: [Agent]
+      summary: 已注册 Agent 工具列表
+      description: 返回后端实际注册的工具；default 表示是否在 agent.default_tools 中。
+      operationId: listAgentTools
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: 工具目录
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        default:
+                          type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/agent/runs:
     get:
       tags: [Agent]
