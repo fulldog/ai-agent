@@ -190,12 +190,12 @@ agent:
 
 | 名称 | 说明 | 依赖 Env / 请求 |
 |------|------|-----------------|
-| `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | `rag.corpus_id` 可选；未传则检索全部语料 |
+| `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | `rag.corpus_id` 可选；未传则检索全部语料；命中受 `rag.max_distance` 过滤 |
 | `current_time` | 获取服务器当前时间（RFC3339） | 无 |
 | `calculator` | 简单四则运算 `a op b`（`+ - * /`） | 无 |
 | `dbconn` | 查 MySQL 业务库数据字典（`information_schema` 注释）或执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
 
-`dbconn` 由模型按题意自行决定是否调用，不绑定具体业务问法。需要查库时建议：先 `knowledge_search` 取口径，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。仅允许单条只读 SELECT；请使用只读账号。
+`dbconn` 由模型按题意自行决定是否调用，不绑定具体业务问法。需要查库时建议：先 `knowledge_search` 取口径，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。`schema` 仅扫描表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
 
 `dbconn.ssh.enabled`（或 `BIZ_SSH_ENABLED`）为 SSH 开关：`true` 经隧道拨号，`false` 直连 MySQL。认证为**用户名 + 密码**（`ssh.user` / `ssh.password`，或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）。TCP/SSH 保活，断线后指数退避重连；查询遇瞬时网络错误会先重连再重试一次。DSN 里的主机是跳板机对端的 MySQL 地址。
 
@@ -219,8 +219,15 @@ agent:
 |------|------|------|
 | 配置文件 | `agent.default_tools` | 请求未传 `tools` 时使用 |
 | 配置文件 | `agent.max_steps` | 工具循环最大步数 |
+| 配置文件 | `chat.tools_enabled` | 普通对话是否带工具，缺省 true；`CHAT_TOOLS_ENABLED` 可覆盖 |
+| 配置文件 | `chat.tools` | 普通对话可用工具，留空沿用 `agent.default_tools` |
+| 配置文件 | `chat.max_tool_steps` | 普通对话内最多工具轮数，缺省 4 |
 | 请求体 | `tools` | 覆盖默认列表；只传需要的名字 |
 | 请求体 | `rag.corpus_id` / `rag.top_k` | 供 `knowledge_search` |
+
+### 普通对话中的工具
+
+`/api/v1/chat/completions`（及其 stream 版本、钉钉机器人）与 Agent 共用同一份 `Registry`：同样把工具 Spec 发给模型，模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
 
 HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./openapi.yaml)。
 

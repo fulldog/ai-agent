@@ -267,10 +267,10 @@ Invoke-RestMethod -Method POST -Uri http://localhost:18090/api/v1/conversations 
 
 **5）调试流程（推荐）**
 
-1. `POST /api/v1/rag/search` 用同一 `query` 看召回：`score` 为 **余弦距离，越小越相似**。
+1. `POST /api/v1/rag/search` 用同一 `query` 看召回：`score` 为 **余弦距离，越小越相似**；超过 `rag.max_distance` 的命中会被丢掉（响应里带回该阈值）。
 2. 若相关块排不进 TopK → 查分块/Embedding/语料，而不是先改 LLM。
 3. 召回正常但生成差 → 再调 `system_prompt`、模型或 `top_k`。
-4. 聊天打开 RAG：`rag.enabled=true` + `corpus_id`；会话也可绑定默认 `corpus_id`。
+4. 聊天打开 RAG：`rag.enabled=true` + `corpus_id`；会话也可绑定默认 `corpus_id`。同样受 `max_distance` 约束。
 
 **6）示例配置片段**
 
@@ -285,6 +285,6 @@ rag:
   chunk_size: 800
   chunk_overlap: 120
   vector_index: hnsw   # none | ivfflat | hnsw
-  max_distance: 0.55   # 钉钉：超过该余弦距离视为语料未命中；0=不过滤
+  max_distance: 0.55   # 余弦距离上限；对话/Agent/调试页/钉钉共用；0=不过滤
 ```
 

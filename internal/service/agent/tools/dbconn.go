@@ -22,7 +22,7 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL：schema 按表名/注释检索数据字典；query 执行只读 SELECT。仅在需要业务数据时调用；先对照语料口径与表/列注释再写 SQL。不要编造表名。",
+			Description: "查询独立业务 MySQL：schema 按表名/注释检索数据字典（仅扫描表名前缀为 Srm 的表，区分大小写，如 Srm_VendorInfo）；query 执行只读 SELECT。仅在需要业务数据时调用；先对照语料口径与表/列注释再写 SQL。不要编造表名。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -33,11 +33,11 @@ func (DBConn) Spec() llm.ToolSpec {
 					},
 					"keyword": map[string]any{
 						"type":        "string",
-						"description": "action=schema 且未指定 table 时，按表名或表注释过滤",
+						"description": "action=schema 且未指定 table 时，按表名或表注释过滤（仍只返回 Srm 前缀表）",
 					},
 					"table": map[string]any{
 						"type":        "string",
-						"description": "action=schema 时指定表名以查看列注释，如 vendor 或 schema.table",
+						"description": "action=schema 时指定表名以查看列注释，仅允许 Srm 前缀且区分大小写，如 Srm_VendorInfo",
 					},
 					"sql": map[string]any{
 						"type":        "string",

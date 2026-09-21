@@ -129,6 +129,10 @@ func collapseSpace(s string) string {
 	return b.String()
 }
 
+func hasTablePrefix(name string) bool {
+	return strings.HasPrefix(strings.TrimSpace(name), tableNamePrefix)
+}
+
 func likeContains(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)

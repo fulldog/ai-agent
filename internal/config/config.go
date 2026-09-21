@@ -17,6 +17,7 @@ type Config struct {
 	Embed      EmbedConfig      `yaml:"embed"`
 	RAG        RAGConfig        `yaml:"rag"`
 	Agent      AgentConfig      `yaml:"agent"`
+	Chat       ChatConfig       `yaml:"chat"`
 	OCR        OCRConfig        `yaml:"ocr"`
 	Extract    ExtractConfig    `yaml:"extract"`
 	Storage    StorageConfig    `yaml:"storage"`
@@ -135,13 +136,31 @@ type RAGConfig struct {
 	ChunkSize    int    `yaml:"chunk_size"`
 	ChunkOverlap int    `yaml:"chunk_overlap"`
 	VectorIndex  string `yaml:"vector_index"`
-	// MaxDistance 余弦距离上限（越小越相似）。钉钉检索超过该值视为未命中；<=0 表示不过滤。
+	// MaxDistance 余弦距离上限（越小越相似）。对话 / Agent / RAG 调试 / 钉钉检索超过该值视为未命中；<=0 表示不过滤。
 	MaxDistance float64 `yaml:"max_distance"`
 }
 
 type AgentConfig struct {
 	MaxSteps     int      `yaml:"max_steps"`
 	DefaultTools []string `yaml:"default_tools"`
+}
+
+// ChatConfig 普通对话（/chat/completions、钉钉）的工具调用设置，与 Agent 共用工具注册表。
+type ChatConfig struct {
+	// ToolsEnabled nil 视为 true：把工具 Spec 一并发给模型，由模型决定是否调用。
+	ToolsEnabled *bool `yaml:"tools_enabled"`
+	// Tools 对话可用的工具名；为空时沿用 agent.default_tools。
+	Tools []string `yaml:"tools"`
+	// MaxToolSteps 一次对话内最多允许的工具轮数；<=0 归一为 4。超出后强制模型直接作答。
+	MaxToolSteps int `yaml:"max_tool_steps"`
+}
+
+// IsToolsEnabled 普通对话是否携带工具。未配置时默认开启。
+func (c ChatConfig) IsToolsEnabled() bool {
+	if c.ToolsEnabled != nil {
+		return *c.ToolsEnabled
+	}
+	return true
 }
 
 // DBConnConfig 独立 MySQL 业务库（Agent dbconn 工具）。勿填 ai-agent 自身的 PostgreSQL DSN。
@@ -298,6 +317,9 @@ func defaultConfig() *Config {
 			MaxSteps:     8,
 			DefaultTools: []string{"knowledge_search", "current_time", "calculator", "dbconn"},
 		},
+		Chat: ChatConfig{
+			MaxToolSteps: 4,
+		},
 		DBConn: DBConnConfig{
 			Driver:         "mysql",
 			MaxOpenConns:   5,
@@ -400,6 +422,17 @@ func (c *Config) applyEnv() {
 	setProviderKey("kimi", "KIMI_API_KEY")
 	setProviderKey("doubao", "ARK_API_KEY")
 	setProviderKey("doubao", "DOUBAO_API_KEY")
+
+	if v := os.Getenv("CHAT_TOOLS_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			on := true
+			c.Chat.ToolsEnabled = &on
+		case "0", "false", "no", "off":
+			off := false
+			c.Chat.ToolsEnabled = &off
+		}
+	}
 
 	if v := os.Getenv("BIZ_DATABASE_URL"); v != "" {
 		c.DBConn.DSN = v
@@ -504,6 +537,12 @@ func (c *Config) normalize() {
 	}
 	if c.Agent.MaxSteps <= 0 {
 		c.Agent.MaxSteps = 8
+	}
+	if c.Chat.MaxToolSteps <= 0 {
+		c.Chat.MaxToolSteps = 4
+	}
+	if len(c.Chat.Tools) == 0 {
+		c.Chat.Tools = c.Agent.DefaultTools
 	}
 	c.DBConn.Driver = strings.ToLower(strings.TrimSpace(c.DBConn.Driver))
 	if c.DBConn.Driver == "" {

@@ -53,10 +53,8 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		return nil, err
 	}
 	embedClient := embed.NewClient(cfg.Embed.BaseURL, cfg.Embed.APIKey, cfg.Embed.Model, cfg.Embed.Dimensions)
-	ragSvc := rag.New(db, embedClient)
+	ragSvc := rag.New(db, embedClient, cfg.RAG.MaxDistance)
 	corpusSvc := corpus.New(db, cfg, embedClient)
-	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog)
-	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
 	var bizDB *dbconn.Client
 	if cfg.DBConn.IsEnabled() {
 		opened, err := dbconn.Open(cfg.DBConn, log)
@@ -65,6 +63,8 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		}
 		bizDB = opened
 	}
+	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB)
+	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
 	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:           cfg.OCR.Enabled,

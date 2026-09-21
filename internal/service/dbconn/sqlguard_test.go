@@ -67,6 +67,31 @@ func TestSplitTableIdent(t *testing.T) {
 	}
 }
 
+func TestHasTablePrefix(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		ok   bool
+	}{
+		{name: "Srm_VendorInfo", ok: true},
+		{name: "SrmOrder", ok: true},
+		{name: "  Srm_x  ", ok: true},
+		{name: "srm_vendor", ok: false},
+		{name: "SRM_VENDOR", ok: false},
+		{name: "vendor", ok: false},
+		{name: "asrm_x", ok: false},
+		{name: "", ok: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := hasTablePrefix(tt.name); got != tt.ok {
+				t.Fatalf("hasTablePrefix(%q)=%v want %v", tt.name, got, tt.ok)
+			}
+		})
+	}
+}
+
 func TestLikeContains(t *testing.T) {
 	t.Parallel()
 	got := likeContains(`a%b_c`)

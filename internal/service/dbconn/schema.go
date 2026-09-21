@@ -6,10 +6,13 @@ import (
 	"strings"
 )
 
+const tableNamePrefix = "Srm"
+
 const listTablesSQL = `
 SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME LIKE BINARY 'Srm%'
   AND (? = '' OR TABLE_NAME LIKE ? ESCAPE '\\' OR TABLE_COMMENT LIKE ? ESCAPE '\\')
 ORDER BY TABLE_NAME
 LIMIT ?`
@@ -18,14 +21,14 @@ const listColumnsSQL = `
 SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = ?
+  AND BINARY TABLE_NAME = ?
 ORDER BY ORDINAL_POSITION`
 
 const listColumnsInSchemaSQL = `
 SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = ?
-  AND TABLE_NAME = ?
+  AND BINARY TABLE_NAME = ?
 ORDER BY ORDINAL_POSITION`
 
 // Schema 列出当前库表或指定表的列（含注释，作为数据字典）。
@@ -50,6 +53,9 @@ func (c *Client) Schema(ctx context.Context, keyword, table string) (string, err
 			schemaName, tableName, err := splitTableIdent(table)
 			if err != nil {
 				return "", err
+			}
+			if !hasTablePrefix(tableName) {
+				return "", fmt.Errorf("仅允许扫描表名前缀为 %s 的表（区分大小写）", tableNamePrefix)
 			}
 			query := listColumnsSQL
 			args := []any{tableName}

@@ -13,12 +13,21 @@ import (
 )
 
 type Service struct {
-	db    *gorm.DB
-	embed *embed.Client
+	db          *gorm.DB
+	embed       *embed.Client
+	maxDistance float64
 }
 
-func New(db *gorm.DB, embedClient *embed.Client) *Service {
-	return &Service{db: db, embed: embedClient}
+func New(db *gorm.DB, embedClient *embed.Client, maxDistance float64) *Service {
+	return &Service{db: db, embed: embedClient, maxDistance: maxDistance}
+}
+
+// MaxDistance 余弦距离上限；<=0 表示不过滤。
+func (s *Service) MaxDistance() float64 {
+	if s == nil {
+		return 0
+	}
+	return s.maxDistance
 }
 
 type Hit struct {
@@ -98,7 +107,22 @@ LIMIT ?`, where)
 			Metadata:   r.Metadata,
 		})
 	}
-	return hits, nil
+	return FilterByMaxDistance(hits, s.maxDistance), nil
+}
+
+// FilterByMaxDistance 丢掉超过余弦距离上限的召回（Score 为 <=> 距离，越小越相似）。
+// maxDistance <= 0 时不过滤。
+func FilterByMaxDistance(hits []Hit, maxDistance float64) []Hit {
+	if maxDistance <= 0 || len(hits) == 0 {
+		return hits
+	}
+	out := make([]Hit, 0, len(hits))
+	for _, h := range hits {
+		if h.Score <= maxDistance {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func vectorLiteral(v []float32) string {

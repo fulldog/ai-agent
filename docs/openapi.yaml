@@ -870,7 +870,7 @@ paths:
               top_k: 5
       responses:
         "200":
-          description: 检索结果（score 为距离，越小越相似）
+          description: 检索结果（score 为距离，越小越相似；已按 rag.max_distance 过滤）
           content:
             application/json:
               schema:
@@ -1459,6 +1459,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RAGSearchHit"
+        max_distance:
+          type: number
+          format: double
+          description: 配置 rag.max_distance；>0 时 results 已丢掉更远的命中
 
     RequestLog:
       type: object

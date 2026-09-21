@@ -62,6 +62,9 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 		return "", err
 	}
 	if len(hits) == 0 {
+		if d := env.RAG.MaxDistance(); d > 0 {
+			return fmt.Sprintf("未检索到相关内容（余弦距离须 ≤ %.2f）", d), nil
+		}
 		return "未检索到相关内容", nil
 	}
 	var b strings.Builder

@@ -170,6 +170,8 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 同步补全（非流式）。普通密钥 **必填** `X-User-Id`，且 `conversation_id` 须属于该 uid，否则 `404`。管理员密钥可对任意会话补全。
 
+普通对话同样带工具（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），由模型自行决定是否调用，`usage` 为各轮累计。工具集取 `chat.tools`（留空则 `agent.default_tools`），轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 或 `CHAT_TOOLS_ENABLED=false` 可关闭。
+
 ```json
 {
   "conversation_id": "uuid",
@@ -484,11 +486,12 @@ multipart 响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`�
       "score": 0.12,
       "metadata": {}
     }
-  ]
+  ],
+  "max_distance": 0.55
 }
 ```
 
-`score` 为 pgvector 距离（越小越相似，实现阶段在文档中注明）。
+`score` 为 pgvector 余弦距离（越小越相似）。`max_distance` 来自配置 `rag.max_distance`：大于该值的命中不会出现在 `results` 中；`<=0` 表示不过滤。对话补全、Agent `knowledge_search`、钉钉检索使用同一阈值。
 
 ---
 

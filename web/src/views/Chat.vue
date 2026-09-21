@@ -40,7 +40,7 @@
           <el-option v-for="p in models.enabledProviders" :key="p.name" :label="p.name" :value="p.name" />
         </el-select>
         <el-input v-model="models.selectedModel" placeholder="模型" style="width: 200px" />
-        <el-switch v-model="ragEnabled" active-text="RAG" />
+        <el-switch v-model="ragEnabled" active-text="RAG" title="命中分块受服务端 rag.max_distance 过滤" />
         <el-select v-model="ragCorpus" placeholder="语料库" clearable filterable style="width: 180px" :disabled="!ragEnabled">
           <el-option v-for="c in corpora" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>

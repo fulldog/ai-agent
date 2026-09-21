@@ -42,7 +42,7 @@ dingtalk:
 ## 消息处理
 
 1. 群聊仅处理 `isInAtList=true`；去掉 `@xxx` 得到 query。
-2. 先检索语料库：query 命中语料库 **名称** 时只搜这些库，否则在全部库上向量检索。余弦距离（`score`）大于 `rag.max_distance` 的片段视为未命中（默认 `0.55`；设为 `0` 则不过滤）。
+2. 先检索语料库：query 命中语料库 **名称** 时只搜这些库，否则在全部库上向量检索。余弦距离（`score`）大于 `rag.max_distance` 的片段视为未命中（默认 `0.55`；设为 `0` 则不过滤）。该阈值与对话补全、Agent `knowledge_search`、控制台 RAG 调试页共用。
 3. **无相关命中**时直接回复「语料库未收录相关知识」，不调用大模型。用户明确要求联网查询（如「联网查询」「请联网」「上网搜」「web search」）时除外：去掉这些用语后再检索；仍无命中则走大模型，并对通义开启 `enable_search`（`forced_search`）。
 4. `FindOrCreate` 会话：`channel=dingtalk`，`channel_session_id=conversationId`，`uid=senderStaffId`。
 5. 有语料命中（或强制联网）时 `CompleteStream`；卡片节流更新，结束 `isFinalize=true`。

@@ -32,5 +32,9 @@ func (h *RAGHandler) Search(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"results": hits})
+	maxDistance := 0.0
+	if h.RAG != nil {
+		maxDistance = h.RAG.MaxDistance()
+	}
+	c.JSON(http.StatusOK, gin.H{"results": hits, "max_distance": maxDistance})
 }

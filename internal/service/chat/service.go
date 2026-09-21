@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
+	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
@@ -20,18 +22,23 @@ import (
 )
 
 type Service struct {
-	db     *gorm.DB
-	cfg    *config.Config
-	pool   *llm.Pool
-	rag    *rag.Service
-	llmLog *zap.Logger // 完整 prompt/回复 → logs/llm-*.log
+	db       *gorm.DB
+	cfg      *config.Config
+	pool     *llm.Pool
+	rag      *rag.Service
+	registry *tools.Registry
+	llmLog   *zap.Logger // 完整 prompt/回复 → logs/llm-*.log
 }
 
-func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger) *Service {
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger, bizDB *dbconn.Client) *Service {
 	if llmLog == nil {
 		llmLog = zap.NewNop()
 	}
-	return &Service{db: db, cfg: cfg, pool: pool, rag: ragSvc, llmLog: llmLog}
+	reg := tools.Default()
+	if bizDB != nil {
+		reg = tools.WithDBConn(bizDB)
+	}
+	return &Service{db: db, cfg: cfg, pool: pool, rag: ragSvc, registry: reg, llmLog: llmLog}
 }
 
 type CreateConversationInput struct {
@@ -255,7 +262,7 @@ type CompleteResult struct {
 }
 
 func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResult, error) {
-	conv, msgs, llmMsgs, err := s.prepare(ctx, in)
+	conv, _, llmMsgs, err := s.prepare(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -266,50 +273,17 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	if in.LogLLMRequest != nil {
 		in.LogLLMRequest(providerName, modelName, llmMsgs)
 	}
-	start := time.Now()
-	resp, err := client.Chat(ctx, chatRequest(in, providerName, modelName, llmMsgs))
+	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
+	resp, err := s.toolLoop(ctx, in, call, llmMsgs, nil)
 	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
 		retry.RAGHits = nil
-		_, _, retryMsgs, perr := s.prepare(ctx, retry)
-		if perr == nil {
-			llmMsgs = retryMsgs
-			resp, err = client.Chat(ctx, chatRequest(retry, providerName, modelName, llmMsgs))
+		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
+			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, nil)
 		}
 	}
-	status := "ok"
-	errMsg := ""
-	if err != nil {
-		status = "error"
-		errMsg = err.Error()
-	}
-	respContent := ""
-	finishReason := ""
-	var toolCalls any
-	if resp != nil {
-		respContent = resp.Content
-		finishReason = resp.FinishReason
-		if len(resp.ToolCalls) > 0 {
-			toolCalls = resp.ToolCalls
-		}
-	}
-	llmog.Save(s.db, s.llmLog, &model.LLMCallLog{
-		RequestID:        in.RequestID,
-		ConversationID:   &conv.ID,
-		Provider:         providerName,
-		Model:            modelName,
-		Stream:           false,
-		Status:           status,
-		PromptTokens:     valueOrZero(resp),
-		CompletionTokens: completionOrZero(resp),
-		LatencyMs:        time.Since(start).Milliseconds(),
-		RequestSummary:   fmt.Sprintf("messages=%d", len(llmMsgs)),
-		ErrorMessage:     errMsg,
-	}, &llmog.Payload{
-		Messages: llmMsgs, Response: respContent, ToolCalls: toolCalls, FinishReason: finishReason,
-	})
 	if err != nil {
 		return nil, err
 	}
@@ -328,13 +302,12 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	if err := s.db.Create(&asst).Error; err != nil {
 		return nil, err
 	}
-	_ = msgs
 	return &CompleteResult{
 		ConversationID:   conv.ID,
 		MessageID:        asst.ID,
 		Content:          resp.Content,
-		PromptTokens:     resp.PromptTokens,
-		CompletionTokens: resp.CompletionTokens,
+		PromptTokens:     pt,
+		CompletionTokens: ct,
 	}, nil
 }
 
@@ -354,65 +327,25 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	if err := s.db.Create(&userMsg).Error; err != nil {
 		return nil, err
 	}
-	start := time.Now()
-	streamFn := func(msgs []llm.Message) (*llm.ChatResponse, error) {
-		return client.ChatStream(ctx, chatRequest(in, providerName, modelName, msgs), func(ev llm.StreamEvent) error {
-			if ev.Content != "" && onDelta != nil {
-				return onDelta(ev.Content)
-			}
-			return nil
-		})
+	if onDelta == nil {
+		onDelta = func(string) error { return nil }
 	}
-	resp, err := streamFn(llmMsgs)
+	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
+	resp, err := s.toolLoop(ctx, in, call, llmMsgs, onDelta)
 	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm stream without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
 		retry.RAGHits = nil
-		_, _, retryMsgs, perr := s.prepare(ctx, retry)
-		if perr == nil {
-			llmMsgs = retryMsgs
-			resp, err = streamFn(llmMsgs)
+		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
+			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, onDelta)
 		}
 	}
-	status := "ok"
-	errMsg := ""
-	if err != nil {
-		status = "error"
-		errMsg = err.Error()
-	}
-	pt, ct := 0, 0
-	content := ""
-	if resp != nil {
-		pt, ct = resp.PromptTokens, resp.CompletionTokens
-		content = resp.Content
-	}
-	finishReason := ""
-	var toolCalls any
-	if resp != nil {
-		finishReason = resp.FinishReason
-		if len(resp.ToolCalls) > 0 {
-			toolCalls = resp.ToolCalls
-		}
-	}
-	llmog.Save(s.db, s.llmLog, &model.LLMCallLog{
-		RequestID:        in.RequestID,
-		ConversationID:   &conv.ID,
-		Provider:         providerName,
-		Model:            modelName,
-		Stream:           true,
-		Status:           status,
-		PromptTokens:     pt,
-		CompletionTokens: ct,
-		LatencyMs:        time.Since(start).Milliseconds(),
-		RequestSummary:   fmt.Sprintf("messages=%d stream=true", len(llmMsgs)),
-		ErrorMessage:     errMsg,
-	}, &llmog.Payload{
-		Messages: llmMsgs, Response: content, ToolCalls: toolCalls, FinishReason: finishReason,
-	})
 	if err != nil {
 		return nil, err
 	}
+	pt, ct := resp.PromptTokens, resp.CompletionTokens
+	content := resp.Content
 	asst := model.Message{
 		ConversationID:  conv.ID,
 		Role:            "assistant",
@@ -473,7 +406,11 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 			hits = found
 		}
 	}
-	system := mergeSystem(s.replyStyle(), conv.SystemPrompt, ragContext(hits))
+	style := s.replyStyle()
+	if tp := toolSystemPrompt(s.toolSpecs()); tp != "" {
+		style += "\n\n" + tp
+	}
+	system := mergeSystem(style, conv.SystemPrompt, ragContext(hits))
 	if system != "" {
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}
@@ -485,20 +422,6 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 	}
 	llmMsgs = append(llmMsgs, llm.Message{Role: "user", Content: in.Message})
 	return conv, history, llmMsgs, nil
-}
-
-func valueOrZero(r *llm.ChatResponse) int {
-	if r == nil {
-		return 0
-	}
-	return r.PromptTokens
-}
-
-func completionOrZero(r *llm.ChatResponse) int {
-	if r == nil {
-		return 0
-	}
-	return r.CompletionTokens
 }
 
 // 单次直传分析时，文件正文最大 rune 数（超出截断，避免撑爆上下文）。
