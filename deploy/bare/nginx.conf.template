@@ -1,0 +1,36 @@
+# ai-agent 控制台：无域名，用 http://<服务器IP>:__WEB_PORT__/ 访问。
+# 由 deploy/bare/deploy.sh 根据模板生成，勿手改已安装副本（改本文件后重新部署）。
+
+server {
+    listen __WEB_PORT__ default_server;
+    listen [::]:__WEB_PORT__ default_server;
+    server_name _;
+
+    root __WEB_ROOT__;
+    index index.html;
+
+    client_max_body_size 64m;
+
+    location /api/ {
+        proxy_pass http://__API_UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /health {
+        proxy_pass http://__API_UPSTREAM__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
