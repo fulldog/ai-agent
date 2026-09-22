@@ -47,6 +47,25 @@ llm:
 	if cfg.LLM.MaxHistory != 10 {
 		t.Fatalf("default llm.max_history: %d", cfg.LLM.MaxHistory)
 	}
+	if cfg.LLM.ThinkingEnabled() {
+		t.Fatal("thinking should default off")
+	}
+}
+
+func TestLLMEnableThinkingEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLM_ENABLE_THINKING", "true")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LLM.ThinkingEnabled() {
+		t.Fatal("env should turn thinking on")
+	}
 }
 
 func TestMaxHistoryFromFileAndNormalize(t *testing.T) {

@@ -32,7 +32,9 @@ llm:
   system_prompt: "回答简洁直接，不要套话。"
   # 默认厂商；请求未传 provider 时使用
   default_provider: qwen
-  timeout_seconds: 120
+	timeout_seconds: 120
+  # 通义 Qwen3 等默认会思考；false 时请求带 enable_thinking=false。也可用 LLM_ENABLE_THINKING
+  enable_thinking: false
   # 每次对话请求带入的最近历史消息条数（不含当前问题 / system）
   max_history: 10
   # 可选：覆盖默认「简洁作答」系统提示（钉钉/控制台对话）

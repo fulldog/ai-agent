@@ -120,8 +120,15 @@ type LLMConfig struct {
 	MaxHistory int `yaml:"max_history"`
 	// SystemPrompt 对话默认风格（钉钉/控制台）。空则使用代码内置的精简回答提示。
 	SystemPrompt string `yaml:"system_prompt"`
+	// EnableThinking 通义 Qwen3 等模型的思考链。nil/false 时请求里显式 enable_thinking=false，避免网关默认开启。
+	EnableThinking *bool `yaml:"enable_thinking"`
 	// Providers 多厂商；key 为 deepseek / qwen / kimi / doubao / openai_compat 等。
 	Providers map[string]LLMProviderConfig `yaml:"providers"`
+}
+
+// ThinkingEnabled 是否允许模型思考。未配置时为 false。
+func (c LLMConfig) ThinkingEnabled() bool {
+	return c.EnableThinking != nil && *c.EnableThinking
 }
 
 type EmbedConfig struct {
@@ -422,6 +429,17 @@ func (c *Config) applyEnv() {
 	setProviderKey("kimi", "KIMI_API_KEY")
 	setProviderKey("doubao", "ARK_API_KEY")
 	setProviderKey("doubao", "DOUBAO_API_KEY")
+
+	if v := os.Getenv("LLM_ENABLE_THINKING"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			on := true
+			c.LLM.EnableThinking = &on
+		case "0", "false", "no", "off":
+			off := false
+			c.LLM.EnableThinking = &off
+		}
+	}
 
 	if v := os.Getenv("CHAT_TOOLS_ENABLED"); v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {

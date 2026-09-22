@@ -72,9 +72,11 @@ type StreamEvent struct {
 }
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
+	baseURL        string
+	apiKey         string
+	httpClient     *http.Client
+	sendThinking   bool // 通义兼容接口需要显式传 enable_thinking
+	enableThinking bool
 }
 
 func NewClient(baseURL, apiKey string, timeoutSec int) *Client {
@@ -284,6 +286,9 @@ func (c *Client) buildBody(req ChatRequest, stream bool) map[string]any {
 	if req.EnableSearch {
 		body["enable_search"] = true
 		body["search_options"] = map[string]any{"forced_search": true}
+	}
+	if c.sendThinking {
+		body["enable_thinking"] = c.enableThinking
 	}
 	return body
 }

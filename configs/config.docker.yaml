@@ -29,6 +29,7 @@ llm:
   default_provider: qwen
   timeout_seconds: 120
   max_history: 10
+  enable_thinking: false
   providers:
     deepseek:
       base_url: "https://api.deepseek.com/v1"

@@ -42,9 +42,18 @@ func (p *Pool) DefaultClient() *Client {
 		// 无 key 时也建一个空客户端，保持启动不崩
 		name := p.defaultP
 		pc := p.cfg.LLM.Providers[name]
-		return NewClient(pc.BaseURL, pc.APIKey, p.timeout)
+		return p.newClient(name, pc)
 	}
 	return client
+}
+
+func (p *Pool) newClient(provider string, pc config.LLMProviderConfig) *Client {
+	c := NewClient(pc.BaseURL, pc.APIKey, p.timeout)
+	if p.cfg != nil {
+		c.enableThinking = p.cfg.LLM.ThinkingEnabled()
+		c.sendThinking = strings.EqualFold(provider, "qwen")
+	}
+	return c
 }
 
 // Resolve 按 provider + 可选 model 解析客户端。
@@ -73,7 +82,7 @@ func (p *Pool) Resolve(provider, model string) (client *Client, providerName, mo
 	if client, ok = p.clients[name]; ok {
 		return client, name, modelName, nil
 	}
-	client = NewClient(pc.BaseURL, pc.APIKey, p.timeout)
+	client = p.newClient(name, pc)
 	p.clients[name] = client
 	return client, name, modelName, nil
 }

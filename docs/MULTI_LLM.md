@@ -59,6 +59,7 @@ Chat / Agent 增加可选字段：
 ## 注意
 
 - Agent Tool Calling 依赖厂商对 `tools` 的支持；不支持时可能无法完成 Agent 循环。
+- 通义 `qwen-plus` 等 Qwen3 模型不传参时网关可能默认开启思考。配置 `llm.enable_thinking: false`（默认）会在请求里带 `enable_thinking=false`；设为 `true` 或环境变量 `LLM_ENABLE_THINKING=true` 可打开。该字段只发给 `qwen` 厂商，避免其它网关拒识。
 - 豆包 `default_model` 通常为方舟 **接入点 ID**。
 - Embedding 仍走 `embed.*`，与 Chat 厂商无关。
 
