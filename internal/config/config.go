@@ -266,11 +266,12 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
-	cfg := defaultConfig()
+	//cfg := defaultConfig()
+	var cfg = new(Config)
 	if err := yaml.Unmarshal(raw, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	cfg.applyEnv()
+	//cfg.applyEnv()
 	cfg.normalize()
 	return cfg, nil
 }
