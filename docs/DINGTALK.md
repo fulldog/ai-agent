@@ -1,6 +1,6 @@
 # 钉钉机器人 RAG 流式回复
 
-进程内按官方 [Stream 协议](https://open.dingtalk.com/document/development/configure-stream-push) 接收群内 **@机器人** 消息（单聊不需 @），用钉钉 `senderStaffId` 作为会话 `uid`，按 **用户 + 群/单聊 conversationId** 隔离历史。检索本服务知识库后走现有 `CompleteStream`，再把增量推到钉钉 **AI 流式卡片**（钉钉客户端没有 HTTP SSE）。
+进程内按官方 [Stream 协议](https://open.dingtalk.com/document/development/configure-stream-push) 接收群内 **@机器人** 消息（单聊不需 @），用钉钉 `senderStaffId` 作为会话 `uid`，按 **用户 + 群/单聊 conversationId** 隔离历史。检索本服务知识库后，默认走现有 `CompleteStream`；也可配置 `dingtalk.reply_mode: agent` 走 `Agent.Run` 工具循环。增量推到钉钉 **AI 流式卡片**（钉钉客户端没有 HTTP SSE）。
 
 收消息：本仓库自研 `POST /v1.0/gateway/connections/open` + WebSocket，**不依赖** `dingtalk-stream-sdk-go`。  
 发消息：`github.com/alibabacloud-go/dingtalk`（oauth2 / card / robot）；`sessionWebhook` 用本地 HTTP。
@@ -27,7 +27,7 @@
 
 见 `configs/config.example.yaml` 的 `dingtalk` 段。密钥也可用环境变量：
 
-`DINGTALK_ENABLED`、`DINGTALK_CLIENT_ID`、`DINGTALK_CLIENT_SECRET`、`DINGTALK_CARD_TEMPLATE_ID`。
+`DINGTALK_ENABLED`、`DINGTALK_CLIENT_ID`、`DINGTALK_CLIENT_SECRET`、`DINGTALK_CARD_TEMPLATE_ID`、`DINGTALK_REPLY_MODE`。
 
 ```yaml
 dingtalk:
@@ -35,6 +35,7 @@ dingtalk:
   client_id: "your-app-key"
   client_secret: "your-app-secret"
   card_template_id: "your-ai-card-template-id"  # 可选
+  reply_mode: chat  # chat（默认，CompleteStream）| agent（Agent.Run，落 agent_runs）
 ```
 
 发卡片/群消息时的 robotCode 使用同一应用的 Client ID，无需单独配置。卡片模板未配或创建失败时：整段回复走 `sessionWebhook`；群聊还可再降级到 `robot_1_0.OrgGroupSend`。
@@ -45,7 +46,7 @@ dingtalk:
 2. 先检索语料库：query 命中语料库 **名称** 时只搜这些库，否则在全部库上向量检索。余弦距离（`score`）大于 `rag.max_distance` 的片段视为未命中（默认 `0.55`；设为 `0` 则不过滤）。该阈值与对话补全、Agent `knowledge_search`、控制台 RAG 调试页共用。
 3. **无相关命中**时直接回复「语料库未收录相关知识」，不调用大模型。用户明确要求联网查询（如「联网查询」「请联网」「上网搜」「web search」）时除外：去掉这些用语后再检索；仍无命中则走大模型，并对通义开启 `enable_search`（`forced_search`）。
 4. `FindOrCreate` 会话：`channel=dingtalk`，`channel_session_id=conversationId`，`uid=senderStaffId`。
-5. 有语料命中（或强制联网）时 `CompleteStream`；卡片节流更新，结束 `isFinalize=true`。
+5. 有语料命中（或强制联网）时按 `reply_mode` 作答：`chat`（默认）走 `CompleteStream`；`agent` 走 `Agent.Run`（预检索 hits 注入 system，带会话历史与 dbconn 等工具，卡片仍流式更新）。结束 `isFinalize=true`。
 6. 第一期仅文字消息。
 
 企业内部群且机器人已上架后才会有 `senderStaffId`；为空时会提示无法识别用户。

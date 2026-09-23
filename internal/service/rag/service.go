@@ -110,6 +110,22 @@ LIMIT ?`, where)
 	return FilterByMaxDistance(hits, s.maxDistance), nil
 }
 
+const HitsPromptHeader = "【知识摘录】只采用与问题直接相关的句子作答；材料不足就明确说不知道。不要整段照抄。"
+
+// HitsPrompt 把召回片段拼进 system；空 hits 返回空串。
+func HitsPrompt(hits []Hit) string {
+	if len(hits) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(HitsPromptHeader)
+	b.WriteByte('\n')
+	for i, h := range hits {
+		b.WriteString(fmt.Sprintf("[%d] %s\n", i+1, h.Content))
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // FilterByMaxDistance 丢掉超过余弦距离上限的召回（Score 为 <=> 距离，越小越相似）。
 // maxDistance <= 0 时不过滤。
 func FilterByMaxDistance(hits []Hit, maxDistance float64) []Hit {

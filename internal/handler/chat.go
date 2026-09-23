@@ -63,6 +63,7 @@ func (h *ChatHandler) parseInput(c *gin.Context) (chat.CompleteInput, bool) {
 		RequestID:      requestID(c),
 	}
 	if req.RAG != nil {
+		in.RAGExplicit = true
 		in.RAGEnabled = req.RAG.Enabled
 		in.TopK = req.RAG.TopK
 		if req.RAG.CorpusID != "" {

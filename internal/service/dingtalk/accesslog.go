@@ -24,6 +24,7 @@ const (
 	eventReceive    = "dingtalk.receive"
 	eventRAG        = "dingtalk.rag"
 	eventLLMRequest = "dingtalk.llm_request"
+	eventAgent      = "dingtalk.agent"
 	eventResult     = "dingtalk.result"
 )
 

@@ -40,8 +40,8 @@
           <el-option v-for="p in models.enabledProviders" :key="p.name" :label="p.name" :value="p.name" />
         </el-select>
         <el-input v-model="models.selectedModel" placeholder="模型" style="width: 200px" />
-        <el-switch v-model="ragEnabled" active-text="RAG" title="命中分块受服务端 rag.max_distance 过滤" />
-        <el-select v-model="ragCorpus" placeholder="语料库" clearable filterable style="width: 180px" :disabled="!ragEnabled">
+        <el-switch v-model="ragEnabled" active-text="RAG" title="默认开启：未选语料库时检索全部语料；关闭则本轮不注入 RAG" />
+        <el-select v-model="ragCorpus" placeholder="全部语料" clearable filterable style="width: 180px" :disabled="!ragEnabled">
           <el-option v-for="c in corpora" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>
         <el-input-number v-model="topK" :min="1" :max="20" :disabled="!ragEnabled" />
@@ -79,7 +79,7 @@ const currentId = ref("");
 const messages = ref<Message[]>([]);
 const draft = ref("");
 const sending = ref(false);
-const ragEnabled = ref(false);
+const ragEnabled = ref(true);
 const ragCorpus = ref("");
 const topK = ref(5);
 const corpora = ref<Corpus[]>([]);
@@ -249,8 +249,14 @@ async function send() {
       provider: models.selectedProvider || undefined,
       model: models.selectedModel || undefined,
     };
-    if (ragEnabled.value && ragCorpus.value) {
-      payload.rag = { enabled: true, corpus_id: ragCorpus.value, top_k: topK.value };
+    if (ragEnabled.value) {
+      payload.rag = {
+        enabled: true,
+        top_k: topK.value,
+        ...(ragCorpus.value ? { corpus_id: ragCorpus.value } : {}),
+      };
+    } else {
+      payload.rag = { enabled: false };
     }
     await postSSE(
       "/api/v1/chat/completions/stream",

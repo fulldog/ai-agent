@@ -220,14 +220,18 @@ agent:
 | 配置文件 | `agent.default_tools` | 请求未传 `tools` 时使用 |
 | 配置文件 | `agent.max_steps` | 工具循环最大步数 |
 | 配置文件 | `chat.tools_enabled` | 普通对话是否带工具，缺省 true；`CHAT_TOOLS_ENABLED` 可覆盖 |
+| 配置文件 | `chat.rag_enabled` | 普通对话是否默认 RAG，缺省 true；`CHAT_RAG_ENABLED` 可覆盖；无 corpus_id 时搜全部语料 |
 | 配置文件 | `chat.tools` | 普通对话可用工具，留空沿用 `agent.default_tools` |
 | 配置文件 | `chat.max_tool_steps` | 普通对话内最多工具轮数，缺省 4 |
+| 配置文件 | `dingtalk.reply_mode` | `chat`（默认）钉钉走对话 Completions；`agent` 走 `Agent.Run`，工具集同 `agent.default_tools` |
 | 请求体 | `tools` | 覆盖默认列表；只传需要的名字 |
 | 请求体 | `rag.corpus_id` / `rag.top_k` | 供 `knowledge_search` |
 
 ### 普通对话中的工具
 
-`/api/v1/chat/completions`（及其 stream 版本、钉钉机器人）与 Agent 共用同一份 `Registry`：同样把工具 Spec 发给模型，模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
+`/api/v1/chat/completions`（及其 stream 版本、钉钉 `reply_mode: chat`）与 Agent 共用同一份 `Registry`：同样把工具 Spec 发给模型，模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
+
+钉钉 `reply_mode: agent` 时入站在预检索之后调用 `Agent.Run`（`agent.max_steps`、默认工具、落 `agent_runs`），与控制台 Agent 页同一套循环。
 
 HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./openapi.yaml)。
 

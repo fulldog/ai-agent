@@ -1,6 +1,9 @@
 package rag
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFilterByMaxDistance(t *testing.T) {
 	t.Parallel()
@@ -34,6 +37,17 @@ func TestFilterByMaxDistance(t *testing.T) {
 	}
 	if FilterByMaxDistance(nil, 0.55) != nil {
 		t.Fatal("nil hits should stay nil")
+	}
+}
+
+func TestHitsPrompt(t *testing.T) {
+	t.Parallel()
+	if HitsPrompt(nil) != "" {
+		t.Fatal("empty")
+	}
+	got := HitsPrompt([]Hit{{Content: "报销需发票"}})
+	if !strings.Contains(got, HitsPromptHeader) || !strings.Contains(got, "[1] 报销需发票") {
+		t.Fatalf("got %q", got)
 	}
 }
 

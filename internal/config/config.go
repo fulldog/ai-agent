@@ -28,13 +28,25 @@ type Config struct {
 	DBConn     DBConnConfig     `yaml:"dbconn"`
 }
 
-// DingTalkConfig 钉钉 Stream 机器人（群内 @ 后 RAG 流式回复）。
+// DingTalkConfig 钉钉 Stream 机器人（群内 @ 后预检索 + 流式卡片）。
 // 发卡片/群消息时的 robotCode 与 Client ID 相同，无需单独配置。
 type DingTalkConfig struct {
 	Enabled        bool   `yaml:"enabled"`
 	ClientID       string `yaml:"client_id"`
 	ClientSecret   string `yaml:"client_secret"`
 	CardTemplateID string `yaml:"card_template_id"`
+	// ReplyMode chat=现有 CompleteStream（默认）；agent=Agent.Run 工具循环。
+	ReplyMode string `yaml:"reply_mode"`
+}
+
+const (
+	DingTalkReplyChat  = "chat"
+	DingTalkReplyAgent = "agent"
+)
+
+// UseAgent 是否走 Agent 工具循环。未配置或非法值视为 chat。
+func (c DingTalkConfig) UseAgent() bool {
+	return strings.EqualFold(strings.TrimSpace(c.ReplyMode), DingTalkReplyAgent)
 }
 
 type ServerConfig struct {
@@ -152,7 +164,7 @@ type AgentConfig struct {
 	DefaultTools []string `yaml:"default_tools"`
 }
 
-// ChatConfig 普通对话（/chat/completions、钉钉）的工具调用设置，与 Agent 共用工具注册表。
+// ChatConfig 普通对话（/chat/completions、钉钉）的工具与 RAG 默认设置，与 Agent 共用工具注册表。
 type ChatConfig struct {
 	// ToolsEnabled nil 视为 true：把工具 Spec 一并发给模型，由模型决定是否调用。
 	ToolsEnabled *bool `yaml:"tools_enabled"`
@@ -160,6 +172,8 @@ type ChatConfig struct {
 	Tools []string `yaml:"tools"`
 	// MaxToolSteps 一次对话内最多允许的工具轮数；<=0 归一为 4。超出后强制模型直接作答。
 	MaxToolSteps int `yaml:"max_tool_steps"`
+	// RAGEnabled nil 视为 true：请求未显式传 rag 时，默认做向量检索（无 corpus_id 则搜全部语料）。
+	RAGEnabled *bool `yaml:"rag_enabled"`
 }
 
 // IsToolsEnabled 普通对话是否携带工具。未配置时默认开启。
@@ -168,6 +182,19 @@ func (c ChatConfig) IsToolsEnabled() bool {
 		return *c.ToolsEnabled
 	}
 	return true
+}
+
+// IsRAGEnabled 普通对话是否默认做 RAG。未配置时默认开启。
+func (c ChatConfig) IsRAGEnabled() bool {
+	if c.RAGEnabled != nil {
+		return *c.RAGEnabled
+	}
+	return true
+}
+
+// DefaultAgentTools 全局默认工具集（含 RAG 检索与业务库查询）。
+func DefaultAgentTools() []string {
+	return []string{"knowledge_search", "current_time", "calculator", "dbconn"}
 }
 
 // DBConnConfig 独立 MySQL 业务库（Agent dbconn 工具）。勿填 ai-agent 自身的 PostgreSQL DSN。
@@ -266,8 +293,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
-	//cfg := defaultConfig()
-	var cfg = new(Config)
+	cfg := defaultConfig()
 	if err := yaml.Unmarshal(raw, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
@@ -323,7 +349,7 @@ func defaultConfig() *Config {
 		},
 		Agent: AgentConfig{
 			MaxSteps:     8,
-			DefaultTools: []string{"knowledge_search", "current_time", "calculator", "dbconn"},
+			DefaultTools: DefaultAgentTools(),
 		},
 		Chat: ChatConfig{
 			MaxToolSteps: 4,
@@ -452,6 +478,16 @@ func (c *Config) applyEnv() {
 			c.Chat.ToolsEnabled = &off
 		}
 	}
+	if v := os.Getenv("CHAT_RAG_ENABLED"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			on := true
+			c.Chat.RAGEnabled = &on
+		case "0", "false", "no", "off":
+			off := false
+			c.Chat.RAGEnabled = &off
+		}
+	}
 
 	if v := os.Getenv("BIZ_DATABASE_URL"); v != "" {
 		c.DBConn.DSN = v
@@ -497,6 +533,9 @@ func (c *Config) applyEnv() {
 		case "0", "false", "no", "off":
 			c.DingTalk.Enabled = false
 		}
+	}
+	if v := os.Getenv("DINGTALK_REPLY_MODE"); v != "" {
+		c.DingTalk.ReplyMode = v
 	}
 }
 
@@ -560,8 +599,11 @@ func (c *Config) normalize() {
 	if c.Chat.MaxToolSteps <= 0 {
 		c.Chat.MaxToolSteps = 4
 	}
+	if len(c.Agent.DefaultTools) == 0 {
+		c.Agent.DefaultTools = DefaultAgentTools()
+	}
 	if len(c.Chat.Tools) == 0 {
-		c.Chat.Tools = c.Agent.DefaultTools
+		c.Chat.Tools = append([]string(nil), c.Agent.DefaultTools...)
 	}
 	c.DBConn.Driver = strings.ToLower(strings.TrimSpace(c.DBConn.Driver))
 	if c.DBConn.Driver == "" {
@@ -642,6 +684,12 @@ func (c *Config) normalize() {
 	c.DingTalk.ClientID = strings.TrimSpace(c.DingTalk.ClientID)
 	c.DingTalk.ClientSecret = strings.TrimSpace(c.DingTalk.ClientSecret)
 	c.DingTalk.CardTemplateID = strings.TrimSpace(c.DingTalk.CardTemplateID)
+	switch strings.ToLower(strings.TrimSpace(c.DingTalk.ReplyMode)) {
+	case DingTalkReplyAgent:
+		c.DingTalk.ReplyMode = DingTalkReplyAgent
+	default:
+		c.DingTalk.ReplyMode = DingTalkReplyChat
+	}
 
 	c.normalizeLLMProviders()
 }

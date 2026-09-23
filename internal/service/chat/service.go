@@ -218,6 +218,17 @@ func (s *Service) maxHistory() int {
 	return 10
 }
 
+// wantRAG 是否对本轮对话做向量检索注入。请求显式传 rag 时尊重开关；否则用 chat.rag_enabled（默认开）。
+func (s *Service) wantRAG(in CompleteInput) bool {
+	if in.RAGExplicit {
+		return in.RAGEnabled
+	}
+	if s != nil && s.cfg != nil {
+		return s.cfg.Chat.IsRAGEnabled()
+	}
+	return true
+}
+
 // listRecentMessages 取最近 limit 条，再按时间正序返回，供 LLM 上下文使用。
 func (s *Service) listRecentMessages(conversationID uuid.UUID, limit int) ([]model.Message, error) {
 	if limit <= 0 {
@@ -245,12 +256,14 @@ type CompleteInput struct {
 	Temperature    float64
 	MaxTokens      int
 	RAGEnabled     bool
-	CorpusID       *uuid.UUID
-	RAGHits        []rag.Hit
-	TopK           int
-	EnableSearch   bool // 无语料命中且用户强制联网时，通义 enable_search
-	RequestID      string
-	LogLLMRequest  func(provider, model string, messages []llm.Message)
+	// RAGExplicit 为 true 时尊重 RAGEnabled；为 false 时用 chat.rag_enabled 默认（缺省开启）。
+	RAGExplicit   bool
+	CorpusID      *uuid.UUID
+	RAGHits       []rag.Hit
+	TopK          int
+	EnableSearch  bool // 无语料命中且用户强制联网时，通义 enable_search
+	RequestID     string
+	LogLLMRequest func(provider, model string, messages []llm.Message)
 }
 
 type CompleteResult struct {
@@ -275,10 +288,11 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 	}
 	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
 	resp, err := s.toolLoop(ctx, in, call, llmMsgs, nil)
-	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
+	if llm.IsInspectionFailed(err) && (s.wantRAG(in) || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
+		retry.RAGExplicit = true
 		retry.RAGHits = nil
 		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
 			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, nil)
@@ -332,10 +346,11 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 	}
 	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
 	resp, err := s.toolLoop(ctx, in, call, llmMsgs, onDelta)
-	if llm.IsInspectionFailed(err) && (in.RAGEnabled || len(in.RAGHits) > 0) {
+	if llm.IsInspectionFailed(err) && (s.wantRAG(in) || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm stream without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
+		retry.RAGExplicit = true
 		retry.RAGHits = nil
 		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
 			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, onDelta)
@@ -396,12 +411,18 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		corpusID = conv.CorpusID
 	}
 	hits := in.RAGHits
-	if in.RAGEnabled && len(hits) == 0 && corpusID != nil && s.rag != nil {
+	if s.wantRAG(in) && len(hits) == 0 && s.rag != nil {
 		topK := in.TopK
 		if topK <= 0 {
 			topK = s.cfg.RAG.TopK
 		}
-		found, rerr := s.rag.Search(ctx, *corpusID, in.Message, topK)
+		var found []rag.Hit
+		var rerr error
+		if corpusID != nil {
+			found, rerr = s.rag.Search(ctx, *corpusID, in.Message, topK)
+		} else {
+			found, rerr = s.rag.SearchInCorpora(ctx, nil, in.Message, topK)
+		}
 		if rerr == nil {
 			hits = found
 		}

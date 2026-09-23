@@ -32,7 +32,7 @@ llm:
   system_prompt: "回答简洁直接，不要套话。"
   # 默认厂商；请求未传 provider 时使用
   default_provider: qwen
-	timeout_seconds: 120
+  timeout_seconds: 120
   # 通义 Qwen3 等默认会思考；false 时请求带 enable_thinking=false。也可用 LLM_ENABLE_THINKING
   enable_thinking: false
   # 每次对话请求带入的最近历史消息条数（不含当前问题 / system）
@@ -84,11 +84,13 @@ agent:
     - calculator
     - dbconn
 
-# 普通对话（/chat/completions、钉钉）也带工具：把工具 Spec 发给模型，由模型决定是否调用。
-# tools_enabled 缺省为 true，可用环境变量 CHAT_TOOLS_ENABLED=false 关闭。
+# 普通对话（/chat/completions、钉钉）默认带 RAG + 工具（含 dbconn）。
+# tools_enabled / rag_enabled 缺省均为 true；可用 CHAT_TOOLS_ENABLED / CHAT_RAG_ENABLED 覆盖。
 # tools 留空则沿用 agent.default_tools；max_tool_steps 是一次对话内最多的工具轮数。
+# 请求未传 rag 时默认检索；无 corpus_id 时搜全部语料库。
 chat:
   tools_enabled: true
+  rag_enabled: true
   tools: []
   max_tool_steps: 4
 
@@ -167,9 +169,10 @@ request_log:
   persist_body: true
 
 # 钉钉 Stream 机器人。环境变量：DINGTALK_ENABLED、DINGTALK_CLIENT_ID、
-# DINGTALK_CLIENT_SECRET、DINGTALK_CARD_TEMPLATE_ID
+# DINGTALK_CLIENT_SECRET、DINGTALK_CARD_TEMPLATE_ID、DINGTALK_REPLY_MODE
 dingtalk:
   enabled: false
   client_id: ""         # 凭证与基础信息的 Client ID（旧称 AppKey）
   client_secret: ""     # 同一应用的 Client Secret
   card_template_id: ""  # 可选；留空则整段回复走 sessionWebhook
+  reply_mode: chat      # chat=CompleteStream（默认）；agent=Agent.Run 工具循环

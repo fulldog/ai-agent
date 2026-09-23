@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
+	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"github.com/webapp/go-app/ai-agent/internal/service/chat"
 	"github.com/webapp/go-app/ai-agent/internal/service/corpus"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
@@ -35,6 +37,7 @@ type Bot struct {
 	access      *zap.Logger
 	db          *gorm.DB
 	chat        *chat.Service
+	agent       *agent.Service
 	rag         *rag.Service
 	corpus      *corpus.Service
 	api         *openAPI
@@ -44,7 +47,7 @@ type Bot struct {
 	sess *streamSession
 }
 
-func New(cfg *config.Config, chatSvc *chat.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log, accessLog *zap.Logger, db *gorm.DB) *Bot {
+func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log, accessLog *zap.Logger, db *gorm.DB) *Bot {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -72,6 +75,7 @@ func New(cfg *config.Config, chatSvc *chat.Service, ragSvc *rag.Service, corpusS
 		access:      accessLog.With(zap.String("component", "dingtalk")),
 		db:          db,
 		chat:        chatSvc,
+		agent:       agentSvc,
 		rag:         ragSvc,
 		corpus:      corpusSvc,
 		api:         newOpenAPI(cfg.DingTalk.ClientID, cfg.DingTalk.ClientSecret),
@@ -340,18 +344,31 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		return
 	}
 	tr.conversationID = &conv.ID
+	enableSearch := len(hits) == 0 && forceOnline
+	tr.enableSearch = enableSearch
 
+	if b.useAgent() {
+		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, hits, enableSearch)
+		return
+	}
+	b.completeViaChat(ctx, data, tr, conv, uid, ragQuery, corpusID, hits, enableSearch)
+}
+
+func (b *Bot) useAgent() bool {
+	return b != nil && b.cfg.UseAgent() && b.agent != nil
+}
+
+func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, hits []rag.Hit, enableSearch bool) {
 	streamer := b.newStreamer(ctx, data)
 	var acc strings.Builder
 	lastFlush := time.Now()
-	enableSearch := len(hits) == 0 && forceOnline
-	tr.enableSearch = enableSearch
 	tr.outcome = "llm"
 	res, err := b.chat.CompleteStream(ctx, chat.CompleteInput{
 		ConversationID: conv.ID,
 		UID:            uid,
 		Message:        ragQuery,
 		RAGEnabled:     len(hits) > 0,
+		RAGExplicit:    true,
 		CorpusID:       corpusID,
 		RAGHits:        hits,
 		TopK:           b.ragTop,
@@ -399,6 +416,83 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		return
 	}
 	text := res.Content
+	if strings.TrimSpace(text) == "" {
+		text = acc.String()
+	}
+	if strings.TrimSpace(text) == "" {
+		text = "没有生成内容。"
+	}
+	tr.reply = text
+	_ = streamer.finish(text, false)
+}
+
+func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, hits []rag.Hit, enableSearch bool) {
+	streamer := b.newStreamer(ctx, data)
+	var acc strings.Builder
+	lastFlush := time.Now()
+	tr.outcome = "agent"
+	cid := conv.ID
+	res, err := b.agent.Run(ctx, agent.RunInput{
+		ConversationID: &cid,
+		UID:            uid,
+		Input:          ragQuery,
+		CorpusID:       corpusID,
+		TopK:           b.ragTop,
+		RAGHits:        hits,
+		EnableSearch:   enableSearch,
+		RequestID:      tr.requestID,
+		Stream:         true,
+	}, func(ev agent.Event) error {
+		switch ev.Type {
+		case "delta":
+			content, _ := ev.Payload["content"].(string)
+			acc.WriteString(content)
+			now := time.Now()
+			if now.Sub(lastFlush) < streamMinInterval && acc.Len() < 80 {
+				return nil
+			}
+			lastFlush = now
+			return streamer.update(acc.String(), false)
+		case "tool_call":
+			name, _ := ev.Payload["name"].(string)
+			hint := "正在调用工具…"
+			if name == "dbconn" {
+				hint = "正在查询业务库…"
+			} else if name == "knowledge_search" {
+				hint = "正在检索知识库…"
+			}
+			_ = streamer.update(hint, false)
+		}
+		return nil
+	})
+	if err != nil {
+		b.log.Error("agent run", zap.Error(err), zap.String("request_id", tr.requestID))
+		final := acc.String()
+		if final == "" {
+			final = llm.PublicMessage(err)
+		}
+		tr.status = 500
+		tr.errMsg = err.Error()
+		tr.reply = final
+		_ = streamer.finish(final, true)
+		return
+	}
+	text := ""
+	if res != nil {
+		text = res.Output
+		b.recordStep(tr, stepLLMRequest, eventAgent, map[string]any{
+			"run_id":          res.RunID.String(),
+			"step_count":      res.StepCount,
+			"status":          res.Status,
+			"enable_search":   enableSearch,
+			"rag_enabled":     len(hits) > 0,
+			"conversation_id": conv.ID.String(),
+		},
+			zap.String("run_id", res.RunID.String()),
+			zap.Int("step_count", res.StepCount),
+			zap.String("conversation_id", conv.ID.String()),
+		)
+	}
 	if strings.TrimSpace(text) == "" {
 		text = acc.String()
 	}

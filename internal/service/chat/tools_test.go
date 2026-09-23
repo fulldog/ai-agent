@@ -34,6 +34,28 @@ func TestToolSpecsPrefersChatTools(t *testing.T) {
 	}
 }
 
+func TestWantRAG(t *testing.T) {
+	t.Parallel()
+	if !(&Service{}).wantRAG(CompleteInput{}) {
+		t.Fatal("nil cfg should default RAG on")
+	}
+	s := &Service{cfg: &config.Config{}}
+	if !s.wantRAG(CompleteInput{}) {
+		t.Fatal("unset chat.rag_enabled should default on")
+	}
+	off := false
+	s.cfg.Chat.RAGEnabled = &off
+	if s.wantRAG(CompleteInput{}) {
+		t.Fatal("config off")
+	}
+	if !s.wantRAG(CompleteInput{RAGExplicit: true, RAGEnabled: true}) {
+		t.Fatal("explicit on should win over config off")
+	}
+	if s.wantRAG(CompleteInput{RAGExplicit: true, RAGEnabled: false}) {
+		t.Fatal("explicit off")
+	}
+}
+
 func TestMaxToolSteps(t *testing.T) {
 	t.Parallel()
 	if got := (&Service{}).maxToolSteps(); got != 4 {

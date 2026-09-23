@@ -71,6 +71,12 @@ agent:
     - calculator
     - dbconn
 
+chat:
+  tools_enabled: true
+  rag_enabled: true
+  tools: []
+  max_tool_steps: 4
+
 dbconn:
   enabled: true
   driver: mysql
@@ -134,3 +140,4 @@ dingtalk:
   client_id: ""
   client_secret: ""
   card_template_id: ""
+  reply_mode: chat # chat | agent

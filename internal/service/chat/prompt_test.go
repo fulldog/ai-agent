@@ -38,7 +38,7 @@ func TestRAGContext(t *testing.T) {
 		t.Fatal("empty hits should be empty")
 	}
 	got := ragContext([]rag.Hit{{Content: "报销需发票"}})
-	if !strings.Contains(got, ragContextHeader) || !strings.Contains(got, "[1] 报销需发票") {
+	if !strings.Contains(got, rag.HitsPromptHeader) || !strings.Contains(got, "[1] 报销需发票") {
 		t.Fatalf("got %q", got)
 	}
 }

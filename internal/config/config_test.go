@@ -97,6 +97,38 @@ func TestMaxHistoryFromFileAndNormalize(t *testing.T) {
 	}
 }
 
+func TestDefaultToolsAndRAGEnabled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bare.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DefaultAgentTools()
+	if len(cfg.Agent.DefaultTools) != len(want) {
+		t.Fatalf("default tools: %#v", cfg.Agent.DefaultTools)
+	}
+	for i, n := range want {
+		if cfg.Agent.DefaultTools[i] != n || cfg.Chat.Tools[i] != n {
+			t.Fatalf("tools[%d]=%q chat=%q want %q", i, cfg.Agent.DefaultTools[i], cfg.Chat.Tools[i], n)
+		}
+	}
+	if !cfg.Chat.IsRAGEnabled() {
+		t.Fatal("rag should default on")
+	}
+	if !cfg.Chat.IsToolsEnabled() {
+		t.Fatal("tools should default on")
+	}
+	off := false
+	cfg.Chat.RAGEnabled = &off
+	if cfg.Chat.IsRAGEnabled() {
+		t.Fatal("explicit off")
+	}
+}
+
 func TestLegacyLLMProviderField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "legacy.yaml")
@@ -282,5 +314,49 @@ func TestDingTalkEnvOverride(t *testing.T) {
 	}
 	if !cfg.DingTalk.Enabled || cfg.DingTalk.ClientID != "cid" || cfg.DingTalk.CardTemplateID != "tpl" {
 		t.Fatalf("dingtalk env: %#v", cfg.DingTalk)
+	}
+	if cfg.DingTalk.ReplyMode != DingTalkReplyChat {
+		t.Fatalf("default reply_mode: %q", cfg.DingTalk.ReplyMode)
+	}
+}
+
+func TestDingTalkReplyModeNormalize(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	cfg, err := Load(write("bare.yaml", "database:\n  dsn: postgres://x\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DingTalk.ReplyMode != DingTalkReplyChat || cfg.DingTalk.UseAgent() {
+		t.Fatalf("empty should be chat: %#v", cfg.DingTalk)
+	}
+	cfg, err = Load(write("bad.yaml", "database:\n  dsn: postgres://x\ndingtalk:\n  reply_mode: weird\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DingTalk.ReplyMode != DingTalkReplyChat {
+		t.Fatalf("illegal: %q", cfg.DingTalk.ReplyMode)
+	}
+	cfg, err = Load(write("agent.yaml", "database:\n  dsn: postgres://x\ndingtalk:\n  reply_mode: AGENT\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DingTalk.ReplyMode != DingTalkReplyAgent || !cfg.DingTalk.UseAgent() {
+		t.Fatalf("agent: %#v", cfg.DingTalk)
+	}
+	t.Setenv("DINGTALK_REPLY_MODE", "agent")
+	cfg, err = Load(write("env.yaml", "database:\n  dsn: postgres://x\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.DingTalk.UseAgent() {
+		t.Fatal("DINGTALK_REPLY_MODE should select agent")
 	}
 }

@@ -172,6 +172,6 @@ func toolSystemPrompt(specs []llm.ToolSpec) string {
 }
 
 const (
-	baseToolPrompt   = "需要准确信息时调用工具，并依据工具结果作答；不需要时直接回答，不要为了用工具而用工具。"
-	dbconnToolPrompt = "若问题涉及业务数据或表结构：先用 knowledge_search 查口径或规则，再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 调用 dbconn 的 query。无法对应到表时说明缺什么，不要编造表名或数据。"
+	baseToolPrompt   = "需要准确信息时调用工具，并依据工具结果作答；不需要时直接回答，不要为了用工具而用工具。本次请求若已附带 tools，说明工具已启用，禁止回答「未启用工具/请到工具函数管理开启」。"
+	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：先用 knowledge_search 查口径或规则，再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。"
 )

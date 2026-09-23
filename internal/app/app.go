@@ -81,7 +81,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		CollapseCJKSpaces: cfg.OCR.CollapseCJKSpaces,
 	})
 	fileExtractSvc := fileextract.New(db, extractor, cfg.Storage.AttachmentsDir, cfg)
-	dtBot := dingtalk.New(cfg, chatSvc, ragSvc, corpusSvc, log, accessLog, db)
+	dtBot := dingtalk.New(cfg, chatSvc, agentSvc, ragSvc, corpusSvc, log, accessLog, db)
 	return &App{
 		Config:      cfg,
 		DB:          db,

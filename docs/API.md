@@ -170,7 +170,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 同步补全（非流式）。普通密钥 **必填** `X-User-Id`，且 `conversation_id` 须属于该 uid，否则 `404`。管理员密钥可对任意会话补全。
 
-普通对话同样带工具（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），由模型自行决定是否调用，`usage` 为各轮累计。工具集取 `chat.tools`（留空则 `agent.default_tools`），轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 或 `CHAT_TOOLS_ENABLED=false` 可关闭。
+普通对话默认开启 RAG（`chat.rag_enabled`，可用 `CHAT_RAG_ENABLED=false` 关闭）：请求未传 `rag` 时自动检索；未指定 `corpus_id` 时搜索全部语料库。同样默认带工具（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），由模型自行决定是否调用，`usage` 为各轮累计。工具集取 `chat.tools`（留空则 `agent.default_tools`），轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 或 `CHAT_TOOLS_ENABLED=false` 可关闭。
 
 ```json
 {
@@ -188,6 +188,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 }
 ```
 
+省略 `rag` 等同于默认开启；显式 `"rag": {"enabled": false}` 可关闭本轮检索。`corpus_id` 可省略以检索全部语料。
 **响应** `200`
 
 ```json
@@ -544,7 +545,7 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Logs | GET | `/api/v1/logs/requests` | 是 |
 | Token Stats | GET | `/api/v1/stats/tokens` | 是 |
 
-钉钉群机器人 **不是 HTTP API**：进程内 Stream 收消息，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。
+钉钉群机器人 **不是 HTTP API**：进程内 Stream 收消息，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。`dingtalk.reply_mode` 默认 `chat`（`CompleteStream`）；设为 `agent` 时与 `/agent/runs` 共用工具注册表，并写入 `agent_runs`。
 
 ---
 
