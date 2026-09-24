@@ -11,6 +11,9 @@
 #   API_PORT        后端端口，默认从 config server.addr 解析，否则 18090
 #   SKIP_SERVER=1   不编译、不重启 Go
 #   SKIP_WEB=1      不编译前端
+#   WEB_USE_DOCKER  默认 1：用 Docker 编译前端（避开宿主机 Node/GLIBC 过旧）
+#   NODE_IMAGE      前端构建镜像，默认 node:22-bookworm
+#   NPM_REGISTRY    可选 npm 源，例如 https://registry.npmmirror.com
 #   SKIP_NGINX=1    不写 Nginx、不 reload
 #   NGINX_CONF      安装路径；空则自动选 conf.d 或 sites-available
 set -euo pipefail
@@ -79,9 +82,9 @@ if [[ "${SKIP_SERVER:-0}" != "1" ]]; then
 fi
 
 # ---------- 2. 编译 web ----------
-if [[ "${SKIP_WEB:-0}" != "1" ]]; then
+build_web_host() {
   need npm
-  log "编译 web（vue-tsc + vite build）"
+  log "宿主机编译 web（vue-tsc + vite build）"
   (
     cd web
     if [[ -f package-lock.json ]]; then
@@ -91,6 +94,50 @@ if [[ "${SKIP_WEB:-0}" != "1" ]]; then
     fi
     npm run build
   )
+}
+
+build_web_docker() {
+  need docker
+  if ! docker info >/dev/null 2>&1; then
+    log "ERROR: Docker 未运行或当前用户无权限"
+    exit 1
+  fi
+  local image="${NODE_IMAGE:-node:22-bookworm}"
+  log "Docker 编译 web（镜像 ${image}）"
+  mkdir -p "${WEB_ROOT}"
+
+  local -a args=(
+    run --rm
+    -e npm_config_update_notifier=false
+    -v "${REPO_ROOT}/web:/app:z"
+    -v ai-agent-web-npm:/app/node_modules
+    -w /app
+  )
+  if [[ -n "${NPM_REGISTRY:-}" ]]; then
+    args+=(-e "npm_config_registry=${NPM_REGISTRY}")
+    log "npm registry: ${NPM_REGISTRY}"
+  fi
+  if [[ "$(id -u)" -ne 0 ]]; then
+    args+=(--user "$(id -u):$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/npm)
+  fi
+
+  docker "${args[@]}" "${image}" bash -lc '
+    set -euo pipefail
+    if [[ -f package-lock.json ]]; then
+      npm ci
+    else
+      npm install
+    fi
+    npm run build
+  '
+}
+
+if [[ "${SKIP_WEB:-0}" != "1" ]]; then
+  if [[ "${WEB_USE_DOCKER:-1}" == "1" ]]; then
+    build_web_docker
+  else
+    build_web_host
+  fi
   if [[ ! -f "${WEB_ROOT}/index.html" ]]; then
     log "ERROR: 未生成 ${WEB_ROOT}/index.html"
     exit 1
