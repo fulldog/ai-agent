@@ -303,6 +303,11 @@ func (s *Service) wantRAG(in CompleteInput) bool {
 	return true
 }
 
+// RecentMessages 取最近 limit 条，再按时间正序返回（钉钉 RAG 追问扩写、LLM 上下文共用）。
+func (s *Service) RecentMessages(conversationID uuid.UUID, limit int) ([]model.Message, error) {
+	return s.listRecentMessages(conversationID, limit)
+}
+
 // listRecentMessages 取最近 limit 条，再按时间正序返回，供 LLM 上下文使用。
 func (s *Service) listRecentMessages(conversationID uuid.UUID, limit int) ([]model.Message, error) {
 	if limit <= 0 {

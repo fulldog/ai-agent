@@ -107,7 +107,87 @@ LIMIT ?`, where)
 			Metadata:   r.Metadata,
 		})
 	}
-	return FilterByMaxDistance(hits, s.maxDistance), nil
+	hits = FilterByMaxDistance(hits, s.maxDistance)
+	// 短追问常只命中文档前半截（如付款 SOP 缺「合同」条件），按文档补齐相邻分块。
+	return s.expandDocuments(ctx, hits, maxExpandChunksPerDoc), nil
+}
+
+// maxExpandChunksPerDoc 单文档最多拼入的分块数（流程类语料通常 2～4 块）。
+const maxExpandChunksPerDoc = 12
+
+// expandDocuments 将向量命中所在文档的分块按序号拼成完整摘录，避免流程被切半。
+func (s *Service) expandDocuments(ctx context.Context, hits []Hit, maxChunks int) []Hit {
+	if s == nil || s.db == nil || len(hits) == 0 {
+		return hits
+	}
+	if maxChunks <= 0 {
+		maxChunks = maxExpandChunksPerDoc
+	}
+	type docMeta struct {
+		bestScore float64
+		corpusID  uuid.UUID
+		metadata  string
+	}
+	metaByDoc := make(map[uuid.UUID]docMeta, len(hits))
+	order := make([]uuid.UUID, 0, len(hits))
+	for _, h := range hits {
+		if h.DocumentID == uuid.Nil {
+			continue
+		}
+		if m, ok := metaByDoc[h.DocumentID]; ok {
+			if h.Score < m.bestScore {
+				m.bestScore = h.Score
+				metaByDoc[h.DocumentID] = m
+			}
+			continue
+		}
+		metaByDoc[h.DocumentID] = docMeta{bestScore: h.Score, corpusID: h.CorpusID, metadata: h.Metadata}
+		order = append(order, h.DocumentID)
+	}
+	if len(order) == 0 {
+		return hits
+	}
+	out := make([]Hit, 0, len(order))
+	for _, docID := range order {
+		type chunkRow struct {
+			ID         uuid.UUID
+			Content    string
+			ChunkIndex int
+		}
+		var chunks []chunkRow
+		err := s.db.WithContext(ctx).
+			Table("chunks").
+			Select("id, content, chunk_index").
+			Where("document_id = ?", docID).
+			Order("chunk_index asc").
+			Limit(maxChunks).
+			Scan(&chunks).Error
+		if err != nil || len(chunks) == 0 {
+			for _, h := range hits {
+				if h.DocumentID == docID {
+					out = append(out, h)
+				}
+			}
+			continue
+		}
+		var b strings.Builder
+		for i, ch := range chunks {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(ch.Content)
+		}
+		m := metaByDoc[docID]
+		out = append(out, Hit{
+			ChunkID:    chunks[0].ID,
+			DocumentID: docID,
+			CorpusID:   m.corpusID,
+			Content:    b.String(),
+			Score:      m.bestScore,
+			Metadata:   m.metadata,
+		})
+	}
+	return out
 }
 
 const HitsPromptHeader = "【知识摘录】下列内容是语料库给出的口径与流程。必须先遵循其中的前置条件、追问与步骤，再决定是否查库或作答；摘录要求补充信息时先向用户追问，不要跳过。只采用与问题直接相关的句子；材料不足就明确说不知道。不要整段照抄。"

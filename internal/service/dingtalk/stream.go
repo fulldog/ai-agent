@@ -26,7 +26,7 @@ const (
 	topicPing         = "ping"
 	topicDisconnect   = "disconnect"
 	ackContentType    = "application/json"
-	streamReadIdle    = 3 * time.Minute
+	streamReadIdle    = 10 * time.Minute
 )
 
 var errStreamDisconnect = errors.New("dingtalk stream disconnect")
@@ -272,6 +272,31 @@ func (s *streamSession) handleFrame(raw []byte, onBot func(*botCallback)) error 
 		}
 		return nil
 	}
+	topic := frame.Headers.get("topic")
+	isBotMsg := frame.Type == frameTypeCallback && topic == topicBotMessages
+
+	// 机器人消息：先交给业务落 receive 日志，再 ACK。
+	// 若先 ACK 后进程崩溃，钉钉不再重投 → 用户看到异常回复或无回复，且本机无 request_log。
+	if isBotMsg {
+		data, perr := parseBotCallback(frame.Data)
+		if perr != nil {
+			if s != nil && s.log != nil {
+				s.log.Warn("dingtalk bot callback unmarshal", zap.Error(perr), zap.Int("bytes", len(frame.Data)))
+			}
+			// 解析失败仍 ACK，避免毒消息死循环；内容已打 warn。
+			ack := newStreamAck(200, frame.Headers.get("messageId"), "OK", `{"response":null}`)
+			return s.writeJSON(ack)
+		}
+		if onBot != nil {
+			onBot(data)
+		}
+		ack := newStreamAck(200, frame.Headers.get("messageId"), "OK", `{"response":null}`)
+		if err := s.writeJSON(ack); err != nil {
+			return fmt.Errorf("stream ack: %w", err)
+		}
+		return nil
+	}
+
 	ack, disconnect := ackForFrame(frame)
 	if disconnect {
 		return errStreamDisconnect
@@ -280,19 +305,6 @@ func (s *streamSession) handleFrame(raw []byte, onBot func(*botCallback)) error 
 		if err := s.writeJSON(ack); err != nil {
 			return fmt.Errorf("stream ack: %w", err)
 		}
-	}
-	if frame.Type != frameTypeCallback || frame.Headers.get("topic") != topicBotMessages {
-		return nil
-	}
-	data, err := parseBotCallback(frame.Data)
-	if err != nil {
-		if s != nil && s.log != nil {
-			s.log.Warn("dingtalk bot callback unmarshal", zap.Error(err), zap.Int("bytes", len(frame.Data)))
-		}
-		return nil
-	}
-	if onBot != nil {
-		onBot(data)
 	}
 	return nil
 }

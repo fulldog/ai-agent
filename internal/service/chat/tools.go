@@ -8,9 +8,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/metrics"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
+	"go.uber.org/zap"
 )
 
 // callContext 一次对话内多轮 LLM 调用共享的上下文。
@@ -65,24 +67,39 @@ func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callConte
 	env := s.toolEnv(in, call.conv)
 	promptTokens, completionTokens := 0, 0
 	var last *llm.ChatResponse
+	usedTool := false
 
 	for round := 0; round < rounds; round++ {
 		req := chatRequest(in, call.provider, call.model, msgs)
 		if round < rounds-1 {
 			req.Tools = specs
+			if len(specs) > 0 && !usedTool {
+				req.ToolChoice = "required"
+			}
 		}
 		start := time.Now()
 		var resp *llm.ChatResponse
 		var err error
+		suppressDelta := len(req.Tools) > 0 && !usedTool
+		streamCB := func(ev llm.StreamEvent) error {
+			if suppressDelta || ev.Content == "" || onDelta == nil {
+				return nil
+			}
+			return onDelta(ev.Content)
+		}
 		if onDelta != nil {
-			resp, err = call.client.ChatStream(ctx, req, func(ev llm.StreamEvent) error {
-				if ev.Content == "" {
-					return nil
-				}
-				return onDelta(ev.Content)
-			})
+			resp, err = call.client.ChatStream(ctx, req, streamCB)
 		} else {
 			resp, err = call.client.Chat(ctx, req)
+		}
+		if err != nil && req.ToolChoice == "required" {
+			s.llmLog.Warn("retry chat tool round without tool_choice=required", zap.Error(err))
+			req.ToolChoice = ""
+			if onDelta != nil {
+				resp, err = call.client.ChatStream(ctx, req, streamCB)
+			} else {
+				resp, err = call.client.Chat(ctx, req)
+			}
 		}
 		if resp != nil {
 			promptTokens += resp.PromptTokens
@@ -96,6 +113,7 @@ func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callConte
 		if len(resp.ToolCalls) == 0 {
 			break
 		}
+		usedTool = true
 		msgs = append(msgs, llm.Message{Role: "assistant", Content: resp.Content, ToolCalls: resp.ToolCalls})
 		for _, tc := range resp.ToolCalls {
 			result, toolErr := s.registry.Exec(ctx, tc.Function.Name, tc.Function.Arguments, env)
@@ -117,6 +135,13 @@ func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callConte
 	out := *last
 	out.PromptTokens = promptTokens
 	out.CompletionTokens = completionTokens
+	if len(specs) > 0 && agent.IsToolEvasionReply(out.Content) {
+		s.llmLog.Warn("chat evasion reply replaced",
+			zap.String("request_id", in.RequestID),
+			zap.String("preview", out.Content),
+		)
+		out.Content = agent.ToolEvasionFallback
+	}
 	return &out, nil
 }
 

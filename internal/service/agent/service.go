@@ -304,6 +304,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	promptTokens, completionTokens := 0, 0
 	stepIndex := 0
 	final := ""
+	usedTool := false
 
 	fail := func(err error) (*RunResult, error) {
 		metrics.AgentRuns.WithLabelValues("failed").Inc()
@@ -326,17 +327,20 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		chatReq := llm.ChatRequest{
 			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
 		}
-		// 只要挂了工具，首轮一律强制 function call，避免模型空口推诿「去工具函数管理」。
-		if step == 0 && len(toolSpecs) > 0 {
+		// 在至少成功走过一轮工具前，每步都强制 function call（防止网关丢掉 required 后空口推诿）。
+		if len(toolSpecs) > 0 && !usedTool {
 			chatReq.ToolChoice = "required"
 		}
-		if in.Stream {
-			resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error {
-				if ev.Content != "" && emit != nil {
-					return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
-				}
+		// 尚未跑过工具时不把正文 delta 推到钉钉：否则「未启用工具」会先刷到卡片。
+		suppressDelta := len(toolSpecs) > 0 && !usedTool
+		streamEmit := func(ev llm.StreamEvent) error {
+			if suppressDelta || ev.Content == "" || emit == nil {
 				return nil
-			})
+			}
+			return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
+		}
+		if in.Stream {
+			resp, err = client.ChatStream(ctx, chatReq, streamEmit)
 		} else {
 			resp, err = client.Chat(ctx, chatReq)
 		}
@@ -345,12 +349,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			s.llmLog.Warn("retry agent step without tool_choice=required", zap.Error(err))
 			chatReq.ToolChoice = ""
 			if in.Stream {
-				resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error {
-					if ev.Content != "" && emit != nil {
-						return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
-					}
-					return nil
-				})
+				resp, err = client.ChatStream(ctx, chatReq, streamEmit)
 			} else {
 				resp, err = client.Chat(ctx, chatReq)
 			}
@@ -400,6 +399,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			final = resp.Content
 			break
 		}
+		usedTool = true
 
 		msgs = append(msgs, llm.Message{Role: "assistant", Content: resp.Content, ToolCalls: resp.ToolCalls})
 		for _, tc := range resp.ToolCalls {
@@ -496,6 +496,9 @@ func requireFirstTool(hits []rag.Hit) bool {
 
 const toolEvasionFallback = "服务端已启用查询工具，但刚才未能完成核实。请再发一次问题，或补充供应商名称与标签后重试。"
 
+// ToolEvasionFallback 推诿话被拦截后的对外兜底文案（钉钉出站也复用）。
+const ToolEvasionFallback = toolEvasionFallback
+
 // isToolEvasionReply 模型推诿「去开工具」——工具其实已挂载，不应原样发出。
 func isToolEvasionReply(s string) bool {
 	c := strings.TrimSpace(s)
@@ -506,6 +509,11 @@ func isToolEvasionReply(s string) bool {
 		strings.Contains(c, "未启用任何工具") ||
 		strings.Contains(c, "开启对应工具") ||
 		strings.Contains(c, "请先在「工具函数管理」")
+}
+
+// IsToolEvasionReply 导出给钉钉出站拦截、chat 工具循环复用。
+func IsToolEvasionReply(s string) bool {
+	return isToolEvasionReply(s)
 }
 
 // retryAfterEvasion 推诿后再跑一轮：强制工具，成功则返回新正文。

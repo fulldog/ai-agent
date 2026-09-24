@@ -38,6 +38,8 @@ type DingTalkConfig struct {
 	// ReplyMode chat=现有 CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；
 	// web=薄包装，与控制台 Agent 页同一套 Agent.Run（不预注入 hits、不拦语料未命中）。
 	ReplyMode string `yaml:"reply_mode"`
+	// ReplyTag 非空时追加到每条出站末尾，用于确认是哪套进程在回群（排查串号）。
+	ReplyTag string `yaml:"reply_tag"`
 }
 
 const (
@@ -534,6 +536,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("DINGTALK_CARD_TEMPLATE_ID"); v != "" {
 		c.DingTalk.CardTemplateID = v
 	}
+	if v := os.Getenv("DINGTALK_REPLY_TAG"); v != "" {
+		c.DingTalk.ReplyTag = v
+	}
 	if v := os.Getenv("DINGTALK_ENABLED"); v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "1", "true", "yes", "on":
@@ -692,6 +697,7 @@ func (c *Config) normalize() {
 	c.DingTalk.ClientID = strings.TrimSpace(c.DingTalk.ClientID)
 	c.DingTalk.ClientSecret = strings.TrimSpace(c.DingTalk.ClientSecret)
 	c.DingTalk.CardTemplateID = strings.TrimSpace(c.DingTalk.CardTemplateID)
+	c.DingTalk.ReplyTag = strings.TrimSpace(c.DingTalk.ReplyTag)
 	switch strings.ToLower(strings.TrimSpace(c.DingTalk.ReplyMode)) {
 	case DingTalkReplyAgent:
 		c.DingTalk.ReplyMode = DingTalkReplyAgent

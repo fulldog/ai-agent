@@ -5,9 +5,11 @@ package dingtalk
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
@@ -42,8 +44,10 @@ type Bot struct {
 	api         *openAPI
 	dedup       *msgDeduper
 
-	mu   sync.Mutex
-	sess *streamSession
+	mu           sync.Mutex
+	sess         *streamSession
+	streamCancel context.CancelFunc
+	streamWG     sync.WaitGroup
 }
 
 func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log, accessLog *zap.Logger, db *gorm.DB) *Bot {
@@ -95,13 +99,48 @@ func (b *Bot) Start(ctx context.Context) error {
 	if b.chat == nil {
 		return fmt.Errorf("dingtalk requires database-backed chat service")
 	}
+	b.mu.Lock()
+	if b.streamCancel != nil {
+		b.mu.Unlock()
+		b.log.Warn("dingtalk stream already started, ignore duplicate Start",
+			zap.Int("pid", os.Getpid()),
+		)
+		return nil
+	}
+	streamCtx, cancel := context.WithCancel(ctx)
+	b.streamCancel = cancel
+	b.streamWG.Add(1)
+	b.mu.Unlock()
+
 	b.backfillChatsFromConversations()
-	go b.runStream(ctx)
+	go func() {
+		defer b.streamWG.Done()
+		b.runStream(streamCtx)
+	}()
 	return nil
 }
 
+func (b *Bot) Stop() {
+	b.mu.Lock()
+	cancel := b.streamCancel
+	b.streamCancel = nil
+	sess := b.sess
+	b.sess = nil
+	b.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if sess != nil {
+		sess.close()
+	}
+	b.streamWG.Wait()
+}
+
 func (b *Bot) runStream(ctx context.Context) {
-	b.log.Info("dingtalk stream starting", zap.String("client_id_suffix", suffix(b.cfg.ClientID)))
+	b.log.Info("dingtalk stream starting",
+		zap.String("client_id_suffix", suffix(b.cfg.ClientID)),
+		zap.Int("pid", os.Getpid()),
+	)
 	b.diagnoseCredentials(ctx)
 	backoff := 3 * time.Second
 	for {
@@ -203,16 +242,6 @@ func streamFailHint(err error) string {
 		return "凭证已发出握手但被钉钉拒绝：核对 Client ID/Secret 是否成对；开发配置→事件订阅须为 Stream 并验证通道；应用能力→机器人→消息接收模式须为 Stream；应用需发布"
 	}
 	return "检查到 api.dingtalk.com 与 wss-open-connection.dingtalk.com:443 的出网"
-}
-
-func (b *Bot) Stop() {
-	b.mu.Lock()
-	sess := b.sess
-	b.sess = nil
-	b.mu.Unlock()
-	if sess != nil {
-		sess.close()
-	}
 }
 
 func (b *Bot) onMessage(parent context.Context, data *botCallback) {
@@ -326,14 +355,14 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		tr.status = 400
 		tr.errMsg = "empty senderStaffId"
 		tr.reply = "无法识别发送者 userid（senderStaffId 为空），企业内部群且机器人已发布后才有该字段。"
-		_ = b.failReply(ctx, data, tr.reply)
+		_ = b.failReply(ctx, data, tr.reply, tr)
 		return
 	}
 	if !strings.EqualFold(data.MsgType, "text") {
 		tr.status = 400
 		tr.errMsg = "unsupported msg type"
 		tr.reply = "暂只支持文字消息。"
-		_ = b.failReply(ctx, data, tr.reply)
+		_ = b.failReply(ctx, data, tr.reply, tr)
 		return
 	}
 	query := cleanQuery(data.Text.Content)
@@ -342,7 +371,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		tr.status = 400
 		tr.errMsg = "empty query"
 		tr.reply = "请 @我 并输入问题。"
-		_ = b.failReply(ctx, data, tr.reply)
+		_ = b.failReply(ctx, data, tr.reply, tr)
 		return
 	}
 
@@ -359,7 +388,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		tr.status = 500
 		tr.errMsg = err.Error()
 		tr.reply = "创建会话失败，请稍后重试。"
-		_ = b.failReply(ctx, data, tr.reply)
+		_ = b.failReply(ctx, data, tr.reply, tr)
 		return
 	}
 	tr.conversationID = &conv.ID
@@ -371,15 +400,17 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	if ragQuery == "" {
 		ragQuery = query
 	}
-	tr.ragQuery = ragQuery
 	tr.forceOnline = forceOnline
-	corpusID, hits, searchIDs := b.retrieve(ctx, ragQuery, data.ConversationID)
+	// 检索词可拼历史；交给 LLM / 落库的仍是本轮用户原句。
+	searchQuery := enrichRAGQuery(ragQuery, b.recentHistoryTexts(conv.ID, 6))
+	tr.ragQuery = searchQuery
+	corpusID, hits, searchIDs := b.retrieve(ctx, searchQuery, data.ConversationID)
 	tr.corpusID = corpusID
 	tr.hitCount = len(hits)
 	tr.hitScores = hitScores(hits)
 	hitsDetail := ragHitLogs(hits, b.previewMax)
 	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
-		"query":        ragQuery,
+		"query":        searchQuery,
 		"force_online": forceOnline,
 		"hits":         len(hits),
 		"scores":       tr.hitScores,
@@ -388,7 +419,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		"bound":        len(searchIDs) > 0,
 		"hits_detail":  hitsDetail,
 	},
-		zap.String("query", ragQuery),
+		zap.String("query", searchQuery),
 		zap.Bool("force_online", forceOnline),
 		zap.Int("hits", len(hits)),
 		zap.Float64s("scores", tr.hitScores),
@@ -418,7 +449,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	if !b.useWebAgent() && isCorpusMiss(hits, forceOnline) && !hasHistory {
 		tr.outcome = "corpus_miss"
 		tr.reply = corpusMissReply
-		_ = b.failReply(ctx, data, corpusMissReply)
+		_ = b.failReply(ctx, data, corpusMissReply, tr)
 		return
 	}
 	if hits == nil {
@@ -459,7 +490,7 @@ func sessionTitle(data *botCallback) string {
 }
 
 func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
-	streamer := b.newStreamer(ctx, data)
+	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "llm"
@@ -528,7 +559,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 }
 
 func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
-	streamer := b.newStreamer(ctx, data)
+	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "agent"
@@ -634,7 +665,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 // - RAGHits 传空切片：跳过 system 预注入（避免摘录+旧结论让模型跳过工具）；检索范围仍经 CorpusIDs 交给工具
 // - 现有 completeViaAgent（钉钉预检索注入）保持不变
 func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, forceOnline bool) {
-	streamer := b.newStreamer(ctx, data)
+	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "web_agent"
@@ -822,15 +853,69 @@ func (b *Bot) retrieve(ctx context.Context, query, conversationID string) (*uuid
 	return pinned, hits, scope
 }
 
+// recentHistoryTexts 取近期 user/assistant 正文，供短追问扩写检索词。
+func (b *Bot) recentHistoryTexts(conversationID uuid.UUID, limit int) []string {
+	if b == nil || b.chat == nil || conversationID == uuid.Nil {
+		return nil
+	}
+	msgs, err := b.chat.RecentMessages(conversationID, limit)
+	if err != nil || len(msgs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role != "user" && m.Role != "assistant" {
+			continue
+		}
+		c := strings.TrimSpace(m.Content)
+		if c == "" {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// enrichRAGQuery 短句追问时把近期对话拼进检索词，避免只搜到标签/合同等碎片。
+func enrichRAGQuery(query string, history []string) string {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return q
+	}
+	if utf8.RuneCountInString(q) > 48 {
+		return q
+	}
+	var parts []string
+	for _, h := range history {
+		c := strings.TrimSpace(h)
+		if c == "" || c == q {
+			continue
+		}
+		r := []rune(c)
+		if len(r) > 80 {
+			c = string(r[:80])
+		}
+		parts = append(parts, c)
+	}
+	if len(parts) == 0 {
+		return q
+	}
+	if len(parts) > 4 {
+		parts = parts[len(parts)-4:]
+	}
+	return q + "\n" + strings.Join(parts, "\n")
+}
+
 type streamer struct {
 	bot      *Bot
 	data     *botCallback
+	tr       *msgTrace
 	outTrack string
 	cardOK   bool
 }
 
-func (b *Bot) newStreamer(ctx context.Context, data *botCallback) *streamer {
-	s := &streamer{bot: b, data: data}
+func (b *Bot) newStreamer(ctx context.Context, data *botCallback, tr *msgTrace) *streamer {
+	s := &streamer{bot: b, data: data, tr: tr}
 	if strings.TrimSpace(b.cfg.CardTemplateID) == "" || b.api == nil {
 		return s
 	}
@@ -848,6 +933,7 @@ func (s *streamer) update(content string, finalize bool) error {
 	if !s.cardOK {
 		return nil
 	}
+	content = s.bot.withReplyTag(s.bot.sanitizeOutbound(content))
 	err := s.bot.api.streamCard(context.Background(), s.outTrack, content, finalize, false)
 	if err != nil {
 		s.bot.log.Warn("stream card", zap.Error(err))
@@ -858,20 +944,88 @@ func (s *streamer) update(content string, finalize bool) error {
 
 func (s *streamer) finish(content string, isError bool) error {
 	ctx := context.Background()
+	content = s.bot.withReplyTag(s.bot.sanitizeOutbound(content))
+	// 先落库再出站：避免群里已回复、控制台/Agent 历史却无记录。
+	s.bot.persistOutbound(s.tr, content)
 	if s.cardOK {
 		if err := s.bot.api.streamCard(ctx, s.outTrack, content, true, isError); err == nil {
 			return nil
 		}
 		s.cardOK = false
 	}
-	return s.bot.failReply(ctx, s.data, content)
+	return s.bot.sendOutbound(ctx, s.data, content)
 }
 
-func (b *Bot) failReply(ctx context.Context, data *botCallback, text string) error {
+// persistOutbound 出站前强制写入 request_log，并补一条 assistant 消息（若会话里还没有同文）。
+func (b *Bot) persistOutbound(tr *msgTrace, text string) {
+	if b == nil {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if tr != nil {
+		tr.reply = text
+		if tr.outcome == "" {
+			tr.outcome = "agent"
+		}
+		b.upsertRequestLog(tr)
+		rid := tr.requestID
+		b.stepLog(rid, stepResult, "dingtalk.outbound",
+			zap.String("request_id", rid),
+			zap.String("reply", previewText(text, b.previewMax)),
+			zap.String("conversation_id", uuidString(tr.conversationID)),
+			zap.Int("pid", os.Getpid()),
+		)
+		if tr.conversationID != nil && text != "" && b.db != nil {
+			var n int64
+			_ = b.db.Model(&model.Message{}).
+				Where("conversation_id = ? AND role = ? AND content = ?", *tr.conversationID, "assistant", text).
+				Count(&n).Error
+			if n == 0 {
+				msg := model.Message{ConversationID: *tr.conversationID, Role: "assistant", Content: text}
+				if err := b.db.Create(&msg).Error; err != nil {
+					b.log.Error("persist outbound assistant message", zap.Error(err), zap.String("request_id", rid))
+				}
+			}
+		}
+		return
+	}
+	if b.log != nil {
+		b.log.Error("dingtalk outbound without msgTrace — reply would be invisible in console",
+			zap.String("reply", previewText(text, 120)),
+			zap.Int("pid", os.Getpid()),
+		)
+	}
+}
+
+func (b *Bot) sanitizeOutbound(text string) string {
+	if !agent.IsToolEvasionReply(text) {
+		return text
+	}
+	if b != nil && b.log != nil {
+		b.log.Warn("blocked tool-evasion outbound reply",
+			zap.String("preview", previewText(text, 120)),
+			zap.Int("pid", os.Getpid()),
+		)
+	}
+	return agent.ToolEvasionFallback
+}
+
+func (b *Bot) failReply(ctx context.Context, data *botCallback, text string, tr *msgTrace) error {
+	text = b.withReplyTag(b.sanitizeOutbound(text))
+	b.persistOutbound(tr, text)
+	return b.sendOutbound(ctx, data, text)
+}
+
+func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) error {
+	if data == nil {
+		return fmt.Errorf("nil callback")
+	}
+	// tag 已在 finish/failReply 加上；此处再幂等一次防漏。
+	text = b.withReplyTag(text)
 	title := "AI 回复"
 	if err := replyWebhook(ctx, data.SessionWebhook, title, text); err == nil {
 		return nil
-	} else {
+	} else if b.log != nil {
 		b.log.Warn("session webhook reply", zap.Error(err))
 	}
 	if isGroup(data.ConversationType) && b.api != nil && b.cfg.ClientID != "" {
@@ -882,4 +1036,20 @@ func (b *Bot) failReply(ctx context.Context, data *botCallback, text string) err
 		return nil
 	}
 	return fmt.Errorf("no reply channel")
+}
+
+func (b *Bot) withReplyTag(text string) string {
+	if b == nil {
+		return text
+	}
+	tag := strings.TrimSpace(b.cfg.ReplyTag)
+	if tag == "" {
+		return text
+	}
+	marker := "〔" + tag + "〕"
+	if strings.Contains(text, marker) {
+		return text
+	}
+	text = strings.TrimRight(text, "\n")
+	return text + "\n\n" + marker
 }

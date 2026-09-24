@@ -1,11 +1,13 @@
 package dingtalk
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
+	"go.uber.org/zap"
 )
 
 func TestMatchCorporaByName(t *testing.T) {
@@ -118,10 +120,31 @@ func TestContinueWithHistory(t *testing.T) {
 	}
 }
 
-func TestSessionTitleIncludesNick(t *testing.T) {
+func TestEnrichRAGQuery(t *testing.T) {
 	t.Parallel()
-	got := sessionTitle(&botCallback{ConversationTitle: "采购群", ConversationType: "2", SenderNick: "张三"})
-	if got != "采购群 · 张三" {
-		t.Fatalf("got %q", got)
+	if got := enrichRAGQuery("广告线", []string{"乐推能付款吗", "请提供标签"}); !strings.Contains(got, "广告线") || !strings.Contains(got, "乐推能付款吗") {
+		t.Fatalf("short query should append history: %q", got)
+	}
+	long := strings.Repeat("供应商付款条件详细说明", 10)
+	if got := enrichRAGQuery(long, []string{"历史"}); got != long {
+		t.Fatalf("long query should stay unchanged")
+	}
+	if got := enrichRAGQuery("广告线", nil); got != "广告线" {
+		t.Fatalf("no history: %q", got)
+	}
+	if got := enrichRAGQuery("广告线", []string{"广告线", "  "}); got != "广告线" {
+		t.Fatalf("dedupe self: %q", got)
+	}
+}
+
+func TestSanitizeOutboundBlocksEvasion(t *testing.T) {
+	t.Parallel()
+	b := &Bot{log: zap.NewNop()}
+	got := b.sanitizeOutbound(`当前未启用任何工具，且历史对话中无相关依据。请先在「工具函数管理」中开启对应工具后再问。`)
+	if got == "" || strings.Contains(got, "工具函数管理") {
+		t.Fatalf("should replace evasion: %q", got)
+	}
+	if got := b.sanitizeOutbound("乐推可以付款"); got != "乐推可以付款" {
+		t.Fatalf("normal reply: %q", got)
 	}
 }

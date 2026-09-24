@@ -67,3 +67,17 @@ func TestMaxDistanceGetter(t *testing.T) {
 		t.Fatalf("got %v", s.MaxDistance())
 	}
 }
+
+func TestExpandDocumentsNilSafe(t *testing.T) {
+	t.Parallel()
+	hits := []Hit{{Content: "a", Score: 0.1}}
+	if got := (*Service)(nil).expandDocuments(t.Context(), hits, 4); len(got) != 1 || got[0].Content != "a" {
+		t.Fatalf("%+v", got)
+	}
+	if got := (&Service{}).expandDocuments(t.Context(), hits, 4); len(got) != 1 {
+		t.Fatalf("%+v", got)
+	}
+	if got := (&Service{}).expandDocuments(t.Context(), nil, 4); got != nil {
+		t.Fatalf("%+v", got)
+	}
+}
