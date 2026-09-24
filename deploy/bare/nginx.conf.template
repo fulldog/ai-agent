@@ -1,5 +1,11 @@
 # ai-agent 控制台：无域名，用 http://<服务器IP>:__WEB_PORT__/ 访问。
 # 由 deploy/bare/deploy.sh 根据模板生成，勿手改已安装副本（改本文件后重新部署）。
+# 手改落地示例见 deploy/bare/nginx.conf。
+
+upstream ai_agent_api {
+    server __API_UPSTREAM__;
+    keepalive 16;
+}
 
 server {
     listen __WEB_PORT__ default_server;
@@ -10,24 +16,46 @@ server {
     index index.html;
 
     client_max_body_size 64m;
+    client_body_timeout 120s;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
 
     location /api/ {
-        proxy_pass http://__API_UPSTREAM__;
+        proxy_pass http://ai_agent_api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
         proxy_buffering off;
+        proxy_cache off;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
+        chunked_transfer_encoding on;
     }
 
     location /health {
-        proxy_pass http://__API_UPSTREAM__;
+        proxy_pass http://ai_agent_api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 10s;
+    }
+
+    location /assets/ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
     }
 
     location / {

@@ -3,7 +3,7 @@ configs/config.yaml
 *.test
 *.out
 bin/
-dist/
+#dist/
 logs/
 attachments/
 data/

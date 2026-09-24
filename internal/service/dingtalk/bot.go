@@ -1030,67 +1030,186 @@ func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
 	return b.withReplyTag(text)
 }
 
-// buildCorpusSourceNote 根据本轮 RAG 命中生成简短来源说明。
-func (b *Bot) buildCorpusSourceNote(hits []rag.Hit) string {
-	if len(hits) == 0 {
-		return ""
-	}
-	names := b.corpusNamesForHits(hits)
-	hitN := len(hits)
-	switch {
-	case len(names) == 0:
-		return fmt.Sprintf("来源：语料库（命中 %d 条）", hitN)
-	case len(names) == 1:
-		return fmt.Sprintf("来源：%s（命中 %d 条）", names[0], hitN)
-	default:
-		shown := names
-		extra := 0
-		if len(shown) > 3 {
-			extra = len(shown) - 3
-			shown = shown[:3]
-		}
-		s := "来源：" + strings.Join(shown, "、")
-		if extra > 0 {
-			s += " 等" + strconv.Itoa(extra) + "个"
-		}
-		return fmt.Sprintf("%s（命中 %d 条）", s, hitN)
-	}
+type corpusSourceGroup struct {
+	Name   string
+	Titles []string
 }
 
-func (b *Bot) corpusNamesForHits(hits []rag.Hit) []string {
-	if b == nil || b.db == nil || len(hits) == 0 {
+// buildCorpusSourceNote 根据本轮 RAG 命中生成「来源：语料库（1.标题 2.标题）」。
+func (b *Bot) buildCorpusSourceNote(hits []rag.Hit) string {
+	return formatCorpusSourceNote(b.corpusSourceGroups(hits))
+}
+
+func (b *Bot) corpusSourceGroups(hits []rag.Hit) []corpusSourceGroup {
+	if len(hits) == 0 {
 		return nil
 	}
+	corpusName, docTitle := b.loadHitSourceMeta(hits)
+	type acc struct {
+		name   string
+		titles []string
+		seen   map[string]struct{}
+	}
+	byCorpus := map[uuid.UUID]*acc{}
 	order := make([]uuid.UUID, 0, 4)
-	seen := map[uuid.UUID]struct{}{}
 	for _, h := range hits {
-		if h.CorpusID == uuid.Nil {
+		cid := h.CorpusID
+		a, ok := byCorpus[cid]
+		if !ok {
+			name := corpusName[cid]
+			if name == "" {
+				name = "语料库"
+			}
+			a = &acc{name: name, seen: map[string]struct{}{}}
+			byCorpus[cid] = a
+			order = append(order, cid)
+		}
+		title := strings.TrimSpace(docTitle[h.DocumentID])
+		if title == "" {
 			continue
 		}
-		if _, ok := seen[h.CorpusID]; ok {
+		if _, dup := a.seen[title]; dup {
 			continue
 		}
-		seen[h.CorpusID] = struct{}{}
-		order = append(order, h.CorpusID)
+		a.seen[title] = struct{}{}
+		if len(a.titles) >= 5 {
+			continue
+		}
+		a.titles = append(a.titles, title)
 	}
-	if len(order) == 0 {
-		return nil
-	}
-	var rows []model.Corpus
-	if err := b.db.Select("id", "name").Where("id IN ?", order).Find(&rows).Error; err != nil {
-		return nil
-	}
-	byID := make(map[uuid.UUID]string, len(rows))
-	for _, r := range rows {
-		byID[r.ID] = strings.TrimSpace(r.Name)
-	}
-	out := make([]string, 0, len(order))
+	out := make([]corpusSourceGroup, 0, len(order))
 	for _, id := range order {
-		if n := byID[id]; n != "" {
-			out = append(out, n)
+		a := byCorpus[id]
+		if a == nil {
+			continue
 		}
+		out = append(out, corpusSourceGroup{Name: a.name, Titles: a.titles})
 	}
 	return out
+}
+
+func (b *Bot) loadHitSourceMeta(hits []rag.Hit) (corpusName map[uuid.UUID]string, docTitle map[uuid.UUID]string) {
+	corpusName = map[uuid.UUID]string{}
+	docTitle = map[uuid.UUID]string{}
+	seenC := map[uuid.UUID]struct{}{}
+	seenD := map[uuid.UUID]struct{}{}
+	corpusIDs := make([]uuid.UUID, 0, 4)
+	docIDs := make([]uuid.UUID, 0, 8)
+	for _, h := range hits {
+		if h.CorpusID != uuid.Nil {
+			if _, ok := seenC[h.CorpusID]; !ok {
+				seenC[h.CorpusID] = struct{}{}
+				corpusIDs = append(corpusIDs, h.CorpusID)
+			}
+		}
+		if h.DocumentID != uuid.Nil {
+			if _, ok := seenD[h.DocumentID]; !ok {
+				seenD[h.DocumentID] = struct{}{}
+				docIDs = append(docIDs, h.DocumentID)
+			}
+		}
+	}
+	if b == nil || b.db == nil {
+		return corpusName, docTitle
+	}
+	if len(corpusIDs) > 0 {
+		var rows []model.Corpus
+		if err := b.db.Select("id", "name").Where("id IN ?", corpusIDs).Find(&rows).Error; err == nil {
+			for _, r := range rows {
+				corpusName[r.ID] = strings.TrimSpace(r.Name)
+			}
+		}
+	}
+	if len(docIDs) > 0 {
+		var docs []model.Document
+		if err := b.db.Select("id", "title", "source").Where("id IN ?", docIDs).Find(&docs).Error; err == nil {
+			for _, d := range docs {
+				docTitle[d.ID] = shortDocTitle(d.Title, d.Source)
+			}
+		}
+	}
+	return corpusName, docTitle
+}
+
+func formatCorpusSourceNote(groups []corpusSourceGroup) string {
+	if len(groups) == 0 {
+		return ""
+	}
+	merged := make([]corpusSourceGroup, 0, len(groups))
+	idx := map[string]int{}
+	for _, g := range groups {
+		name := strings.TrimSpace(g.Name)
+		if name == "" {
+			name = "语料库"
+		}
+		if i, ok := idx[name]; ok {
+			seen := map[string]struct{}{}
+			for _, t := range merged[i].Titles {
+				seen[t] = struct{}{}
+			}
+			for _, t := range g.Titles {
+				if t == "" {
+					continue
+				}
+				if _, dup := seen[t]; dup {
+					continue
+				}
+				if len(merged[i].Titles) >= 5 {
+					break
+				}
+				seen[t] = struct{}{}
+				merged[i].Titles = append(merged[i].Titles, t)
+			}
+			continue
+		}
+		idx[name] = len(merged)
+		merged = append(merged, corpusSourceGroup{Name: name, Titles: append([]string(nil), g.Titles...)})
+		if len(merged) >= 3 {
+			break
+		}
+	}
+	parts := make([]string, 0, len(merged))
+	for _, g := range merged {
+		if len(g.Titles) == 0 {
+			parts = append(parts, g.Name)
+			continue
+		}
+		parts = append(parts, g.Name+numberedTitles(g.Titles))
+	}
+	return "来源：" + strings.Join(parts, "；")
+}
+
+func numberedTitles(titles []string) string {
+	var b strings.Builder
+	b.WriteString("（")
+	for i, t := range titles {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteByte('.')
+		b.WriteString(t)
+	}
+	b.WriteString("）")
+	return b.String()
+}
+
+func shortDocTitle(title, source string) string {
+	s := strings.TrimSpace(title)
+	if s == "" {
+		s = strings.TrimSpace(source)
+	}
+	s = strings.TrimSuffix(s, ".pdf")
+	s = strings.TrimSuffix(s, ".PDF")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) > 24 {
+		return string(runes[:24]) + "…"
+	}
+	return s
 }
 
 func appendSourceNote(text, note string) string {

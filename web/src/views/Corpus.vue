@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import type { UploadFile, UploadUserFile } from "element-plus";
+import type { UploadFile, UploadRawFile, UploadUserFile } from "element-plus";
 import { Collection, Document, Refresh, Upload } from "@element-plus/icons-vue";
 import { requestJSON, requestForm, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
@@ -107,7 +107,7 @@ const fileList = ref<UploadUserFile[]>([]);
 const uploading = ref(false);
 
 const pendingFiles = computed(() =>
-  fileList.value.map((f) => f.raw).filter((f): f is File => !!f),
+  fileList.value.map((f) => f.raw).filter((f): f is UploadRawFile => f != null),
 );
 
 function docTone(status: string): string {

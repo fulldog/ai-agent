@@ -151,15 +151,32 @@ func TestSanitizeOutboundBlocksEvasion(t *testing.T) {
 
 func TestAppendSourceNote(t *testing.T) {
 	t.Parallel()
-	got := appendSourceNote("答案", "来源：SOP（命中 2 条）")
-	if got != "答案\n\n来源：SOP（命中 2 条）" {
+	got := appendSourceNote("答案", "来源：SOP（1.合同）")
+	if got != "答案\n\n来源：SOP（1.合同）" {
 		t.Fatalf("got %q", got)
 	}
-	if got := appendSourceNote("答案\n\n来源：SOP（命中 2 条）", "来源：SOP（命中 2 条）"); !strings.HasSuffix(got, "来源：SOP（命中 2 条）") || strings.Count(got, "来源：") != 1 {
+	if got := appendSourceNote("答案\n\n来源：SOP（1.合同）", "来源：SOP（1.合同）"); !strings.HasSuffix(got, "来源：SOP（1.合同）") || strings.Count(got, "来源：") != 1 {
 		t.Fatalf("idempotent: %q", got)
 	}
 	if got := appendSourceNote("x", ""); got != "x" {
 		t.Fatalf("empty note: %q", got)
+	}
+}
+
+func TestFormatCorpusSourceNote(t *testing.T) {
+	t.Parallel()
+	got := formatCorpusSourceNote([]corpusSourceGroup{
+		{Name: "付款SOP", Titles: []string{"付款条件", "合同模板"}},
+	})
+	if got != "来源：付款SOP（1.付款条件 2.合同模板）" {
+		t.Fatalf("got %q", got)
+	}
+	got = formatCorpusSourceNote([]corpusSourceGroup{
+		{Name: "财务制度", Titles: []string{"年假"}},
+		{Name: "人事手册", Titles: []string{"入职"}},
+	})
+	if got != "来源：财务制度（1.年假）；人事手册（1.入职）" {
+		t.Fatalf("multi: %q", got)
 	}
 }
 
@@ -171,9 +188,8 @@ func TestBuildCorpusSourceNote(t *testing.T) {
 	}
 	id1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	id2 := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	// 无 db 时仍给通用脚注
 	got := b.buildCorpusSourceNote([]rag.Hit{{CorpusID: id1}, {CorpusID: id1}, {CorpusID: id2}})
-	if got != "来源：语料库（命中 3 条）" {
+	if got != "来源：语料库" {
 		t.Fatalf("no db: %q", got)
 	}
 }
