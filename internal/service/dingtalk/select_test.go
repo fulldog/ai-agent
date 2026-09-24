@@ -148,3 +148,32 @@ func TestSanitizeOutboundBlocksEvasion(t *testing.T) {
 		t.Fatalf("normal reply: %q", got)
 	}
 }
+
+func TestAppendSourceNote(t *testing.T) {
+	t.Parallel()
+	got := appendSourceNote("答案", "来源：SOP（命中 2 条）")
+	if got != "答案\n\n来源：SOP（命中 2 条）" {
+		t.Fatalf("got %q", got)
+	}
+	if got := appendSourceNote("答案\n\n来源：SOP（命中 2 条）", "来源：SOP（命中 2 条）"); !strings.HasSuffix(got, "来源：SOP（命中 2 条）") || strings.Count(got, "来源：") != 1 {
+		t.Fatalf("idempotent: %q", got)
+	}
+	if got := appendSourceNote("x", ""); got != "x" {
+		t.Fatalf("empty note: %q", got)
+	}
+}
+
+func TestBuildCorpusSourceNote(t *testing.T) {
+	t.Parallel()
+	b := &Bot{}
+	if got := b.buildCorpusSourceNote(nil); got != "" {
+		t.Fatalf("empty hits: %q", got)
+	}
+	id1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	id2 := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	// 无 db 时仍给通用脚注
+	got := b.buildCorpusSourceNote([]rag.Hit{{CorpusID: id1}, {CorpusID: id1}, {CorpusID: id2}})
+	if got != "来源：语料库（命中 3 条）" {
+		t.Fatalf("no db: %q", got)
+	}
+}

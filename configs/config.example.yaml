@@ -169,10 +169,11 @@ request_log:
   persist_body: true
 
 # 钉钉 Stream 机器人。环境变量：DINGTALK_ENABLED、DINGTALK_CLIENT_ID、
-# DINGTALK_CLIENT_SECRET、DINGTALK_CARD_TEMPLATE_ID、DINGTALK_REPLY_MODE
+# DINGTALK_CLIENT_SECRET、DINGTALK_CARD_TEMPLATE_ID、DINGTALK_REPLY_MODE、DINGTALK_REPLY_TAG
 dingtalk:
   enabled: false
   client_id: ""         # 凭证与基础信息的 Client ID（旧称 AppKey）
   client_secret: ""     # 同一应用的 Client Secret
   card_template_id: ""  # 可选；留空则整段回复走 sessionWebhook
   reply_mode: web      # chat=CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；web=与控制台 Agent 同一套 Run（不预注入 hits）
+  # reply_tag: ""       # 出站末尾实例标记；留空默认本机 hostname

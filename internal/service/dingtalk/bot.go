@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -408,6 +409,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	tr.corpusID = corpusID
 	tr.hitCount = len(hits)
 	tr.hitScores = hitScores(hits)
+	tr.sourceNote = b.buildCorpusSourceNote(hits)
 	hitsDetail := ragHitLogs(hits, b.previewMax)
 	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
 		"query":        searchQuery,
@@ -933,6 +935,7 @@ func (s *streamer) update(content string, finalize bool) error {
 	if !s.cardOK {
 		return nil
 	}
+	// 流式中间帧不加语料脚注，避免末尾摘要反复跳动；finalize 由 finish 统一装饰。
 	content = s.bot.withReplyTag(s.bot.sanitizeOutbound(content))
 	err := s.bot.api.streamCard(context.Background(), s.outTrack, content, finalize, false)
 	if err != nil {
@@ -944,7 +947,7 @@ func (s *streamer) update(content string, finalize bool) error {
 
 func (s *streamer) finish(content string, isError bool) error {
 	ctx := context.Background()
-	content = s.bot.withReplyTag(s.bot.sanitizeOutbound(content))
+	content = s.bot.decorateOutbound(s.tr, content)
 	// 先落库再出站：避免群里已回复、控制台/Agent 历史却无记录。
 	s.bot.persistOutbound(s.tr, content)
 	if s.cardOK {
@@ -1011,9 +1014,94 @@ func (b *Bot) sanitizeOutbound(text string) string {
 }
 
 func (b *Bot) failReply(ctx context.Context, data *botCallback, text string, tr *msgTrace) error {
-	text = b.withReplyTag(b.sanitizeOutbound(text))
+	text = b.decorateOutbound(tr, text)
 	b.persistOutbound(tr, text)
 	return b.sendOutbound(ctx, data, text)
+}
+
+// decorateOutbound 出站统一装饰：拦截推诿 → 语料来源脚注 → 实例 reply_tag。
+func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
+	text = b.sanitizeOutbound(text)
+	note := ""
+	if tr != nil {
+		note = tr.sourceNote
+	}
+	text = appendSourceNote(text, note)
+	return b.withReplyTag(text)
+}
+
+// buildCorpusSourceNote 根据本轮 RAG 命中生成简短来源说明。
+func (b *Bot) buildCorpusSourceNote(hits []rag.Hit) string {
+	if len(hits) == 0 {
+		return ""
+	}
+	names := b.corpusNamesForHits(hits)
+	hitN := len(hits)
+	switch {
+	case len(names) == 0:
+		return fmt.Sprintf("来源：语料库（命中 %d 条）", hitN)
+	case len(names) == 1:
+		return fmt.Sprintf("来源：%s（命中 %d 条）", names[0], hitN)
+	default:
+		shown := names
+		extra := 0
+		if len(shown) > 3 {
+			extra = len(shown) - 3
+			shown = shown[:3]
+		}
+		s := "来源：" + strings.Join(shown, "、")
+		if extra > 0 {
+			s += " 等" + strconv.Itoa(extra) + "个"
+		}
+		return fmt.Sprintf("%s（命中 %d 条）", s, hitN)
+	}
+}
+
+func (b *Bot) corpusNamesForHits(hits []rag.Hit) []string {
+	if b == nil || b.db == nil || len(hits) == 0 {
+		return nil
+	}
+	order := make([]uuid.UUID, 0, 4)
+	seen := map[uuid.UUID]struct{}{}
+	for _, h := range hits {
+		if h.CorpusID == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[h.CorpusID]; ok {
+			continue
+		}
+		seen[h.CorpusID] = struct{}{}
+		order = append(order, h.CorpusID)
+	}
+	if len(order) == 0 {
+		return nil
+	}
+	var rows []model.Corpus
+	if err := b.db.Select("id", "name").Where("id IN ?", order).Find(&rows).Error; err != nil {
+		return nil
+	}
+	byID := make(map[uuid.UUID]string, len(rows))
+	for _, r := range rows {
+		byID[r.ID] = strings.TrimSpace(r.Name)
+	}
+	out := make([]string, 0, len(order))
+	for _, id := range order {
+		if n := byID[id]; n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func appendSourceNote(text, note string) string {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return text
+	}
+	if strings.Contains(text, note) {
+		return text
+	}
+	return strings.TrimRight(text, "\n") + "\n\n" + note
 }
 
 func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) error {
@@ -1023,7 +1111,13 @@ func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) 
 	// tag 已在 finish/failReply 加上；此处再幂等一次防漏。
 	text = b.withReplyTag(text)
 	title := "AI 回复"
-	if err := replyWebhook(ctx, data.SessionWebhook, title, text); err == nil {
+	var atIDs []string
+	if uid := strings.TrimSpace(data.SenderStaffID); uid != "" && isGroup(data.ConversationType) {
+		atIDs = []string{uid}
+		// 仅出站加 @，不进 persistOutbound，避免历史里刷 staffId。
+		text = appendMarkdownAt(text, uid)
+	}
+	if err := replyWebhook(ctx, data.SessionWebhook, title, text, atIDs); err == nil {
 		return nil
 	} else if b.log != nil {
 		b.log.Warn("session webhook reply", zap.Error(err))
@@ -1036,6 +1130,19 @@ func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) 
 		return nil
 	}
 	return fmt.Errorf("no reply channel")
+}
+
+// appendMarkdownAt 按钉钉约定在正文末尾补 @userid，配合 at.atUserIds 才会显示蓝字 @。
+func appendMarkdownAt(text, staffID string) string {
+	staffID = strings.TrimSpace(staffID)
+	if staffID == "" {
+		return text
+	}
+	token := "@" + staffID
+	if strings.Contains(text, token) {
+		return text
+	}
+	return strings.TrimRight(text, "\n") + "\n\n" + token
 }
 
 func (b *Bot) withReplyTag(text string) string {

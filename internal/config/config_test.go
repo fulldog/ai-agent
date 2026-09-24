@@ -367,3 +367,30 @@ func TestDingTalkReplyModeNormalize(t *testing.T) {
 		t.Fatal("DINGTALK_REPLY_MODE should select agent")
 	}
 }
+
+func TestDingTalkReplyTagDefaultsToHostname(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tag.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := defaultHostReplyTag()
+	if cfg.DingTalk.ReplyTag != want {
+		t.Fatalf("default reply_tag: got %q want %q", cfg.DingTalk.ReplyTag, want)
+	}
+	path2 := filepath.Join(dir, "custom.yaml")
+	if err := os.WriteFile(path2, []byte("database:\n  dsn: postgres://x\ndingtalk:\n  reply_tag: 自定义\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DingTalk.ReplyTag != "自定义" {
+		t.Fatalf("custom reply_tag: %q", cfg.DingTalk.ReplyTag)
+	}
+}

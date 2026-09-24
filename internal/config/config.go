@@ -38,7 +38,8 @@ type DingTalkConfig struct {
 	// ReplyMode chat=现有 CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；
 	// web=薄包装，与控制台 Agent 页同一套 Agent.Run（不预注入 hits、不拦语料未命中）。
 	ReplyMode string `yaml:"reply_mode"`
-	// ReplyTag 非空时追加到每条出站末尾，用于确认是哪套进程在回群（排查串号）。
+	// ReplyTag 追加到每条出站末尾，用于确认是哪套进程在回群（排查串号）。
+	// 未配置时默认为本机 hostname。
 	ReplyTag string `yaml:"reply_tag"`
 }
 
@@ -698,6 +699,9 @@ func (c *Config) normalize() {
 	c.DingTalk.ClientSecret = strings.TrimSpace(c.DingTalk.ClientSecret)
 	c.DingTalk.CardTemplateID = strings.TrimSpace(c.DingTalk.CardTemplateID)
 	c.DingTalk.ReplyTag = strings.TrimSpace(c.DingTalk.ReplyTag)
+	if c.DingTalk.ReplyTag == "" {
+		c.DingTalk.ReplyTag = defaultHostReplyTag()
+	}
 	switch strings.ToLower(strings.TrimSpace(c.DingTalk.ReplyMode)) {
 	case DingTalkReplyAgent:
 		c.DingTalk.ReplyMode = DingTalkReplyAgent
@@ -839,6 +843,19 @@ func (c *Config) APIKeyID(key string) string {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// defaultHostReplyTag 未配置 reply_tag 时用本机 hostname 作实例标记。
+func defaultHostReplyTag() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return "unknown-host"
+	}
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return "unknown-host"
+	}
+	return h
+}
 
 func loggerIsProdMode(mode string) bool {
 	switch strings.ToLower(strings.TrimSpace(mode)) {

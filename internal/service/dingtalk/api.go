@@ -212,17 +212,42 @@ func (a *openAPI) sendGroupMarkdown(ctx context.Context, openConversationID, tit
 	return nil
 }
 
-func replyWebhook(ctx context.Context, webhook, title, text string) error {
+func uniqueNonEmpty(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func replyWebhook(ctx context.Context, webhook, title, text string, atUserIDs []string) error {
 	if strings.TrimSpace(webhook) == "" {
 		return errors.New("empty session webhook")
 	}
-	body, err := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"msgtype": "markdown",
 		"markdown": map[string]string{
 			"title": title,
 			"text":  text,
 		},
-	})
+	}
+	if ids := uniqueNonEmpty(atUserIDs); len(ids) > 0 {
+		// 群聊蓝字 @：at.atUserIds + text 中含 @userid（钉钉要求两边都有）。
+		payload["at"] = map[string]any{
+			"atUserIds": ids,
+			"isAtAll":   false,
+		}
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal session webhook: %w", err)
 	}

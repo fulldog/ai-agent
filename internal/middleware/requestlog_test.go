@@ -59,3 +59,30 @@ func TestBodyWriterPreviewDoesNotSplitUTF8(t *testing.T) {
 		t.Fatalf("got %q want 你", got)
 	}
 }
+
+func TestTruncateStripsNUL(t *testing.T) {
+	t.Parallel()
+	got := truncate("a\x00b\x00c", 100)
+	if strings.ContainsRune(got, 0) {
+		t.Fatalf("nul remains: %q", got)
+	}
+	if got != "abc" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRequestBodyForLogMultipartOmitsBinary(t *testing.T) {
+	t.Parallel()
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"files\"; filename=\"路书.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.7\x00binary\r\n--b--")
+	got := requestBodyForLog(body, "multipart/form-data; boundary=b", 4096)
+	if strings.Contains(got, "%PDF") || strings.ContainsRune(got, 0) {
+		t.Fatalf("binary leaked: %q", got)
+	}
+	if !strings.Contains(got, "路书.pdf") || !strings.Contains(got, "multipart omitted binary") {
+		t.Fatalf("summary=%q", got)
+	}
+	plain := requestBodyForLog([]byte(`{"a":1}`), "application/json", 100)
+	if plain != `{"a":1}` {
+		t.Fatalf("json body: %q", plain)
+	}
+}

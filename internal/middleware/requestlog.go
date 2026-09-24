@@ -108,7 +108,7 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 
 		bodyStr := ""
 		if cfg.RequestLog.PersistBody {
-			bodyStr = truncate(string(reqBody), cfg.Log.BodyPreviewMax)
+			bodyStr = requestBodyForLog(reqBody, c.ContentType(), cfg.Log.BodyPreviewMax)
 		}
 
 		log.Info("http_access",
@@ -145,7 +145,13 @@ func RequestLog(cfg *config.Config, db *gorm.DB, log *zap.Logger) gin.HandlerFun
 				AgentRunID:      parseJSONUUID(bw.buf.Bytes(), "run_id"),
 			}
 			go func(r model.RequestLog) {
-				_ = db.Create(&r).Error
+				if err := db.Create(&r).Error; err != nil && log != nil {
+					log.Warn("persist request_log",
+						zap.String("request_id", r.RequestID),
+						zap.String("path", r.Path),
+						zap.Error(err),
+					)
+				}
 			}(row)
 		}
 	}
@@ -191,8 +197,66 @@ func itoa64(n int64) string {
 	return string(buf[i:])
 }
 
-// truncate 按字节上限截断，并保证结果为合法 UTF-8（避免 PostgreSQL SQLSTATE 22021）。
+// requestBodyForLog 生成可入库的请求体摘要。multipart 只记文件名，避免 PDF 等二进制（含 \x00）触发 PG UTF8 错误。
+func requestBodyForLog(body []byte, contentType string, max int) string {
+	ct := strings.ToLower(contentType)
+	if strings.Contains(ct, "multipart/") {
+		return truncate(multipartBodySummary(body), max)
+	}
+	return truncate(string(body), max)
+}
+
+func multipartBodySummary(body []byte) string {
+	names := extractMultipartFilenames(body)
+	var b strings.Builder
+	b.WriteString("[multipart omitted binary; ")
+	b.WriteString(itoa64(int64(len(body))))
+	b.WriteString(" bytes")
+	if len(names) > 0 {
+		b.WriteString("; files=")
+		b.WriteString(strings.Join(names, ", "))
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+func extractMultipartFilenames(body []byte) []string {
+	const key = `filename="`
+	seen := map[string]struct{}{}
+	var out []string
+	rest := body
+	for {
+		i := bytes.Index(rest, []byte(key))
+		if i < 0 {
+			break
+		}
+		rest = rest[i+len(key):]
+		j := bytes.IndexByte(rest, '"')
+		if j < 0 {
+			break
+		}
+		name := string(rest[:j])
+		rest = rest[j+1:]
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+		if len(out) >= 20 {
+			break
+		}
+	}
+	return out
+}
+
+// truncate 按字节上限截断，去掉 NUL，并保证合法 UTF-8（避免 PostgreSQL SQLSTATE 22021）。
 func truncate(s string, max int) string {
+	if strings.IndexByte(s, 0) >= 0 {
+		s = strings.ReplaceAll(s, "\x00", "")
+	}
 	if max > 0 && len(s) > max {
 		s = string(trimIncompleteUTF8([]byte(s[:max])))
 	}
