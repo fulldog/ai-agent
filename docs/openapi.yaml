@@ -28,6 +28,8 @@ tags:
     description: Tool Calling Agent（工具规范见 docs/AGENT_TOOLS.md）
   - name: Corpus
     description: 语料库与文档索引
+  - name: DingTalk
+    description: 钉钉群档案与语料绑定
   - name: RAG
     description: 向量检索调试
   - name: Logs
@@ -129,6 +131,11 @@ paths:
           schema:
             type: integer
             default: 0
+        - name: include_deleted
+          in: query
+          description: 为 1/true/yes 时包含已软删会话
+          schema:
+            type: string
       responses:
         "200":
           description: 列表
@@ -168,7 +175,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     delete:
       tags: [Conversations]
-      summary: 删除会话
+      summary: 软删会话（保留消息）
       operationId: deleteConversation
       security:
         - ApiKeyAuth: []
@@ -178,7 +185,7 @@ paths:
         - $ref: "#/components/parameters/UUIDPathId"
       responses:
         "204":
-          description: 已删除
+          description: 已软删（messages 保留）
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -718,6 +725,45 @@ paths:
                 $ref: "#/components/schemas/Corpus"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Corpus]
+      summary: 修改语料库名称/描述
+      operationId: updateCorpus
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  description: 传入则更新描述（可为空字符串）
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Corpus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 名称冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
     delete:
       tags: [Corpus]
       summary: 删除语料库
@@ -738,7 +784,9 @@ paths:
       tags: [Corpus]
       summary: 上传/写入文档并索引
       description: |
-        支持 JSON 正文，或 `multipart/form-data` 上传 `file`。
+        支持 JSON 正文，或 `multipart/form-data` 上传。
+
+        单文件字段 `file`；批量可用重复字段 `files`（或多个 `file`）。
 
         文件类型：
         - 文本：txt/md/csv/json/html…
@@ -765,18 +813,24 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [file]
               properties:
                 file:
                   type: string
                   format: binary
+                  description: 单文件（兼容）
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: 批量上传
+                force_reread:
+                  type: boolean
       responses:
         "201":
-          description: 文档已创建（可能仍为 indexed/failed）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Document"
+          description: 单文件成功，或多文件全部成功
+        "207":
+          description: 多文件部分成功
         "400":
           $ref: "#/components/responses/BadRequest"
         "500":
@@ -848,6 +902,69 @@ paths:
                     example: ok
         "500":
           $ref: "#/components/responses/InternalError"
+
+  /api/v1/dingtalk/chats:
+    get:
+      tags: [DingTalk]
+      summary: 钉钉群/单聊档案列表
+      operationId: listDingTalkChats
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DingTalkChat"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/dingtalk/chats/{id}/corpora:
+    put:
+      tags: [DingTalk]
+      summary: 替换钉钉会话绑定的语料库
+      operationId: setDingTalkChatCorpora
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                corpus_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+            example:
+              corpus_ids:
+                - "00000000-0000-0000-0000-000000000002"
+      responses:
+        "200":
+          description: 更新后的档案
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkChat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/rag/search:
     post:
@@ -1156,6 +1273,11 @@ components:
         updated_at:
           type: string
           format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          description: 软删除时间；未删则省略
+          nullable: true
 
     Message:
       type: object
@@ -1263,6 +1385,7 @@ components:
           default: 8
         tools:
           type: array
+          description: 在 agent.default_tools 之上追加的工具名（不可剔除默认集）
           items:
             type: string
             enum: [knowledge_search, current_time, calculator, dbconn]
@@ -1384,6 +1507,42 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    DingTalkChat:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+        title:
+          type: string
+        conversation_type:
+          type: string
+        is_group:
+          type: boolean
+        last_seen_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        corpus_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        corpora:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
 
     AddDocumentJSONRequest:
       type: object

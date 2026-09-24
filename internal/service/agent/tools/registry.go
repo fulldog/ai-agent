@@ -31,13 +31,36 @@ func NewRegistry(list ...Tool) *Registry {
 func builtin(c *dbconn.Client) []Tool {
 	list := []Tool{
 		KnowledgeSearch{},
-		//CurrentTime{},
-		//Calculator{},
+		CurrentTime{},
+		Calculator{},
 	}
 	if c != nil {
 		list = append(list, DBConn{Client: c})
 	}
 	return list
+}
+
+// MergeNames 始终保留 base（通常为 agent.default_tools），再追加 extras 中的名字；去重且保持先后顺序。
+func MergeNames(base []string, extras ...[]string) []string {
+	seen := make(map[string]struct{}, len(base)+8)
+	out := make([]string, 0, len(base)+8)
+	add := func(names []string) {
+		for _, n := range names {
+			if n == "" {
+				continue
+			}
+			if _, ok := seen[n]; ok {
+				continue
+			}
+			seen[n] = struct{}{}
+			out = append(out, n)
+		}
+	}
+	add(base)
+	for _, extra := range extras {
+		add(extra)
+	}
+	return out
 }
 
 // Default 内置工具集（不含业务库）。

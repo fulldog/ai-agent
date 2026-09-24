@@ -32,10 +32,43 @@ const (
 var errStreamDisconnect = errors.New("dingtalk stream disconnect")
 
 type streamFrame struct {
-	SpecVersion string        `json:"specVersion"`
-	Type        string        `json:"type"`
-	Headers     streamHeaders `json:"headers"`
-	Data        string        `json:"data"`
+	SpecVersion string          `json:"specVersion"`
+	Type        string          `json:"type"`
+	Headers     streamHeaders   `json:"headers"`
+	Data        json.RawMessage `json:"data"`
+}
+
+func (f *streamFrame) dataString() string {
+	if f == nil || len(f.Data) == 0 || string(f.Data) == "null" {
+		return ""
+	}
+	if f.Data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(f.Data, &s); err == nil {
+			return s
+		}
+	}
+	return string(f.Data)
+}
+
+func parseBotCallback(data json.RawMessage) (*botCallback, error) {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		return nil, errors.New("empty bot callback")
+	}
+	payload := data
+	if data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return nil, err
+		}
+		payload = []byte(s)
+	}
+	var out botCallback
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 type streamHeaders map[string]json.RawMessage
@@ -251,15 +284,15 @@ func (s *streamSession) handleFrame(raw []byte, onBot func(*botCallback)) error 
 	if frame.Type != frameTypeCallback || frame.Headers.get("topic") != topicBotMessages {
 		return nil
 	}
-	var data botCallback
-	if err := json.Unmarshal([]byte(frame.Data), &data); err != nil {
+	data, err := parseBotCallback(frame.Data)
+	if err != nil {
 		if s != nil && s.log != nil {
 			s.log.Warn("dingtalk bot callback unmarshal", zap.Error(err), zap.Int("bytes", len(frame.Data)))
 		}
 		return nil
 	}
 	if onBot != nil {
-		onBot(&data)
+		onBot(data)
 	}
 	return nil
 }
@@ -282,7 +315,7 @@ func ackForFrame(frame *streamFrame) (ack *streamAck, disconnect bool) {
 	case frame.Type == frameTypeSystem && topic == topicDisconnect:
 		return nil, true
 	case frame.Type == frameTypeSystem && topic == topicPing:
-		a := newStreamAck(200, messageID, "OK", frame.Data)
+		a := newStreamAck(200, messageID, "OK", frame.dataString())
 		return &a, false
 	case frame.Type == frameTypeCallback && topic == topicBotMessages:
 		a := newStreamAck(200, messageID, "OK", `{"response":null}`)

@@ -172,7 +172,23 @@ function stepLabel(st: AgentStep): string {
 }
 
 function stepText(st: AgentStep): string {
-  return `${st.tool_name || ""}\n${st.output_text || ""}`.trim() || "-";
+  const parts: string[] = [];
+  if (st.tool_name) parts.push(`工具：${st.tool_name}`);
+  if (st.input_json && st.input_json !== "{}") {
+    parts.push(`入参：${prettyMaybeJSON(st.input_json)}`);
+  }
+  if (st.output_text) {
+    parts.push(st.kind === "tool_result" ? `返回：\n${st.output_text}` : st.output_text);
+  }
+  return parts.join("\n\n").trim() || "-";
+}
+
+function prettyMaybeJSON(s: string): string {
+  try {
+    return JSON.stringify(JSON.parse(s), null, 2);
+  } catch {
+    return s;
+  }
 }
 
 async function load() {

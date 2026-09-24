@@ -21,7 +21,7 @@
           <el-input-number v-model="maxSteps" :min="1" :max="20" />
         </el-form-item>
         <el-form-item label="语料">
-          <el-select v-model="corpusId" clearable filterable placeholder="可选，不选则搜全部语料" style="width: 180px">
+          <el-select v-model="corpusId" clearable filterable placeholder="可选；运行前先检索语料" style="width: 180px">
             <el-option v-for="c in corpora" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>

@@ -15,6 +15,8 @@ func EnsureSchemaComments(db *gorm.DB) error {
 		`COMMENT ON TABLE request_logs IS '请求日志表(HTTP与钉钉Stream入站)'`,
 		`COMMENT ON TABLE llm_call_logs IS '上游 LLM 调用日志表'`,
 		`COMMENT ON TABLE file_extractions IS '上传文件与抽取文本关联表(按内容哈希缓存)'`,
+		`COMMENT ON TABLE dingtalk_chats IS '钉钉群/单聊档案(按 conversationId 去重)'`,
+		`COMMENT ON TABLE dingtalk_chat_corpora IS '钉钉会话与语料库绑定'`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

@@ -8,6 +8,13 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 )
 
+func corporaForRetrieve(pool []model.Corpus, query string) []model.Corpus {
+	if matched := matchCorpora(query, pool); len(matched) > 0 {
+		return matched
+	}
+	return pool
+}
+
 func matchCorpora(query string, corpora []model.Corpus) []model.Corpus {
 	q := strings.TrimSpace(query)
 	if q == "" || len(corpora) == 0 {
@@ -53,4 +60,9 @@ func filterRelevant(hits []rag.Hit, maxDistance float64) []rag.Hit {
 
 func isCorpusMiss(hits []rag.Hit, forceOnline bool) bool {
 	return len(hits) == 0 && !forceOnline
+}
+
+// continueWithHistory 已有会话消息时，本轮语料未命中也继续作答（追问、补标签等）。
+func continueWithHistory(hits []rag.Hit, forceOnline, hasHistory bool) bool {
+	return hasHistory && isCorpusMiss(hits, forceOnline)
 }

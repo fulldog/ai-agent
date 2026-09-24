@@ -31,6 +31,7 @@
             <span>知识库</span>
           </template>
           <el-menu-item index="/corpus" :disabled="dbOff">知识库</el-menu-item>
+          <el-menu-item index="/dingtalk-chats" :disabled="dbOff">钉钉群</el-menu-item>
           <el-menu-item index="/rag" :disabled="dbOff">RAG 检索</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="capability">
@@ -109,6 +110,7 @@ const subtitles: Record<string, string> = {
   "/agent": "工具调用循环，查看每一步的调用与结果",
   "/agent/runs": "回溯历史 Agent 运行，点查看打开步骤抽屉",
   "/corpus": "语料库与文档管理，上传后自动分块索引",
+  "/dingtalk-chats": "钉钉群/单聊档案，按群绑定语料库",
   "/rag": "向量检索调试，按相似度查看命中分块",
   "/analyze": "上传 PDF / Word / 图片，抽取结构化字段",
   "/intent": "微信助手关键字意图解析",

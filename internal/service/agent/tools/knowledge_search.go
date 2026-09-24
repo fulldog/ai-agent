@@ -20,7 +20,7 @@ func (KnowledgeSearch) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "knowledge_search",
-			Description: "在知识库（RAG）中检索与问题相关的文本片段；未指定 corpus_id 时检索全部语料库",
+			Description: "在知识库（RAG）中检索与问题相关的文本片段；未限定语料库时检索全部语料库",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -53,7 +53,9 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 		hits []rag.Hit
 		err  error
 	)
-	if env.CorpusID != nil {
+	if len(env.CorpusIDs) > 0 {
+		hits, err = env.RAG.SearchInCorpora(ctx, env.CorpusIDs, p.Query, topK)
+	} else if env.CorpusID != nil {
 		hits, err = env.RAG.Search(ctx, *env.CorpusID, p.Query, topK)
 	} else {
 		hits, err = env.RAG.SearchInCorpora(ctx, nil, p.Query, topK)

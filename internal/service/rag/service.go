@@ -110,7 +110,7 @@ LIMIT ?`, where)
 	return FilterByMaxDistance(hits, s.maxDistance), nil
 }
 
-const HitsPromptHeader = "【知识摘录】只采用与问题直接相关的句子作答；材料不足就明确说不知道。不要整段照抄。"
+const HitsPromptHeader = "【知识摘录】下列内容是语料库给出的口径与流程。必须先遵循其中的前置条件、追问与步骤，再决定是否查库或作答；摘录要求补充信息时先向用户追问，不要跳过。只采用与问题直接相关的句子；材料不足就明确说不知道。不要整段照抄。"
 
 // HitsPrompt 把召回片段拼进 system；空 hits 返回空串。
 func HitsPrompt(hits []Hit) string {

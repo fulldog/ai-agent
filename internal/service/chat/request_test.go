@@ -3,6 +3,7 @@ package chat
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 )
 
@@ -16,6 +17,19 @@ func TestChatRequestEnableSearchOnlyQwen(t *testing.T) {
 	req = chatRequest(in, "deepseek", "deepseek-v4-flash", nil)
 	if req.EnableSearch {
 		t.Fatal("non-qwen must not send enable_search")
+	}
+}
+
+func TestGetByChannelRequiresKeys(t *testing.T) {
+	t.Parallel()
+	s := &Service{}
+	got, err := s.GetByChannel("", "dingtalk", "cid")
+	if got != nil || err != nil {
+		t.Fatalf("empty uid: %#v %v", got, err)
+	}
+	ok, err := s.HasMessages(uuid.Nil)
+	if ok || err != nil {
+		t.Fatalf("nil id: %v %v", ok, err)
 	}
 }
 

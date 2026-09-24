@@ -85,8 +85,8 @@ agent:
     - dbconn
 
 # 普通对话（/chat/completions、钉钉）默认带 RAG + 工具（含 dbconn）。
-# tools_enabled / rag_enabled 缺省均为 true；可用 CHAT_TOOLS_ENABLED / CHAT_RAG_ENABLED 覆盖。
-# tools 留空则沿用 agent.default_tools；max_tool_steps 是一次对话内最多的工具轮数。
+# tools_enabled 为 false 时仍挂载 agent.default_tools，仅不再并入下方 tools。
+# tools 与 agent.default_tools 合并（去重）；max_tool_steps 是一次对话内最多的工具轮数。
 # 请求未传 rag 时默认检索；无 corpus_id 时搜全部语料库。
 chat:
   tools_enabled: true
@@ -175,4 +175,4 @@ dingtalk:
   client_id: ""         # 凭证与基础信息的 Client ID（旧称 AppKey）
   client_secret: ""     # 同一应用的 Client Secret
   card_template_id: ""  # 可选；留空则整段回复走 sessionWebhook
-  reply_mode: chat      # chat=CompleteStream（默认）；agent=Agent.Run 工具循环
+  reply_mode: web      # chat=CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；web=与控制台 Agent 同一套 Run（不预注入 hits）

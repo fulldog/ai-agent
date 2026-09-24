@@ -21,15 +21,17 @@ type callContext struct {
 	model    string
 }
 
-// toolSpecs 普通对话要发给模型的工具；未开启或无可用工具时返回 nil。
+// toolSpecs 普通对话要发给模型的工具。始终包含 agent.default_tools；
+// chat.tools_enabled 为 true 时再并入 chat.tools；无可用注册工具时返回 nil。
 func (s *Service) toolSpecs() []llm.ToolSpec {
-	if s == nil || s.registry == nil || s.cfg == nil || !s.cfg.Chat.IsToolsEnabled() {
+	if s == nil || s.registry == nil || s.cfg == nil {
 		return nil
 	}
-	names := s.cfg.Chat.Tools
-	if len(names) == 0 {
-		names = s.cfg.Agent.DefaultTools
+	var extra []string
+	if s.cfg.Chat.IsToolsEnabled() {
+		extra = s.cfg.Chat.Tools
 	}
+	names := tools.MergeNames(s.cfg.Agent.DefaultTools, extra)
 	return s.registry.Specs(names)
 }
 
@@ -45,7 +47,7 @@ func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env
 	if corpusID == nil && conv != nil {
 		corpusID = conv.CorpusID
 	}
-	env := &tools.Env{CorpusID: corpusID, TopK: in.TopK, RAG: s.rag}
+	env := &tools.Env{CorpusID: corpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK, RAG: s.rag}
 	if s.cfg != nil {
 		env.DefaultTopK = s.cfg.RAG.TopK
 	}
@@ -173,5 +175,5 @@ func toolSystemPrompt(specs []llm.ToolSpec) string {
 
 const (
 	baseToolPrompt   = "需要准确信息时调用工具，并依据工具结果作答；不需要时直接回答，不要为了用工具而用工具。本次请求若已附带 tools，说明工具已启用，禁止回答「未启用工具/请到工具函数管理开启」。"
-	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：先用 knowledge_search 查口径或规则，再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。"
+	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：先按已注入的知识摘录执行（缺前置信息先追问，不要直接查库）。摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。"
 )

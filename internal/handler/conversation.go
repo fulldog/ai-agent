@@ -64,7 +64,7 @@ func (h *ConversationHandler) List(c *gin.Context) {
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	rows, total, err := h.Chat.QueryConversations(filter, admin, limit, offset)
+	rows, total, err := h.Chat.QueryConversations(filter, admin, includeDeletedQuery(c.Query("include_deleted")), limit, offset)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
@@ -83,7 +83,7 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 		return
 	}
 	if admin {
-		row, err := h.Chat.GetConversationByID(id)
+		row, err := h.Chat.GetConversationByIDIncludingDeleted(id)
 		if err != nil {
 			writeError(c, http.StatusNotFound, "not_found", "conversation not found")
 			return
@@ -91,7 +91,7 @@ func (h *ConversationHandler) Get(c *gin.Context) {
 		c.JSON(http.StatusOK, row)
 		return
 	}
-	row, err := h.Chat.GetConversation(id, uid)
+	row, err := h.Chat.GetConversationIncludingDeleted(id, uid)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "not_found", "conversation not found")
 		return
@@ -170,6 +170,15 @@ func bindUID(c *gin.Context, forceUID bool) (uid string, admin bool, ok bool) {
 		}
 	}
 	return uid, admin, true
+}
+
+func includeDeletedQuery(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 func clampLimit(limit int) int {

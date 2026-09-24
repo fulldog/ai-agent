@@ -1,6 +1,6 @@
 # 钉钉机器人 RAG 流式回复
 
-进程内按官方 [Stream 协议](https://open.dingtalk.com/document/development/configure-stream-push) 接收群内 **@机器人** 消息（单聊不需 @），用钉钉 `senderStaffId` 作为会话 `uid`，按 **用户 + 群/单聊 conversationId** 隔离历史。检索本服务知识库后，默认走现有 `CompleteStream`；也可配置 `dingtalk.reply_mode: agent` 走 `Agent.Run` 工具循环。增量推到钉钉 **AI 流式卡片**（钉钉客户端没有 HTTP SSE）。
+进程内按官方 [Stream 协议](https://open.dingtalk.com/document/development/configure-stream-push) 接收群内 **@机器人** 消息（单聊不需 @），用钉钉 `senderStaffId` 作为会话 `uid`，按 **用户 + 群/单聊 conversationId** 隔离历史。检索本服务知识库后，默认走现有 `CompleteStream`；也可配置 `dingtalk.reply_mode: agent` 走钉钉预检索后的 `Agent.Run`，或 `dingtalk.reply_mode: web` 走与控制台 Agent 页一致的薄包装。增量推到钉钉 **AI 流式卡片**（钉钉客户端没有 HTTP SSE）。
 
 收消息：本仓库自研 `POST /v1.0/gateway/connections/open` + WebSocket，**不依赖** `dingtalk-stream-sdk-go`。  
 发消息：`github.com/alibabacloud-go/dingtalk`（oauth2 / card / robot）；`sessionWebhook` 用本地 HTTP。
@@ -35,37 +35,50 @@ dingtalk:
   client_id: "your-app-key"
   client_secret: "your-app-secret"
   card_template_id: "your-ai-card-template-id"  # 可选
-  reply_mode: chat  # chat（默认，CompleteStream）| agent（Agent.Run，落 agent_runs）
+  reply_mode: chat  # chat（默认，CompleteStream）| agent（钉钉预检索 + Agent.Run）| web（同控制台 Agent 薄包装）
 ```
 
 发卡片/群消息时的 robotCode 使用同一应用的 Client ID，无需单独配置。卡片模板未配或创建失败时：整段回复走 `sessionWebhook`；群聊还可再降级到 `robot_1_0.OrgGroupSend`。
 
 ## 消息处理
 
-1. 群聊仅处理 `isInAtList=true`；去掉 `@xxx` 得到 query。
-2. 先检索语料库：query 命中语料库 **名称** 时只搜这些库，否则在全部库上向量检索。余弦距离（`score`）大于 `rag.max_distance` 的片段视为未命中（默认 `0.55`；设为 `0` 则不过滤）。该阈值与对话补全、Agent `knowledge_search`、控制台 RAG 调试页共用。
-3. **无相关命中**时直接回复「语料库未收录相关知识」，不调用大模型。用户明确要求联网查询（如「联网查询」「请联网」「上网搜」「web search」）时除外：去掉这些用语后再检索；仍无命中则走大模型，并对通义开启 `enable_search`（`forced_search`）。
-4. `FindOrCreate` 会话：`channel=dingtalk`，`channel_session_id=conversationId`，`uid=senderStaffId`。
-5. 有语料命中（或强制联网）时按 `reply_mode` 作答：`chat`（默认）走 `CompleteStream`；`agent` 走 `Agent.Run`（预检索 hits 注入 system，带会话历史与 dbconn 等工具，卡片仍流式更新）。结束 `isFinalize=true`。
-6. 第一期仅文字消息。
+主路径（@ 机器人 / 单聊）顺序与下面三步一致：
 
-企业内部群且机器人已上架后才会有 `senderStaffId`；为空时会提示无法识别用户。
+1. **先落会话**：按 `senderStaffId` + 钉钉 `conversationId` 取最新未删除内部会话；没有则新建，并立刻写/更新 `request_logs`（带 `conversation_id`）。已软删不会被复用。
+2. **本轮 RAG**：群有绑定语料则只在绑定库检索，未绑定才全量；名称命中可再收窄。距离大于 `rag.max_distance` 视为未命中。  
+   **早退**（仅 `chat` / `agent`）：无相关命中 **且** 未要求联网 **且** 该会话无历史消息 → 回复「语料库未收录相关知识」，不调 LLM。  
+   用户明确要求联网（如「联网查询」）时去掉用语后再检索；仍无命中则继续走 LLM，并对通义开 `enable_search`。`web` 模式跳过该闸门。
+3. **LLM + 工具**：带上第 2 步 RAG 结果与会话近期 messages，按 `reply_mode` 作答（`chat` / `agent` / `web`）。Agent 有工具时首轮强制 function call；推诿「未启用工具」会拦截重试。消息与 request_log 照常落库。
+
+补充：
+
+- 群聊仅处理 `isInAtList=true` 或 `atUsers` 非空；去掉 `@xxx` 得到 query。任意入站会 upsert `dingtalk_chats`。
+- 打开控制台「钉钉群」或 Bot 启动时，会从已有 `conversations` 回填尚未建档的会话。
+- `chat`：预检索 hits 注入 system；`agent`：预注入 hits；`web`：不预注入 hits，由工具循环检索。卡片流式更新；模板未配则走 `sessionWebhook`。
+- 第一期仅文字消息。企业内部群且机器人已上架后才有 `senderStaffId`。
 
 ## 日志
 
-每条实际处理的钉钉消息共用同一个 `request_id`（钉钉 `msgId`，为空则生成 UUID），同步写入：
+**凡经 Stream 入站的钉钉消息都会写请求日志**（含未 @ 跳过），共用同一个 `request_id`（钉钉 `msgId`，为空则生成 UUID），同步写入：
 
-1. 文本日志 `logs/info-*.log` 与 `logs/access-*.log`（`step=1..4`）
-2. 表 `request_logs`：同一 `request_id` 一行，收到消息时插入，后续步骤更新。`request_body` 为四步 JSON（receive / rag / llm_request / result），`response_preview` 为本次回复。`method=STREAM`，`path=/dingtalk/bot/messages`。
+1. 文本日志 `logs/info-*.log` 与 `logs/access-*.log`（`step=1..4`；跳过仅有 receive + result）
+2. 表 `request_logs`：同一 `request_id` 一行。**所有 @ 机器人消息（及单聊）在进入异步处理前即插入**，后续步骤更新；未 @ 的群消息走 skip 也会插入。`request_body` 为 pipeline JSON（含顶层 `ding_conversation_id` / `conversation_title` / `group` / `conversation_id`），`response_preview` 为本次回复。`method=STREAM`，`path=/dingtalk/bot/messages`。
+3. 表 `dingtalk_chats`：任意入站（含未 @）都会按 `conversationId` upsert 群/单聊档案。
+
+重复投递同一 `msgId`：若已有 `request_logs` 行则不覆盖；若首次落库失败则补记一行。
 
 | step | event | 内容 |
 |------|--------|------|
-| 1 | `dingtalk.receive` | 收到的原文、发送者、群/单聊 |
-| 2 | `dingtalk.rag` | 语料检索 query、命中条数、距离、分块内容 |
-| 3 | `dingtalk.llm_request` | 发给模型的对话；语料未命中且未强制联网时跳过 |
-| 4 | `dingtalk.result` | 本次回复、outcome、耗时、错误 |
+| 1 | `dingtalk.receive` | 收到的原文、发送者、群/单聊、群名 `conversation_title`、`ding_conversation_id`、`is_in_at_list` |
+| 2 | `dingtalk.rag` | 语料检索 query、命中条数、距离、分块内容（跳过路径无此步） |
+| 3 | `dingtalk.llm_request` / `dingtalk.agent` / `dingtalk.web_agent` | chat：发给模型的对话；agent/web：`run_id`、工具调用与入参（含 SQL）、工具返回、LLM 步骤摘要 |
+| 4 | `dingtalk.result` | 本次回复、outcome（含 `skipped` / `corpus_miss`）、耗时、错误、群信息 |
 
-调用了大模型时，`llm_call_logs` 与 `logs/llm-*.log` 的 `request_id` 相同。控制台「日志」页可按路径 `/dingtalk/bot/messages` 筛选；点开详情可看 `request_body.steps` 与 `llm_calls`。
+`conversation_id`（本服务会话 UUID）在校验通过并 `FindOrCreate` 后尽早写入，语料未命中等早退也会带上。Agent / web 模式还会写入 `agent_run_id`。
+
+`reply_mode: agent` 或 `web` 时，工具明细同时落在 `agent_steps`（控制台「Agent 历史」按 `run_id` 查看），并写入本条请求日志的 steps。
+
+调用了大模型时，`llm_call_logs` 与 `logs/llm-*.log` 的 `request_id` 相同。控制台「日志」页可按路径 `/dingtalk/bot/messages` 筛选；点开详情可看钉钉群信息、`request_body.steps` 与 `llm_calls`。
 
 ## Stream 建连失败（`systemError` / 系统错误）
 

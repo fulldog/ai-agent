@@ -50,6 +50,7 @@ func Setup(application *app.App) *gin.Engine {
 	intentH := &handler.IntentHandler{Intent: application.Intent}
 	agentH := &handler.AgentHandler{Agent: application.Agent}
 	corpusH := &handler.CorpusHandler{Corpus: application.Corpus, FileExtract: application.FileExtract}
+	dingH := &handler.DingTalkHandler{Bot: application.DingTalk}
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
 	modelsH := &handler.ModelsHandler{Pool: application.LLMPool}
@@ -90,11 +91,15 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.POST("/corpora", corpusH.Create)
 			dbGroup.GET("/corpora", corpusH.List)
 			dbGroup.GET("/corpora/:id", corpusH.Get)
+			dbGroup.PATCH("/corpora/:id", corpusH.Update)
 			dbGroup.DELETE("/corpora/:id", corpusH.Delete)
 			dbGroup.POST("/corpora/:id/documents", corpusH.AddDocument)
 			dbGroup.GET("/corpora/:id/documents", corpusH.ListDocuments)
 			dbGroup.DELETE("/corpora/:id/documents/:doc_id", corpusH.DeleteDocument)
 			dbGroup.POST("/corpora/:id/reindex", corpusH.Reindex)
+
+			dbGroup.GET("/dingtalk/chats", dingH.ListChats)
+			dbGroup.PUT("/dingtalk/chats/:id/corpora", dingH.SetChatCorpora)
 
 			dbGroup.POST("/rag/search", ragH.Search)
 

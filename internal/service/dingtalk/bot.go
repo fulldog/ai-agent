@@ -31,7 +31,6 @@ type Bot struct {
 	cfg         config.DingTalkConfig
 	ragTop      int
 	maxDistance float64
-	persistBody bool
 	previewMax  int
 	log         *zap.Logger
 	access      *zap.Logger
@@ -69,7 +68,6 @@ func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, rag
 		cfg:         cfg.DingTalk,
 		ragTop:      top,
 		maxDistance: cfg.RAG.MaxDistance,
-		persistBody: cfg.RequestLog.PersistBody,
 		previewMax:  preview,
 		log:         log.With(zap.String("component", "dingtalk")),
 		access:      accessLog.With(zap.String("component", "dingtalk")),
@@ -97,6 +95,7 @@ func (b *Bot) Start(ctx context.Context) error {
 	if b.chat == nil {
 		return fmt.Errorf("dingtalk requires database-backed chat service")
 	}
+	b.backfillChatsFromConversations()
 	go b.runStream(ctx)
 	return nil
 }
@@ -220,46 +219,109 @@ func (b *Bot) onMessage(parent context.Context, data *botCallback) {
 	if data == nil {
 		return
 	}
-	if isGroup(data.ConversationType) && !data.IsInAtList {
-		b.log.Debug("dingtalk skip: not in at list",
-			zap.String("request_id", data.MsgID),
-			zap.String("conversation_id", data.ConversationID),
-		)
+	// 任意入站消息都先归档群/单聊，便于控制台「钉钉群」与请求日志关联。
+	b.upsertChat(data)
+	if isGroup(data.ConversationType) && !isBotMention(data) {
+		b.recordSkip(data, "not_in_at_list")
 		return
 	}
 	if !b.dedup.First(data.MsgID) {
+		// 首次投递应已写 request_logs；若落库失败则补记，避免 @ 消息丢失。
 		b.log.Info("dingtalk skip: duplicate msg", zap.String("request_id", data.MsgID))
+		b.ensureMentionLogged(data)
 		return
 	}
-	go b.handle(parent, data)
+	tr := b.beginMentionTrace(data)
+	go b.handle(parent, data, tr)
 }
 
-func (b *Bot) handle(parent context.Context, data *botCallback) {
+func (b *Bot) beginMentionTrace(data *botCallback) *msgTrace {
+	tr := newMsgTrace(data)
+	uid := ""
+	if data != nil {
+		uid = strings.TrimSpace(data.SenderStaffID)
+	}
+	tr.uid = uid
+	b.recordReceive(tr, data, uid)
+	return tr
+}
+
+func (b *Bot) ensureMentionLogged(data *botCallback) {
+	if b == nil || data == nil || strings.TrimSpace(data.MsgID) == "" {
+		return
+	}
+	if b.hasRequestLog(data.MsgID) {
+		return
+	}
+	tr := b.beginMentionTrace(data)
+	tr.status = 204
+	tr.outcome = "duplicate"
+	tr.errMsg = "duplicate msg"
+	b.emitMsgLog(tr)
+}
+
+// recordSkip 记录未进入正式处理链路的入站消息（仍须有请求日志与群档案）。
+func (b *Bot) recordSkip(data *botCallback, reason string) {
+	tr := newMsgTrace(data)
+	tr.uid = strings.TrimSpace(data.SenderStaffID)
+	tr.status = 204
+	tr.outcome = "skipped"
+	tr.errMsg = reason
+	defer b.emitMsgLog(tr)
+	b.recordReceive(tr, data, tr.uid)
+	if tr.uid != "" && strings.TrimSpace(data.ConversationID) != "" && b.chat != nil {
+		if conv, err := b.chat.GetByChannel(tr.uid, channelDingTalk, data.ConversationID); err == nil && conv != nil {
+			tr.conversationID = &conv.ID
+		}
+	}
+}
+
+func (b *Bot) recordReceive(tr *msgTrace, data *botCallback, uid string) {
+	detail := receiveDetail(data, uid)
+	raw := ""
+	senderNick := ""
+	msgType := ""
+	dingCID := ""
+	convType := ""
+	inAt := false
+	if data != nil {
+		raw = previewText(data.Text.Content, b.previewMax)
+		senderNick = data.SenderNick
+		msgType = data.MsgType
+		dingCID = data.ConversationID
+		convType = data.ConversationType
+		inAt = data.inAtList()
+	}
+	detail["raw_text"] = raw
+	title, _ := detail["conversation_title"].(string)
+	b.recordStep(tr, stepReceive, eventReceive, detail,
+		zap.String("uid", uid),
+		zap.String("sender_nick", senderNick),
+		zap.String("msg_type", msgType),
+		zap.String("ding_conversation_id", dingCID),
+		zap.String("conversation_title", title),
+		zap.String("conversation_type", convType),
+		zap.Bool("group", isGroup(convType)),
+		zap.Bool("is_in_at_list", inAt),
+		zap.String("raw_text", raw),
+	)
+}
+
+func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), 3*time.Minute)
 	defer cancel()
 
-	tr := newMsgTrace(data)
+	if tr == nil {
+		tr = b.beginMentionTrace(data)
+	}
 	defer b.emitMsgLog(tr)
 
-	uid := strings.TrimSpace(data.SenderStaffID)
-	tr.uid = uid
-	b.recordStep(tr, stepReceive, eventReceive, map[string]any{
-		"uid":                  uid,
-		"sender_nick":          data.SenderNick,
-		"msg_type":             data.MsgType,
-		"ding_conversation_id": data.ConversationID,
-		"conversation_type":    data.ConversationType,
-		"group":                isGroup(data.ConversationType),
-		"raw_text":             previewText(data.Text.Content, b.previewMax),
-	},
-		zap.String("uid", uid),
-		zap.String("sender_nick", data.SenderNick),
-		zap.String("msg_type", data.MsgType),
-		zap.String("ding_conversation_id", data.ConversationID),
-		zap.String("conversation_type", data.ConversationType),
-		zap.Bool("group", isGroup(data.ConversationType)),
-		zap.String("raw_text", previewText(data.Text.Content, b.previewMax)),
-	)
+	uid := tr.uid
+	if uid == "" && data != nil {
+		uid = strings.TrimSpace(data.SenderStaffID)
+		tr.uid = uid
+	}
+	b.upsertChat(data)
 	if uid == "" {
 		tr.status = 400
 		tr.errMsg = "empty senderStaffId"
@@ -284,54 +346,11 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		return
 	}
 
-	forceOnline := wantsOnlineSearch(query)
-	ragQuery := stripOnlineRequest(query)
-	if ragQuery == "" {
-		ragQuery = query
-	}
-	tr.ragQuery = ragQuery
-	tr.forceOnline = forceOnline
-	corpusID, hits := b.retrieve(ctx, ragQuery)
-	tr.corpusID = corpusID
-	tr.hitCount = len(hits)
-	tr.hitScores = hitScores(hits)
-	hitsDetail := ragHitLogs(hits, b.previewMax)
-	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
-		"query":        ragQuery,
-		"force_online": forceOnline,
-		"hits":         len(hits),
-		"scores":       tr.hitScores,
-		"corpus_id":    uuidString(corpusID),
-		"hits_detail":  hitsDetail,
-	},
-		zap.String("query", ragQuery),
-		zap.Bool("force_online", forceOnline),
-		zap.Int("hits", len(hits)),
-		zap.Float64s("scores", tr.hitScores),
-		zap.String("corpus_id", uuidString(corpusID)),
-		zap.Any("hits_detail", hitsDetail),
-	)
-	if isCorpusMiss(hits, forceOnline) {
-		tr.outcome = "corpus_miss"
-		tr.reply = corpusMissReply
-		_ = b.failReply(ctx, data, corpusMissReply)
-		return
-	}
-	title := strings.TrimSpace(data.ConversationTitle)
-	if title == "" {
-		if isGroup(data.ConversationType) {
-			title = "钉钉群聊"
-		} else {
-			title = "钉钉单聊"
-		}
-	}
-	if data.SenderNick != "" {
-		title = title + " · " + data.SenderNick
-	}
+	// ---- 1. 先落会话：uid + 群 conversationId → 最新未删会话，没有则新建 ----
+	title := sessionTitle(data)
 	conv, err := b.chat.FindOrCreateByChannel(chat.CreateConversationInput{
 		UID:              uid,
 		Title:            title,
-		CorpusID:         corpusID,
 		Channel:          channelDingTalk,
 		ChannelSessionID: data.ConversationID,
 	})
@@ -344,21 +363,102 @@ func (b *Bot) handle(parent context.Context, data *botCallback) {
 		return
 	}
 	tr.conversationID = &conv.ID
+	b.upsertRequestLog(tr)
+
+	// ---- 2. 本轮 RAG；无命中且未要求联网且无历史 → 直接结束（web 模式除外）----
+	forceOnline := wantsOnlineSearch(query)
+	ragQuery := stripOnlineRequest(query)
+	if ragQuery == "" {
+		ragQuery = query
+	}
+	tr.ragQuery = ragQuery
+	tr.forceOnline = forceOnline
+	corpusID, hits, searchIDs := b.retrieve(ctx, ragQuery, data.ConversationID)
+	tr.corpusID = corpusID
+	tr.hitCount = len(hits)
+	tr.hitScores = hitScores(hits)
+	hitsDetail := ragHitLogs(hits, b.previewMax)
+	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
+		"query":        ragQuery,
+		"force_online": forceOnline,
+		"hits":         len(hits),
+		"scores":       tr.hitScores,
+		"corpus_id":    uuidString(corpusID),
+		"corpus_ids":   uuidStrings(searchIDs),
+		"bound":        len(searchIDs) > 0,
+		"hits_detail":  hitsDetail,
+	},
+		zap.String("query", ragQuery),
+		zap.Bool("force_online", forceOnline),
+		zap.Int("hits", len(hits)),
+		zap.Float64s("scores", tr.hitScores),
+		zap.String("corpus_id", uuidString(corpusID)),
+		zap.Strings("corpus_ids", uuidStrings(searchIDs)),
+		zap.Bool("bound", len(searchIDs) > 0),
+		zap.Any("hits_detail", hitsDetail),
+	)
+	if corpusID != nil && (conv.CorpusID == nil || *conv.CorpusID != *corpusID) {
+		if updated, uerr := b.chat.FindOrCreateByChannel(chat.CreateConversationInput{
+			UID: uid, Title: title, CorpusID: corpusID,
+			Channel: channelDingTalk, ChannelSessionID: data.ConversationID,
+		}); uerr == nil && updated != nil {
+			conv = updated
+		} else {
+			conv.CorpusID = corpusID
+		}
+	}
+	if corpusID == nil && conv.CorpusID != nil {
+		corpusID = conv.CorpusID
+	}
+	hasHistory, herr := b.chat.HasMessages(conv.ID)
+	if herr != nil {
+		b.log.Warn("lookup dingtalk history", zap.Error(herr), zap.String("request_id", tr.requestID))
+	}
+	// chat/agent：无 RAG、未要求联网、无历史 → 结束。web 交给工具循环自行检索。
+	if !b.useWebAgent() && isCorpusMiss(hits, forceOnline) && !hasHistory {
+		tr.outcome = "corpus_miss"
+		tr.reply = corpusMissReply
+		_ = b.failReply(ctx, data, corpusMissReply)
+		return
+	}
+	if hits == nil {
+		hits = []rag.Hit{}
+	}
 	enableSearch := len(hits) == 0 && forceOnline
 	tr.enableSearch = enableSearch
 
-	if b.useAgent() {
-		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, hits, enableSearch)
+	// ---- 3. 带上 RAG 结果 + 会话历史，请求 LLM / 工具 ----
+	if b.useWebAgent() {
+		b.completeViaWebAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, forceOnline)
 		return
 	}
-	b.completeViaChat(ctx, data, tr, conv, uid, ragQuery, corpusID, hits, enableSearch)
+	if b.useAgent() {
+		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch)
+		return
+	}
+	b.completeViaChat(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch)
 }
 
 func (b *Bot) useAgent() bool {
 	return b != nil && b.cfg.UseAgent() && b.agent != nil
 }
 
-func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, hits []rag.Hit, enableSearch bool) {
+func (b *Bot) useWebAgent() bool {
+	return b != nil && b.cfg.UseWebAgent() && b.agent != nil
+}
+
+func sessionTitle(data *botCallback) string {
+	title := chatDisplayTitle(data)
+	if data == nil {
+		return title
+	}
+	if nick := strings.TrimSpace(data.SenderNick); nick != "" {
+		return title + " · " + nick
+	}
+	return title
+}
+
+func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
 	streamer := b.newStreamer(ctx, data)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -370,6 +470,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		RAGEnabled:     len(hits) > 0,
 		RAGExplicit:    true,
 		CorpusID:       corpusID,
+		CorpusIDs:      corpusIDs,
 		RAGHits:        hits,
 		TopK:           b.ragTop,
 		EnableSearch:   enableSearch,
@@ -426,17 +527,19 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 	_ = streamer.finish(text, false)
 }
 
-func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, hits []rag.Hit, enableSearch bool) {
+func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
 	streamer := b.newStreamer(ctx, data)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "agent"
 	cid := conv.ID
+	toolTrace := make([]map[string]any, 0, 8)
 	res, err := b.agent.Run(ctx, agent.RunInput{
 		ConversationID: &cid,
 		UID:            uid,
 		Input:          ragQuery,
 		CorpusID:       corpusID,
+		CorpusIDs:      corpusIDs,
 		TopK:           b.ragTop,
 		RAGHits:        hits,
 		EnableSearch:   enableSearch,
@@ -455,6 +558,12 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 			return streamer.update(acc.String(), false)
 		case "tool_call":
 			name, _ := ev.Payload["name"].(string)
+			args, _ := ev.Payload["arguments"].(string)
+			toolTrace = append(toolTrace, map[string]any{
+				"kind":      "tool_call",
+				"name":      name,
+				"arguments": previewText(args, b.previewMax),
+			})
 			hint := "正在调用工具…"
 			if name == "dbconn" {
 				hint = "正在查询业务库…"
@@ -462,9 +571,38 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 				hint = "正在检索知识库…"
 			}
 			_ = streamer.update(hint, false)
+		case "tool_result":
+			name, _ := ev.Payload["name"].(string)
+			content, _ := ev.Payload["content"].(string)
+			toolTrace = append(toolTrace, map[string]any{
+				"kind":    "tool_result",
+				"name":    name,
+				"content": previewText(content, b.previewMax),
+			})
 		}
 		return nil
 	})
+	detail := map[string]any{
+		"enable_search":   enableSearch,
+		"rag_enabled":     len(hits) > 0,
+		"conversation_id": conv.ID.String(),
+		"tools":           toolTrace,
+	}
+	if res != nil {
+		rid := res.RunID
+		tr.agentRunID = &rid
+		detail["run_id"] = res.RunID.String()
+		detail["step_count"] = res.StepCount
+		detail["status"] = res.Status
+		if dbSteps := b.agentStepsForLog(res.RunID); len(dbSteps) > 0 {
+			detail["steps"] = dbSteps
+		}
+	}
+	b.recordStep(tr, stepLLMRequest, eventAgent, detail,
+		zap.String("run_id", anyString(detail["run_id"])),
+		zap.Int("tool_events", len(toolTrace)),
+		zap.String("conversation_id", conv.ID.String()),
+	)
 	if err != nil {
 		b.log.Error("agent run", zap.Error(err), zap.String("request_id", tr.requestID))
 		final := acc.String()
@@ -480,18 +618,6 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 	text := ""
 	if res != nil {
 		text = res.Output
-		b.recordStep(tr, stepLLMRequest, eventAgent, map[string]any{
-			"run_id":          res.RunID.String(),
-			"step_count":      res.StepCount,
-			"status":          res.Status,
-			"enable_search":   enableSearch,
-			"rag_enabled":     len(hits) > 0,
-			"conversation_id": conv.ID.String(),
-		},
-			zap.String("run_id", res.RunID.String()),
-			zap.Int("step_count", res.StepCount),
-			zap.String("conversation_id", conv.ID.String()),
-		)
 	}
 	if strings.TrimSpace(text) == "" {
 		text = acc.String()
@@ -503,36 +629,197 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 	_ = streamer.finish(text, false)
 }
 
-func (b *Bot) retrieve(ctx context.Context, query string) (*uuid.UUID, []rag.Hit) {
-	if b.rag == nil || b.corpus == nil {
-		return nil, nil
+// completeViaWebAgent 薄包装：与控制台 Agent 共用 agent.Run，并保留钉钉会话上下文。
+// - 带 ConversationID：多轮追问（如补标签）可用历史
+// - RAGHits 传空切片：跳过 system 预注入（避免摘录+旧结论让模型跳过工具）；检索范围仍经 CorpusIDs 交给工具
+// - 现有 completeViaAgent（钉钉预检索注入）保持不变
+func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, forceOnline bool) {
+	streamer := b.newStreamer(ctx, data)
+	var acc strings.Builder
+	lastFlush := time.Now()
+	tr.outcome = "web_agent"
+	cid := conv.ID
+	enableSearch := forceOnline
+	tr.enableSearch = enableSearch
+	toolTrace := make([]map[string]any, 0, 8)
+	topK := b.ragTop
+	if topK <= 0 {
+		topK = 5
 	}
-	all, err := b.corpus.List()
+	res, err := b.agent.Run(ctx, agent.RunInput{
+		ConversationID: &cid,
+		UID:            uid,
+		Input:          input,
+		CorpusID:       corpusID,
+		CorpusIDs:      corpusIDs,
+		TopK:           topK,
+		// 非 nil 空切片：禁止 agent.retrieveHits 写入 system；工具侧仍用 CorpusIDs。
+		RAGHits:      []rag.Hit{},
+		EnableSearch: enableSearch,
+		RequestID:    tr.requestID,
+		Stream:       true,
+	}, func(ev agent.Event) error {
+		switch ev.Type {
+		case "delta":
+			content, _ := ev.Payload["content"].(string)
+			acc.WriteString(content)
+			now := time.Now()
+			if now.Sub(lastFlush) < streamMinInterval && acc.Len() < 80 {
+				return nil
+			}
+			lastFlush = now
+			return streamer.update(acc.String(), false)
+		case "tool_call":
+			name, _ := ev.Payload["name"].(string)
+			args, _ := ev.Payload["arguments"].(string)
+			toolTrace = append(toolTrace, map[string]any{
+				"kind":      "tool_call",
+				"name":      name,
+				"arguments": previewText(args, b.previewMax),
+			})
+			hint := "正在调用工具…"
+			if name == "dbconn" {
+				hint = "正在查询业务库…"
+			} else if name == "knowledge_search" {
+				hint = "正在检索知识库…"
+			}
+			_ = streamer.update(hint, false)
+		case "tool_result":
+			name, _ := ev.Payload["name"].(string)
+			content, _ := ev.Payload["content"].(string)
+			toolTrace = append(toolTrace, map[string]any{
+				"kind":    "tool_result",
+				"name":    name,
+				"content": previewText(content, b.previewMax),
+			})
+		}
+		return nil
+	})
+	detail := map[string]any{
+		"mode":            "web",
+		"enable_search":   enableSearch,
+		"conversation_id": conv.ID.String(),
+		"corpus_id":       uuidString(corpusID),
+		"corpus_ids":      uuidStrings(corpusIDs),
+		"rag_preinject":   false,
+		"tools":           toolTrace,
+	}
+	if res != nil {
+		rid := res.RunID
+		tr.agentRunID = &rid
+		detail["run_id"] = res.RunID.String()
+		detail["step_count"] = res.StepCount
+		detail["status"] = res.Status
+		if dbSteps := b.agentStepsForLog(res.RunID); len(dbSteps) > 0 {
+			detail["steps"] = dbSteps
+		}
+	}
+	b.recordStep(tr, stepLLMRequest, eventWebAgent, detail,
+		zap.String("run_id", anyString(detail["run_id"])),
+		zap.Int("tool_events", len(toolTrace)),
+		zap.String("conversation_id", conv.ID.String()),
+	)
 	if err != nil {
-		b.log.Warn("list corpora", zap.Error(err))
-		return nil, nil
+		b.log.Error("web agent run", zap.Error(err), zap.String("request_id", tr.requestID))
+		final := acc.String()
+		if final == "" {
+			final = llm.PublicMessage(err)
+		}
+		tr.status = 500
+		tr.errMsg = err.Error()
+		tr.reply = final
+		_ = streamer.finish(final, true)
+		return
 	}
-	if len(all) == 0 {
-		return nil, nil
+	text := ""
+	if res != nil {
+		text = res.Output
 	}
-	matched := matchCorpora(query, all)
-	searchIn := all
+	if strings.TrimSpace(text) == "" {
+		text = acc.String()
+	}
+	if strings.TrimSpace(text) == "" {
+		text = "没有生成内容。"
+	}
+	tr.reply = text
+	_ = streamer.finish(text, false)
+}
+
+func (b *Bot) agentStepsForLog(runID uuid.UUID) []map[string]any {
+	if b == nil || b.agent == nil || runID == uuid.Nil {
+		return nil
+	}
+	_, steps, err := b.agent.GetRun(runID)
+	if err != nil || len(steps) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(steps))
+	for _, st := range steps {
+		item := map[string]any{
+			"step_index": st.StepIndex,
+			"kind":       st.Kind,
+		}
+		if st.ToolName != "" {
+			item["tool_name"] = st.ToolName
+		}
+		if st.InputJSON != "" && st.InputJSON != "{}" {
+			item["input"] = previewText(st.InputJSON, b.previewMax)
+		}
+		if st.OutputText != "" {
+			item["output"] = previewText(st.OutputText, b.previewMax)
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func anyString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func (b *Bot) retrieve(ctx context.Context, query, conversationID string) (*uuid.UUID, []rag.Hit, []uuid.UUID) {
+	if b.rag == nil || b.corpus == nil {
+		return nil, nil, nil
+	}
+	bound := b.boundCorpora(conversationID)
+	pool := bound
+	if len(pool) == 0 {
+		all, err := b.corpus.List()
+		if err != nil {
+			b.log.Warn("list corpora", zap.Error(err))
+			return nil, nil, nil
+		}
+		if len(all) == 0 {
+			return nil, nil, nil
+		}
+		pool = all
+	}
+	searchIn := corporaForRetrieve(pool, query)
 	var pinned *uuid.UUID
-	if len(matched) > 0 {
-		searchIn = matched
+	if matched := matchCorpora(query, searchIn); len(matched) > 0 {
 		id := matched[0].ID
 		pinned = &id
+	}
+	var scope []uuid.UUID
+	if len(bound) > 0 {
+		scope = corpusIDs(bound)
 	}
 	hits, err := b.rag.SearchInCorpora(ctx, corpusIDs(searchIn), query, b.ragTop)
 	if err != nil {
 		b.log.Warn("rag search", zap.Error(err))
-		return pinned, nil
+		return pinned, []rag.Hit{}, scope
 	}
 	hits = filterRelevant(hits, b.maxDistance)
+	if hits == nil {
+		hits = []rag.Hit{}
+	}
 	if best := bestCorpusID(hits); best != nil {
 		pinned = best
 	}
-	return pinned, hits
+	return pinned, hits, scope
 }
 
 type streamer struct {

@@ -67,6 +67,7 @@
           <el-descriptions-item label="UID">{{ detail.uid || "-" }}</el-descriptions-item>
           <el-descriptions-item label="路径" :span="2">{{ detail.method }} {{ detail.path }}</el-descriptions-item>
           <el-descriptions-item v-if="detail.conversation_id" label="会话" :span="2">{{ detail.conversation_id }}</el-descriptions-item>
+          <el-descriptions-item v-if="pipelineDingChat" label="钉钉会话" :span="2">{{ pipelineDingChat }}</el-descriptions-item>
           <el-descriptions-item v-if="pipeline?.outcome" label="结果">
             <el-tag size="small" :type="outcomeType(pipeline.outcome)" effect="light">{{ outcomeLabel(pipeline.outcome) }}</el-tag>
           </el-descriptions-item>
@@ -87,7 +88,7 @@
               <div class="step-body">
                 <template v-if="st.event === 'dingtalk.receive'">
                   <p v-if="asText(st.detail, 'sender_nick')" class="kv"><span>发送者</span>{{ asText(st.detail, "sender_nick") }}（{{ asText(st.detail, "uid") || "-" }}）</p>
-                  <p class="kv"><span>会话</span>{{ asBool(st.detail, "group") ? "群聊" : "单聊" }} · {{ asText(st.detail, "ding_conversation_id") || "-" }}</p>
+                  <p class="kv"><span>会话</span>{{ asBool(st.detail, "group") ? "群聊" : "单聊" }} · {{ asText(st.detail, "conversation_title") || "未命名" }} · {{ asText(st.detail, "ding_conversation_id") || "-" }}</p>
                   <blockquote class="quote">{{ asText(st.detail, "raw_text") || "（空）" }}</blockquote>
                 </template>
                 <template v-else-if="st.event === 'dingtalk.rag'">
@@ -113,6 +114,40 @@
                     <div class="turn-role">{{ roleLabel(turn.role) }}</div>
                     <pre class="turn-body">{{ turn.content }}</pre>
                   </div>
+                </template>
+                <template v-else-if="st.event === 'dingtalk.agent' || st.event === 'dingtalk.web_agent'">
+                  <p class="kv"><span>run_id</span>{{ asText(st.detail, "run_id") || "-" }}</p>
+                  <p v-if="st.event === 'dingtalk.web_agent'" class="kv"><span>模式</span>web（同控制台 Agent）</p>
+                  <p class="kv">
+                    <span>状态</span>{{ asText(st.detail, "status") || "-" }}
+                    <template v-if="asText(st.detail, 'step_count')"> · {{ asText(st.detail, "step_count") }} 步</template>
+                    <template v-if="asBool(st.detail, 'rag_enabled')"> · 已用语料</template>
+                  </p>
+                  <template v-if="asAgentDBSteps(st.detail).length">
+                    <div v-for="(step, i) in asAgentDBSteps(st.detail)" :key="`db-${i}`" class="tool-step">
+                      <div class="tool-head">
+                        <el-tag size="small" :type="step.kind === 'tool_result' ? 'primary' : 'info'" effect="light">
+                          {{ step.kind === "tool_result" ? "工具" : "LLM" }}
+                        </el-tag>
+                        <span class="tool-name">{{ step.tool_name || step.kind || `步骤 ${step.step_index}` }}</span>
+                      </div>
+                      <pre v-if="step.input" class="tool-body">入参：{{ step.input }}</pre>
+                      <pre v-if="step.output" class="tool-body">{{ step.output }}</pre>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div v-for="(tool, i) in asAgentTools(st.detail)" :key="i" class="tool-step">
+                      <div class="tool-head">
+                        <el-tag size="small" :type="tool.kind === 'tool_call' ? 'primary' : 'success'" effect="light">
+                          {{ tool.kind === "tool_call" ? "调用" : "结果" }}
+                        </el-tag>
+                        <span class="tool-name">{{ tool.name || "-" }}</span>
+                      </div>
+                      <pre v-if="tool.arguments" class="tool-body">{{ tool.arguments }}</pre>
+                      <pre v-else-if="tool.content" class="tool-body">{{ tool.content }}</pre>
+                    </div>
+                    <p v-if="!asAgentTools(st.detail).length" class="muted">本轮未调用工具</p>
+                  </template>
                 </template>
                 <template v-else-if="st.event === 'dingtalk.result'">
                   <p class="kv"><span>结果</span>{{ outcomeLabel(asText(st.detail, "outcome") || pipeline.outcome || "") }}</p>
@@ -171,6 +206,11 @@ interface PipelineStep {
 interface PipelineBody {
   channel?: string;
   request_id?: string;
+  ding_conversation_id?: string;
+  conversation_title?: string;
+  conversation_type?: string;
+  group?: boolean;
+  conversation_id?: string;
   query?: string;
   rag_query?: string;
   outcome?: string;
@@ -196,7 +236,7 @@ const hero: HeroItem[] = [
   { icon: DataLine, title: "请求详情", desc: "点击任意行查看分步内容，不再堆成一段 JSON", tone: "orange" },
 ];
 
-const q = reactive({ path: "", request_id: "", conversation_id: "", uid: "" });
+const q = reactive({ path: "/dingtalk/bot/messages", request_id: "", conversation_id: "", uid: "" });
 const rows = ref<RequestLog[]>([]);
 const loading = ref(false);
 const drawer = ref(false);
@@ -204,6 +244,15 @@ const detail = ref<RequestLog | null>(null);
 
 const pipeline = computed(() => parsePipeline(detail.value?.request_body));
 const drawerTitle = computed(() => (pipeline.value ? "钉钉请求详情" : "请求详情"));
+const pipelineDingChat = computed(() => {
+  const p = pipeline.value;
+  if (!p) return "";
+  const kind = p.group ? "群聊" : "单聊";
+  const title = (p.conversation_title || "").trim() || "未命名";
+  const cid = (p.ding_conversation_id || "").trim();
+  if (!cid && !p.conversation_title && p.group == null) return "";
+  return cid ? `${kind} · ${title} · ${cid}` : `${kind} · ${title}`;
+});
 
 function isDingTalkRow(row: RequestLog): boolean {
   return row.method === "STREAM" || (row.path || "").includes("/dingtalk/");
@@ -228,6 +277,10 @@ function stepTitle(st: PipelineStep): string {
       return "语料库检索";
     case "dingtalk.llm_request":
       return "LLM 请求（对话）";
+    case "dingtalk.agent":
+      return "Agent 执行（工具循环）";
+    case "dingtalk.web_agent":
+      return "Agent 执行（web 模式）";
     case "dingtalk.result":
       return "本次请求结果";
     default:
@@ -243,6 +296,9 @@ function stepTone(event: string): string {
       return "orange";
     case "dingtalk.llm_request":
       return "purple";
+    case "dingtalk.agent":
+    case "dingtalk.web_agent":
+      return "purple";
     case "dingtalk.result":
       return "green";
     default:
@@ -254,8 +310,14 @@ function outcomeLabel(v: string): string {
   switch (v) {
     case "llm":
       return "已调用模型";
+    case "agent":
+      return "Agent 已执行";
+    case "web_agent":
+      return "Web Agent 已执行";
     case "corpus_miss":
       return "语料未命中";
+    case "skipped":
+      return "已跳过";
     case "rejected":
       return "已拒绝";
     case "error":
@@ -269,8 +331,8 @@ function outcomeLabel(v: string): string {
 
 function outcomeType(v: string): "success" | "warning" | "danger" | "info" {
   if (v === "error") return "danger";
-  if (v === "corpus_miss" || v === "rejected") return "warning";
-  if (v === "llm" || v === "ok") return "success";
+  if (v === "corpus_miss" || v === "rejected" || v === "skipped") return "warning";
+  if (v === "llm" || v === "agent" || v === "web_agent" || v === "ok") return "success";
   return "info";
 }
 
@@ -297,6 +359,31 @@ function asTurns(detail: Record<string, unknown> | undefined): TurnView[] {
     const row = t as Record<string, unknown>;
     return { role: String(row.role || ""), content: String(row.content || "") };
   });
+}
+
+interface AgentToolView {
+  kind?: string;
+  name?: string;
+  arguments?: string;
+  content?: string;
+}
+
+interface AgentDBStepView {
+  step_index?: number;
+  kind?: string;
+  tool_name?: string;
+  input?: string;
+  output?: string;
+}
+
+function asAgentTools(detail: Record<string, unknown> | undefined): AgentToolView[] {
+  const raw = detail?.tools;
+  return Array.isArray(raw) ? (raw as AgentToolView[]) : [];
+}
+
+function asAgentDBSteps(detail: Record<string, unknown> | undefined): AgentDBStepView[] {
+  const raw = detail?.steps;
+  return Array.isArray(raw) ? (raw as AgentDBStepView[]) : [];
 }
 
 function roleLabel(role: string): string {
@@ -477,6 +564,34 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
+}
+.tool-step {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tool-name {
+  font-weight: 600;
+}
+.tool-body {
+  margin: 0;
+  padding: 8px 10px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  max-height: 280px;
+  overflow: auto;
 }
 .turn {
   margin-top: 8px;

@@ -35,18 +35,25 @@ type DingTalkConfig struct {
 	ClientID       string `yaml:"client_id"`
 	ClientSecret   string `yaml:"client_secret"`
 	CardTemplateID string `yaml:"card_template_id"`
-	// ReplyMode chat=现有 CompleteStream（默认）；agent=Agent.Run 工具循环。
+	// ReplyMode chat=现有 CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；
+	// web=薄包装，与控制台 Agent 页同一套 Agent.Run（不预注入 hits、不拦语料未命中）。
 	ReplyMode string `yaml:"reply_mode"`
 }
 
 const (
 	DingTalkReplyChat  = "chat"
 	DingTalkReplyAgent = "agent"
+	DingTalkReplyWeb   = "web"
 )
 
-// UseAgent 是否走 Agent 工具循环。未配置或非法值视为 chat。
+// UseAgent 是否走钉钉预检索 + Agent 工具循环。未配置或非法值视为 chat。
 func (c DingTalkConfig) UseAgent() bool {
 	return strings.EqualFold(strings.TrimSpace(c.ReplyMode), DingTalkReplyAgent)
+}
+
+// UseWebAgent 是否走与控制台 Agent 页一致的薄包装（agent.Run，不预注入 RAGHits）。
+func (c DingTalkConfig) UseWebAgent() bool {
+	return strings.EqualFold(strings.TrimSpace(c.ReplyMode), DingTalkReplyWeb)
 }
 
 type ServerConfig struct {
@@ -166,9 +173,10 @@ type AgentConfig struct {
 
 // ChatConfig 普通对话（/chat/completions、钉钉）的工具与 RAG 默认设置，与 Agent 共用工具注册表。
 type ChatConfig struct {
-	// ToolsEnabled nil 视为 true：把工具 Spec 一并发给模型，由模型决定是否调用。
+	// ToolsEnabled nil 视为 true：在 default_tools 之外再并入 chat.tools。
+	// 关闭时仍会挂载 agent.default_tools（仅跳过 chat.tools 追加项）。
 	ToolsEnabled *bool `yaml:"tools_enabled"`
-	// Tools 对话可用的工具名；为空时沿用 agent.default_tools。
+	// Tools 对话额外工具名；与 agent.default_tools 合并（去重），不能替换默认集。
 	Tools []string `yaml:"tools"`
 	// MaxToolSteps 一次对话内最多允许的工具轮数；<=0 归一为 4。超出后强制模型直接作答。
 	MaxToolSteps int `yaml:"max_tool_steps"`
@@ -687,6 +695,8 @@ func (c *Config) normalize() {
 	switch strings.ToLower(strings.TrimSpace(c.DingTalk.ReplyMode)) {
 	case DingTalkReplyAgent:
 		c.DingTalk.ReplyMode = DingTalkReplyAgent
+	case DingTalkReplyWeb:
+		c.DingTalk.ReplyMode = DingTalkReplyWeb
 	default:
 		c.DingTalk.ReplyMode = DingTalkReplyChat
 	}

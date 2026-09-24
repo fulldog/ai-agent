@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
@@ -38,6 +39,29 @@ func (s *Service) Create(name, description string) (*model.Corpus, error) {
 	return c, nil
 }
 
+func (s *Service) Update(id uuid.UUID, name, description string, setDescription bool) (*model.Corpus, error) {
+	c, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("name required")
+	}
+	updates := map[string]any{"name": name}
+	if setDescription {
+		updates["description"] = description
+	}
+	if err := s.db.Model(c).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	c.Name = name
+	if setDescription {
+		c.Description = description
+	}
+	return c, nil
+}
+
 func (s *Service) List() ([]model.Corpus, error) {
 	var rows []model.Corpus
 	err := s.db.Order("created_at desc").Find(&rows).Error
@@ -58,6 +82,9 @@ func (s *Service) Delete(id uuid.UUID) error {
 			return err
 		}
 		if err := tx.Where("corpus_id = ?", id).Delete(&model.Document{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("corpus_id = ?", id).Delete(&model.DingTalkChatCorpus{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&model.Corpus{}, "id = ?", id).Error

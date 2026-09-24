@@ -57,6 +57,7 @@ export interface Conversation {
   corpus_id?: string;
   created_at: string;
   updated_at: string;
+  deleted_at?: string;
 }
 
 export interface Message {
@@ -77,6 +78,18 @@ export interface Corpus {
   embed_dim: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface DingTalkChat {
+  id: string;
+  conversation_id: string;
+  title: string;
+  conversation_type: string;
+  is_group: boolean;
+  last_seen_at: string;
+  updated_at: string;
+  corpus_ids: string[];
+  corpora: { id: string; name: string }[];
 }
 
 export interface Document {

@@ -12,8 +12,9 @@
           <el-table :data="corpora" highlight-current-row empty-text="暂无语料库" @current-change="onSelect">
             <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
             <el-table-column prop="embed_dim" label="维度" width="80" />
-            <el-table-column label="操作" width="70">
+            <el-table-column label="操作" width="110">
               <template #default="{ row }">
+                <el-button link type="primary" @click.stop="renameCorpus(row)">改名</el-button>
                 <el-button link type="danger" @click.stop="delCorpus(row.id)">删除</el-button>
               </template>
             </el-table-column>
@@ -27,16 +28,28 @@
               <span class="panel-title" style="margin: 0">{{ current.name }}</span>
               <div class="muted">{{ current.description || "无描述" }} · {{ current.embed_model }}</div>
             </div>
-            <el-button size="small" @click="reindex">重建索引</el-button>
+            <div style="display: flex; gap: 8px">
+              <el-button size="small" @click="renameCorpus(current)">修改名称</el-button>
+              <el-button size="small" @click="reindex">重建索引</el-button>
+            </div>
           </div>
 
           <el-tabs>
             <el-tab-pane label="上传文件">
-              <el-upload :auto-upload="false" :limit="1" :on-change="onFile">
-                <el-button>选择文件</el-button>
+              <el-upload
+                v-model:file-list="fileList"
+                :auto-upload="false"
+                multiple
+                :on-change="onFileChange"
+                :on-remove="onFileRemove"
+              >
+                <el-button>选择文件（可多选）</el-button>
+                <template #tip>
+                  <div class="el-upload__tip muted">支持 txt/md/pdf/docx/图片；可一次选择多个文件批量上传索引</div>
+                </template>
               </el-upload>
-              <el-button type="primary" :loading="uploading" style="margin-top: 8px" @click="uploadFile">
-                上传并索引
+              <el-button type="primary" :loading="uploading" style="margin-top: 8px" @click="uploadFiles">
+                上传并索引{{ pendingFiles.length > 1 ? `（${pendingFiles.length} 个）` : "" }}
               </el-button>
             </el-tab-pane>
             <el-tab-pane label="粘贴文本">
@@ -70,9 +83,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import type { UploadFile } from "element-plus";
+import type { UploadFile, UploadUserFile } from "element-plus";
 import { Collection, Document, Refresh, Upload } from "@element-plus/icons-vue";
 import { requestJSON, requestForm, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
@@ -80,7 +93,7 @@ import type { Corpus, Document as Doc } from "@/api/types";
 
 const hero: HeroItem[] = [
   { icon: Collection, title: "语料库", desc: "按业务划分，名称唯一，绑定 Embedding 模型", tone: "blue" },
-  { icon: Upload, title: "上传文档", desc: "支持文件上传或直接粘贴文本", tone: "green" },
+  { icon: Upload, title: "批量上传", desc: "支持一次选择多个文件上传并索引", tone: "green" },
   { icon: Document, title: "自动分块", desc: "入库后切分并写入 pgvector 向量列", tone: "purple" },
   { icon: Refresh, title: "重建索引", desc: "更换 Embedding 模型后需要重新索引", tone: "orange" },
 ];
@@ -90,11 +103,15 @@ const current = ref<Corpus | null>(null);
 const docs = ref<Doc[]>([]);
 const docTitle = ref("");
 const docContent = ref("");
-const file = ref<File | null>(null);
+const fileList = ref<UploadUserFile[]>([]);
 const uploading = ref(false);
 
+const pendingFiles = computed(() =>
+  fileList.value.map((f) => f.raw).filter((f): f is File => !!f),
+);
+
 function docTone(status: string): string {
-  if (status === "ready") return "ok";
+  if (status === "indexed" || status === "ready") return "ok";
   if (status === "failed") return "err";
   return "warn";
 }
@@ -111,6 +128,7 @@ async function loadDocs(id: string) {
 
 async function onSelect(row: Corpus | null) {
   current.value = row;
+  fileList.value = [];
   if (row) await loadDocs(row.id);
   else docs.value = [];
 }
@@ -128,6 +146,27 @@ async function createCorpus() {
   }
 }
 
+async function renameCorpus(row: Corpus) {
+  const { value } = await ElMessageBox.prompt("新名称", "修改语料库名称", {
+    inputValue: row.name,
+    inputPattern: /\S+/,
+    inputErrorMessage: "名称不能为空",
+  });
+  try {
+    const updated = await requestJSON<Corpus>(`/api/v1/corpora/${row.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: value.trim() }),
+    });
+    await loadCorpora();
+    if (current.value?.id === row.id) {
+      current.value = { ...current.value, ...updated };
+    }
+    ElMessage.success("已更新名称");
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  }
+}
+
 async function delCorpus(id: string) {
   await ElMessageBox.confirm("删除语料库及其文档？", "确认", { type: "warning" });
   await requestJSON(`/api/v1/corpora/${id}`, { method: "DELETE" });
@@ -135,21 +174,47 @@ async function delCorpus(id: string) {
   await loadCorpora();
 }
 
-function onFile(f: UploadFile) {
-  file.value = (f.raw as File) || null;
+function onFileChange(_f: UploadFile, list: UploadUserFile[]) {
+  fileList.value = list;
 }
 
-async function uploadFile() {
-  if (!current.value || !file.value) {
+function onFileRemove(_f: UploadFile, list: UploadUserFile[]) {
+  fileList.value = list;
+}
+
+async function uploadFiles() {
+  if (!current.value) return;
+  const files = pendingFiles.value;
+  if (!files.length) {
     ElMessage.warning("请选择文件");
     return;
   }
   uploading.value = true;
   try {
     const fd = new FormData();
-    fd.append("file", file.value);
-    await requestForm(`/api/v1/corpora/${current.value.id}/documents`, fd);
-    ElMessage.success("已上传");
+    for (const f of files) {
+      fd.append("files", f);
+    }
+    const res = await requestForm<{
+      document?: Doc;
+      items?: { filename: string; error?: string }[];
+      ok?: number;
+      failed?: number;
+    }>(`/api/v1/corpora/${current.value.id}/documents`, fd);
+
+    if (res.items && res.items.length > 1) {
+      const failed = res.failed ?? res.items.filter((i) => i.error).length;
+      const ok = res.ok ?? res.items.length - failed;
+      if (failed > 0) {
+        const names = res.items.filter((i) => i.error).map((i) => `${i.filename}: ${i.error}`).join("；");
+        ElMessage.warning(`成功 ${ok}，失败 ${failed}。${names}`);
+      } else {
+        ElMessage.success(`已上传 ${ok} 个文件`);
+      }
+    } else {
+      ElMessage.success("已上传");
+    }
+    fileList.value = [];
     await loadDocs(current.value.id);
   } catch (e) {
     ElMessage.error(formatAPIError(e));
@@ -202,8 +267,8 @@ onMounted(async () => {
 <style scoped>
 .panel-head {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
   margin-bottom: 12px;
 }

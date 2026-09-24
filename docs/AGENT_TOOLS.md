@@ -195,13 +195,13 @@ agent:
 | `calculator` | 简单四则运算 `a op b`（`+ - * /`） | 无 |
 | `dbconn` | 查 MySQL 业务库数据字典（`information_schema` 注释）或执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
 
-`dbconn` 由模型按题意自行决定是否调用，不绑定具体业务问法。需要查库时建议：先 `knowledge_search` 取口径，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。`schema` 仅扫描表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
+`dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。`schema` 仅扫描表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
 
 `dbconn.ssh.enabled`（或 `BIZ_SSH_ENABLED`）为 SSH 开关：`true` 经隧道拨号，`false` 直连 MySQL。认证为**用户名 + 密码**（`ssh.user` / `ssh.password`，或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）。TCP/SSH 保活，断线后指数退避重连；查询遇瞬时网络错误会先重连再重试一次。DSN 里的主机是跳板机对端的 MySQL 地址。
 
 另有一份 **MCP Server** 实现（stdio），工具名同为 `calculator`，逻辑共用 `tools.Calc`：见 [MCP.md](./MCP.md)。
 
-需要 RAG 时请求示例：
+需要 RAG 时请求示例（`tools` 仅追加；`agent.default_tools` 仍会强制挂载）：
 
 ```json
 {
@@ -217,21 +217,22 @@ agent:
 
 | 来源 | 字段 | 说明 |
 |------|------|------|
-| 配置文件 | `agent.default_tools` | 请求未传 `tools` 时使用 |
+| 配置文件 | `agent.default_tools` | **所有入口强制挂载**的默认工具集（请求 `tools` / `chat.tools` 只能追加，不能剔除） |
 | 配置文件 | `agent.max_steps` | 工具循环最大步数 |
-| 配置文件 | `chat.tools_enabled` | 普通对话是否带工具，缺省 true；`CHAT_TOOLS_ENABLED` 可覆盖 |
+| 配置文件 | `chat.tools_enabled` | 为 false 时仍挂载 `default_tools`，仅不再并入 `chat.tools`；缺省 true |
 | 配置文件 | `chat.rag_enabled` | 普通对话是否默认 RAG，缺省 true；`CHAT_RAG_ENABLED` 可覆盖；无 corpus_id 时搜全部语料 |
-| 配置文件 | `chat.tools` | 普通对话可用工具，留空沿用 `agent.default_tools` |
+| 配置文件 | `chat.tools` | 普通对话额外工具，与 `agent.default_tools` 合并 |
 | 配置文件 | `chat.max_tool_steps` | 普通对话内最多工具轮数，缺省 4 |
-| 配置文件 | `dingtalk.reply_mode` | `chat`（默认）钉钉走对话 Completions；`agent` 走 `Agent.Run`，工具集同 `agent.default_tools` |
-| 请求体 | `tools` | 覆盖默认列表；只传需要的名字 |
-| 请求体 | `rag.corpus_id` / `rag.top_k` | 供 `knowledge_search` |
+| 配置文件 | `dingtalk.reply_mode` | `chat`（默认）钉钉走对话 Completions；`agent` 钉钉预检索后走 `Agent.Run`；`web` 与控制台 Agent 页同一套 `Agent.Run`（不预注入 hits） |
+| 环境变量 | `DINGTALK_REPLY_MODE` | 同上 |
+| 请求体 | `tools` | 在默认列表上追加工具名（仍保留 `default_tools`） |
+| 请求体 | `rag.corpus_id` / `rag.top_k` | 预检索与 `knowledge_search` 的默认范围 |
 
 ### 普通对话中的工具
 
-`/api/v1/chat/completions`（及其 stream 版本、钉钉 `reply_mode: chat`）与 Agent 共用同一份 `Registry`：同样把工具 Spec 发给模型，模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
+`/api/v1/chat/completions`（及其 stream 版本、钉钉 `reply_mode: chat`）与 Agent 共用同一份 `Registry`：始终把 `agent.default_tools` 的 Spec 发给模型；`chat.tools` 仅追加。模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
 
-钉钉 `reply_mode: agent` 时入站在预检索之后调用 `Agent.Run`（`agent.max_steps`、默认工具、落 `agent_runs`），与控制台 Agent 页同一套循环。
+钉钉 `reply_mode: agent` / `web` 与 HTTP Agent 一样：`Agent.Run` 强制合并 `agent.default_tools`（请求体 `tools` 只能追加）。
 
 HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./openapi.yaml)。
 

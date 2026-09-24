@@ -351,6 +351,13 @@ func TestDingTalkReplyModeNormalize(t *testing.T) {
 	if cfg.DingTalk.ReplyMode != DingTalkReplyAgent || !cfg.DingTalk.UseAgent() {
 		t.Fatalf("agent: %#v", cfg.DingTalk)
 	}
+	cfg, err = Load(write("web.yaml", "database:\n  dsn: postgres://x\ndingtalk:\n  reply_mode: WEB\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DingTalk.ReplyMode != DingTalkReplyWeb || !cfg.DingTalk.UseWebAgent() || cfg.DingTalk.UseAgent() {
+		t.Fatalf("web: %#v", cfg.DingTalk)
+	}
 	t.Setenv("DINGTALK_REPLY_MODE", "agent")
 	cfg, err = Load(write("env.yaml", "database:\n  dsn: postgres://x\n"))
 	if err != nil {

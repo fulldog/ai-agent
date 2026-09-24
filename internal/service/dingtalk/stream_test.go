@@ -154,7 +154,27 @@ func TestDecodeBotCallbackData(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &data); err != nil {
 		t.Fatal(err)
 	}
-	if data.SenderStaffID != "16650" || data.ConversationID != "cidA" || !data.IsInAtList || data.MsgType != "text" {
+	if data.SenderStaffID != "16650" || data.ConversationID != "cidA" || !data.inAtList() || data.MsgType != "text" {
 		t.Fatalf("%+v", data)
+	}
+}
+
+func TestParseBotCallbackAcceptsStringBoolAndObjectData(t *testing.T) {
+	t.Parallel()
+	asString := json.RawMessage(`"{\"msgId\":\"m1\",\"isInAtList\":\"true\",\"conversationType\":\"2\",\"atUsers\":[{\"staffId\":\"u1\"}],\"text\":{\"content\":\"hi\"},\"msgtype\":\"text\"}"`)
+	got, err := parseBotCallback(asString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MsgID != "m1" || !got.inAtList() || !isBotMention(got) {
+		t.Fatalf("%+v", got)
+	}
+	asObject := json.RawMessage(`{"msgId":"m2","isInAtList":1,"conversationType":"2","text":{"content":"@机器人 年假"},"msgtype":"text"}`)
+	got, err = parseBotCallback(asObject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MsgID != "m2" || !got.inAtList() {
+		t.Fatalf("%+v", got)
 	}
 }

@@ -1,0 +1,64 @@
+# 如何判断供应商能否付款
+
+适用问题：供应商为什么不能付款、能否付款、付款校验、供应商付款条件。
+关键词：供应商、付款、能否付款、不能付款、VendorLabel、标签、政策、合同、启用。
+
+## 前置条件：标签
+
+用户必须同时提供「供应商名称」和「标签（VendorLabel）」。
+若用户只给了供应商名称（例如「测试供应商-02为什么不能付款」）而没有标签，
+先追问标签，不要直接查库下结论。
+使用「供应商名称 + 标签」定位唯一供应商。
+
+标签枚举（VendorLabel）：
+1 = 广告线
+2 = 本地生活
+4 = 数娱线
+6 = 电商线
+8 = 中后台
+10 = 创节业务
+
+## 可以付款的三个条件（须全部满足）
+
+查库时调用 dbconn 工具执行只读 SELECT，不要只把 SQL 写在回复里。
+
+1）是否启用（Srm_VendorInfo）
+SELECT COUNT(*) AS cnt, VendorId
+FROM Srm_VendorInfo
+WHERE VendorName = ?
+  AND VendorLabel = ?
+  AND IsEnable = 1
+  AND IsDelete = 0;
+
+若 cnt=0：不能付款，原因是供应商未启用或不存在（名称+标签未命中）。
+
+2）是否有有效政策（Srm_VendorPolicy）
+先取上一步的 VendorId，再查：
+SELECT COUNT(*) AS cnt
+FROM Srm_VendorPolicy
+WHERE VendorId = ?
+  AND VendorLabel = ?
+  AND IsDelete = 0
+  AND AuditStatus = 4
+  AND StartTime <= NOW()
+  AND EndTime >= NOW();
+
+若 cnt=0：不能付款，原因是无有效政策。
+
+3）是否有有效合同（Srm_VendorContract）
+SELECT COUNT(*) AS cnt
+FROM Srm_VendorContract
+WHERE VendorId = ?
+  AND VendorLabel = ?
+  AND IsDelete = 0
+  AND AuditStatus = 4
+  AND StartTime <= NOW()
+  AND EndTime >= NOW();
+
+若 cnt=0：不能付款，原因是无有效合同。
+
+## 回答要求
+
+三个条件都 cnt>0 才能付款。
+否则按失败的那一步说明「为什么不能付款」。
+禁止编造 VendorId 或查询结果；必须以 dbconn 返回为准。

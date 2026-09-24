@@ -56,6 +56,8 @@ postgres://ai_agent:password@127.0.0.1:5432/ai_agent?sslmode=disable
 | `llm_call_logs` | 上游 LLM 调用日志 |
 | `token_usage` | 可选按日聚合（M5） |
 | `file_extractions` | 上传文件与抽取文本关联（内容哈希缓存） |
+| `dingtalk_chats` | 钉钉群/单聊档案（按 `conversationId` 去重） |
+| `dingtalk_chat_corpora` | 钉钉会话与语料库多对多绑定 |
 
 API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文末可选表）。
 
@@ -78,9 +80,9 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | channel_session_id | TEXT 默认 `''` | 通道内会话 ID（钉钉 `conversationId`） |
 | created_at | TIMESTAMPTZ | 创建时间 |
 | updated_at | TIMESTAMPTZ | 更新时间 |
-| deleted_at | TIMESTAMPTZ NULL | 软删除时间 |
+| deleted_at | TIMESTAMPTZ NULL | 软删除时间（删会话只写此列，不删 messages） |
 
-索引：`deleted_at`；`(uid, created_at)`（按用户列表）；部分唯一索引 `(uid, channel, channel_session_id)`（仅 `channel` 与 `channel_session_id` 均非空，控制台会话不受影响）。
+索引：`deleted_at`；`(uid, created_at)`（按用户列表）；部分唯一索引 `(uid, channel, channel_session_id)`（仅 `channel` 与 `channel_session_id` 均非空且 `deleted_at IS NULL`，软删后可再建同 key 新会话）。
 
 ### 3.2 messages（会话消息表）
 
@@ -96,7 +98,7 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | token_completion | INT NULL | 本条消耗的 completion token |
 | created_at | TIMESTAMPTZ | 创建时间 |
 
-索引：`(conversation_id, created_at)`。
+索引：`(conversation_id, created_at)`。会话软删后本表记录保留，供历史页查看。
 
 ### 3.3 corpora（语料库表）
 
@@ -153,6 +155,33 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 落盘根目录配置：`storage.attachments_dir`（默认 `attachments`），子目录按 `YYYY/MM/DD`。
 
 抽取后端见配置 `extract.backend`：`local`（本机 OCR）/ `kimi` / `qwen`（云端 Files）。**有正文才写 txt**；`text_path` 空或文件丢失时下次命中强制重抽（优先读 `source_path`）。
+
+### 3.4c dingtalk_chats（钉钉群/单聊档案）
+
+与 `conversations` 不同：此处按钉钉 `conversationId` **一份档案**，不按发言人拆分。群名来自回调 `conversationTitle`，每次入站刷新。未在群里 @ 过机器人的会话不会出现。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| id | UUID PK | 钉钉会话档案ID |
+| conversation_id | TEXT UNIQUE NOT NULL | 钉钉 `conversationId` |
+| title | TEXT | 群名称（`conversationTitle`） |
+| conversation_type | TEXT | `1` 单聊 / `2` 群聊 |
+| last_seen_at | TIMESTAMPTZ | 最近一次收到消息时间 |
+| created_at | TIMESTAMPTZ | 创建时间 |
+| updated_at | TIMESTAMPTZ | 更新时间 |
+
+索引：`conversation_id` 唯一；`last_seen_at`（列表排序）。
+
+### 3.4d dingtalk_chat_corpora（钉钉会话语料绑定）
+
+一群可绑多个语料库。未绑定任何库时，钉钉检索仍搜全部语料库。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| chat_id | UUID PK | `dingtalk_chats.id` |
+| corpus_id | UUID PK | `corpora.id` |
+
+删除语料库时同步删除绑定行。
 
 ### 3.5 chunks（文档分块与向量表）
 

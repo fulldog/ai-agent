@@ -25,3 +25,25 @@ func TestUseAgentRequiresModeAndService(t *testing.T) {
 		t.Fatal("chat mode")
 	}
 }
+
+func TestUseWebAgentRequiresModeAndService(t *testing.T) {
+	t.Parallel()
+	if (&Bot{}).useWebAgent() {
+		t.Fatal("empty bot")
+	}
+	b := &Bot{cfg: config.DingTalkConfig{ReplyMode: config.DingTalkReplyWeb}}
+	if b.useWebAgent() {
+		t.Fatal("web mode without service should fall back")
+	}
+	b.agent = &agent.Service{}
+	if !b.useWebAgent() {
+		t.Fatal("want web agent path")
+	}
+	if b.useAgent() {
+		t.Fatal("web mode must not select legacy agent path")
+	}
+	b.cfg.ReplyMode = config.DingTalkReplyAgent
+	if b.useWebAgent() {
+		t.Fatal("agent mode is not web")
+	}
+}

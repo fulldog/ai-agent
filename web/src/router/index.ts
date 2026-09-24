@@ -9,6 +9,7 @@ const router = createRouter({
     { path: "/agent", name: "agent", component: () => import("@/views/Agent.vue"), meta: { title: "Agent", needDB: true } },
     { path: "/agent/runs", name: "agent-runs", component: () => import("@/views/AgentRuns.vue"), meta: { title: "Agent 历史", needDB: true } },
     { path: "/corpus", name: "corpus", component: () => import("@/views/Corpus.vue"), meta: { title: "知识库", needDB: true } },
+    { path: "/dingtalk-chats", name: "dingtalk-chats", component: () => import("@/views/DingTalkChats.vue"), meta: { title: "钉钉群", needDB: true } },
     { path: "/rag", name: "rag", component: () => import("@/views/Rag.vue"), meta: { title: "RAG 检索", needDB: true } },
     { path: "/analyze", name: "analyze", component: () => import("@/views/Analyze.vue"), meta: { title: "文件分析" } },
     { path: "/intent", name: "intent", component: () => import("@/views/Intent.vue"), meta: { title: "意图解析" } },

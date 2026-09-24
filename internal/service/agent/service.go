@@ -66,6 +66,7 @@ type RunInput struct {
 	MaxSteps       int
 	Tools          []string
 	CorpusID       *uuid.UUID
+	CorpusIDs      []uuid.UUID
 	TopK           int
 	RAGHits        []rag.Hit
 	EnableSearch   bool
@@ -230,15 +231,21 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		if err := q.First(&conv).Error; err != nil {
 			return nil, fmt.Errorf("conversation not found")
 		}
+		if in.CorpusID == nil {
+			in.CorpusID = conv.CorpusID
+		}
 	}
+	s.retrieveHits(ctx, &in)
 	client, providerName, modelName, err := s.pool.Resolve(in.Provider, in.Model)
 	if err != nil {
 		return nil, err
 	}
-	toolNames := in.Tools
-	if len(toolNames) == 0 {
-		toolNames = s.cfg.Agent.DefaultTools
+	// 所有入口强制带上 agent.default_tools；请求体 tools 仅作追加，不可剔除默认集。
+	var defaults []string
+	if s.cfg != nil {
+		defaults = s.cfg.Agent.DefaultTools
 	}
+	toolNames := tools.MergeNames(defaults, in.Tools)
 
 	var history []model.Message
 	if in.ConversationID != nil {
@@ -267,6 +274,16 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			zap.Strings("requested", toolNames),
 			zap.String("request_id", in.RequestID),
 		)
+		msg := "服务端未注册可用工具，请检查 agent.default_tools 与 dbconn 是否配置成功"
+		now := time.Now()
+		_ = s.db.Model(run).Updates(map[string]any{
+			"status": "failed", "error_message": msg, "finished_at": &now,
+		}).Error
+		metrics.AgentRuns.WithLabelValues("failed").Inc()
+		if emit != nil {
+			_ = emit(Event{Type: "error", Payload: map[string]any{"message": msg}})
+		}
+		return &RunResult{RunID: run.ID, Status: "failed"}, fmt.Errorf("%s", msg)
 	}
 	if in.ConversationID != nil {
 		userMsg := model.Message{ConversationID: *in.ConversationID, Role: "user", Content: in.Input}
@@ -274,11 +291,12 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			return nil, err
 		}
 	}
-	system := mergeAgentSystem(agentSystemPrompt(toolSpecs), in.RAGHits)
+	system := mergeAgentSystem(agentSystemPrompt(toolSpecs), sanitizeRAGHits(in.RAGHits))
 	msgs := initialMessages(system, history, in.Input)
 	enableSearch := in.EnableSearch && strings.EqualFold(providerName, "qwen")
 	toolEnv := &tools.Env{
 		CorpusID:    in.CorpusID,
+		CorpusIDs:   in.CorpusIDs,
 		TopK:        in.TopK,
 		DefaultTopK: s.cfg.RAG.TopK,
 		RAG:         s.rag,
@@ -305,19 +323,37 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		start := time.Now()
 		var resp *llm.ChatResponse
 		var err error
+		chatReq := llm.ChatRequest{
+			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
+		}
+		// 只要挂了工具，首轮一律强制 function call，避免模型空口推诿「去工具函数管理」。
+		if step == 0 && len(toolSpecs) > 0 {
+			chatReq.ToolChoice = "required"
+		}
 		if in.Stream {
-			resp, err = client.ChatStream(ctx, llm.ChatRequest{
-				Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
-			}, func(ev llm.StreamEvent) error {
+			resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error {
 				if ev.Content != "" && emit != nil {
 					return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
 				}
 				return nil
 			})
 		} else {
-			resp, err = client.Chat(ctx, llm.ChatRequest{
-				Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
-			})
+			resp, err = client.Chat(ctx, chatReq)
+		}
+		// 部分网关不支持 tool_choice=required，回退为 auto。
+		if err != nil && chatReq.ToolChoice == "required" {
+			s.llmLog.Warn("retry agent step without tool_choice=required", zap.Error(err))
+			chatReq.ToolChoice = ""
+			if in.Stream {
+				resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error {
+					if ev.Content != "" && emit != nil {
+						return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
+					}
+					return nil
+				})
+			} else {
+				resp, err = client.Chat(ctx, chatReq)
+			}
 		}
 		status := "ok"
 		errMsg := ""
@@ -404,6 +440,18 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			}
 		}
 	}
+	if isToolEvasionReply(final) && len(toolSpecs) > 0 {
+		s.llmLog.Warn("agent evasion reply, retry with tools",
+			zap.String("request_id", in.RequestID),
+			zap.String("preview", final),
+		)
+		retryFinal, retryOK := s.retryAfterEvasion(ctx, client, providerName, modelName, enableSearch, toolSpecs, msgs, in, run, &stepIndex, &promptTokens, &completionTokens, emit)
+		if retryOK {
+			final = retryFinal
+		} else {
+			final = toolEvasionFallback
+		}
+	}
 	now := time.Now()
 	_ = s.db.Model(run).Updates(map[string]any{
 		"status": "succeeded", "output": final, "finished_at": &now,
@@ -418,7 +466,9 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			TokenPrompt:     &pt,
 			TokenCompletion: &ct,
 		}
-		_ = s.db.Create(&asst).Error
+		if err := s.db.Create(&asst).Error; err != nil {
+			s.llmLog.Error("persist assistant message", zap.Error(err), zap.String("request_id", in.RequestID))
+		}
 	}
 	metrics.AgentRuns.WithLabelValues("succeeded").Inc()
 	if emit != nil {
@@ -436,9 +486,214 @@ const (
 	baseAgentPrompt = "你是有用的 AI 助手。需要准确信息时请调用工具，并根据工具结果作答。回答简洁直接，先给结论；不要套话、不要重复问题或工具原文。"
 	// toolsReadyPrompt 有工具 Spec 时追加：防止模型跟语料说「去工具函数管理开启」。
 	toolsReadyPrompt  = "下方「当前可用工具」已由服务端挂载到本次请求，可直接 function call，无需用户去任何「工具函数管理」或后台开关。禁止回答「未启用工具/请先开启工具」之类推诿；知识摘录仅供参考，与工具可用性无关。"
-	dbconnAgentPrompt = "涉及供应商、付款、订单、业务表或系统数据时必须调用工具核实，不要凭语料或猜测下结论。流程：先用 knowledge_search 查口径或规则（可选）；再用 dbconn 的 schema 对照表与列注释；最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里。语料未命中或无法对应到表时，说明缺什么，不要编造表名或数据。"
-	ragOnlyHint       = "【说明】下列知识摘录供参考；若与「当前可用工具」冲突，以工具调用为准，不要根据摘录要求用户去开启工具。"
+	dbconnAgentPrompt = "涉及供应商、付款、订单、业务表或系统数据时：先按知识摘录中的流程与前置条件执行（缺信息先追问，不要直接查库）。需要核实数据时必须调用工具，不要凭猜测下结论。摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释；最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里。语料未命中或无法对应到表时，说明缺什么，不要编造表名或数据。"
+	ragOnlyHint       = "【说明】下列知识摘录是本次必须遵循的流程与口径。若与「当前可用工具」冲突，以工具调用为准，不要根据摘录要求用户去开启工具。"
 )
+
+func requireFirstTool(hits []rag.Hit) bool {
+	return len(sanitizeRAGHits(hits)) == 0
+}
+
+const toolEvasionFallback = "服务端已启用查询工具，但刚才未能完成核实。请再发一次问题，或补充供应商名称与标签后重试。"
+
+// isToolEvasionReply 模型推诿「去开工具」——工具其实已挂载，不应原样发出。
+func isToolEvasionReply(s string) bool {
+	c := strings.TrimSpace(s)
+	if c == "" {
+		return false
+	}
+	return strings.Contains(c, "工具函数管理") ||
+		strings.Contains(c, "未启用任何工具") ||
+		strings.Contains(c, "开启对应工具") ||
+		strings.Contains(c, "请先在「工具函数管理」")
+}
+
+// retryAfterEvasion 推诿后再跑一轮：强制工具，成功则返回新正文。
+func (s *Service) retryAfterEvasion(
+	ctx context.Context,
+	client *llm.Client,
+	providerName, modelName string,
+	enableSearch bool,
+	toolSpecs []llm.ToolSpec,
+	msgs []llm.Message,
+	in RunInput,
+	run *model.AgentRun,
+	stepIndex, promptTokens, completionTokens *int,
+	emit func(Event) error,
+) (string, bool) {
+	if s == nil || client == nil || len(toolSpecs) == 0 {
+		return "", false
+	}
+	retryMsgs := append([]llm.Message(nil), msgs...)
+	retryMsgs = append(retryMsgs,
+		llm.Message{Role: "assistant", Content: toolEvasionFallback},
+		llm.Message{Role: "user", Content: "请立刻调用已挂载的工具核实，不要再说未启用工具或去工具函数管理。"},
+	)
+	start := time.Now()
+	chatReq := llm.ChatRequest{
+		Model: modelName, Messages: retryMsgs, Tools: toolSpecs,
+		EnableSearch: enableSearch, ToolChoice: "required",
+	}
+	var resp *llm.ChatResponse
+	var err error
+	if in.Stream {
+		resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error { return nil })
+	} else {
+		resp, err = client.Chat(ctx, chatReq)
+	}
+	if err != nil && chatReq.ToolChoice == "required" {
+		chatReq.ToolChoice = ""
+		if in.Stream {
+			resp, err = client.ChatStream(ctx, chatReq, func(ev llm.StreamEvent) error { return nil })
+		} else {
+			resp, err = client.Chat(ctx, chatReq)
+		}
+	}
+	pt, ct := 0, 0
+	respContent := ""
+	var toolCalls any
+	if resp != nil {
+		pt, ct = resp.PromptTokens, resp.CompletionTokens
+		*promptTokens += pt
+		*completionTokens += ct
+		respContent = resp.Content
+		if len(resp.ToolCalls) > 0 {
+			toolCalls = resp.ToolCalls
+		}
+	}
+	status := "ok"
+	errMsg := ""
+	if err != nil {
+		status = "error"
+		errMsg = err.Error()
+	}
+	llmog.Save(s.db, s.llmLog, &model.LLMCallLog{
+		RequestID: in.RequestID, ConversationID: in.ConversationID, AgentRunID: &run.ID,
+		Provider: providerName, Model: modelName, Stream: in.Stream, Status: status,
+		PromptTokens: pt, CompletionTokens: ct, LatencyMs: time.Since(start).Milliseconds(),
+		RequestSummary: fmt.Sprintf("agent_step=evasion_retry tools=%d", len(toolSpecs)), ErrorMessage: errMsg,
+	}, &llmog.Payload{
+		Messages: retryMsgs, Response: respContent, ToolCalls: toolCalls,
+	})
+	if err != nil || resp == nil {
+		return "", false
+	}
+	*stepIndex++
+	_ = s.db.Create(&model.AgentStep{
+		RunID: run.ID, StepIndex: *stepIndex, Kind: "llm",
+		OutputText: resp.Content, InputJSON: `{"evasion_retry":true}`,
+	}).Error
+	if len(resp.ToolCalls) == 0 {
+		if isToolEvasionReply(resp.Content) {
+			return "", false
+		}
+		return resp.Content, resp.Content != ""
+	}
+	retryMsgs = append(retryMsgs, llm.Message{Role: "assistant", Content: resp.Content, ToolCalls: resp.ToolCalls})
+	defaultTopK := 5
+	if s.cfg != nil {
+		defaultTopK = s.cfg.RAG.TopK
+	}
+	toolEnv := &tools.Env{
+		CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
+		DefaultTopK: defaultTopK, RAG: s.rag,
+	}
+	for _, tc := range resp.ToolCalls {
+		if emit != nil {
+			_ = emit(Event{Type: "tool_call", Payload: map[string]any{
+				"id": tc.ID, "name": tc.Function.Name, "arguments": tc.Function.Arguments,
+			}})
+		}
+		result, toolErr := s.registry.Exec(ctx, tc.Function.Name, tc.Function.Arguments, toolEnv)
+		if toolErr != nil {
+			result = toolErr.Error()
+		}
+		*stepIndex++
+		inJSON, _ := json.Marshal(map[string]string{"arguments": tc.Function.Arguments})
+		_ = s.db.Create(&model.AgentStep{
+			RunID: run.ID, StepIndex: *stepIndex, Kind: "tool_result",
+			ToolName: tc.Function.Name, InputJSON: string(inJSON), OutputText: result,
+		}).Error
+		if emit != nil {
+			_ = emit(Event{Type: "tool_result", Payload: map[string]any{
+				"name": tc.Function.Name, "content": result,
+			}})
+		}
+		retryMsgs = append(retryMsgs, llm.Message{
+			Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: result,
+		})
+	}
+	start = time.Now()
+	finalReq := llm.ChatRequest{Model: modelName, Messages: retryMsgs, Tools: toolSpecs, EnableSearch: enableSearch}
+	var finalResp *llm.ChatResponse
+	if in.Stream {
+		finalResp, err = client.ChatStream(ctx, finalReq, func(ev llm.StreamEvent) error {
+			if ev.Content != "" && emit != nil {
+				return emit(Event{Type: "delta", Payload: map[string]any{"content": ev.Content}})
+			}
+			return nil
+		})
+	} else {
+		finalResp, err = client.Chat(ctx, finalReq)
+	}
+	pt, ct = 0, 0
+	respContent = ""
+	if finalResp != nil {
+		pt, ct = finalResp.PromptTokens, finalResp.CompletionTokens
+		*promptTokens += pt
+		*completionTokens += ct
+		respContent = finalResp.Content
+	}
+	status = "ok"
+	errMsg = ""
+	if err != nil {
+		status = "error"
+		errMsg = err.Error()
+	}
+	llmog.Save(s.db, s.llmLog, &model.LLMCallLog{
+		RequestID: in.RequestID, ConversationID: in.ConversationID, AgentRunID: &run.ID,
+		Provider: providerName, Model: modelName, Stream: in.Stream, Status: status,
+		PromptTokens: pt, CompletionTokens: ct, LatencyMs: time.Since(start).Milliseconds(),
+		RequestSummary: fmt.Sprintf("agent_step=evasion_final tools=%d", len(toolSpecs)), ErrorMessage: errMsg,
+	}, &llmog.Payload{Messages: retryMsgs, Response: respContent})
+	if err != nil || finalResp == nil || strings.TrimSpace(finalResp.Content) == "" || isToolEvasionReply(finalResp.Content) {
+		return "", false
+	}
+	*stepIndex++
+	_ = s.db.Create(&model.AgentStep{
+		RunID: run.ID, StepIndex: *stepIndex, Kind: "llm",
+		OutputText: finalResp.Content, InputJSON: `{"evasion_final":true}`,
+	}).Error
+	return finalResp.Content, true
+}
+
+func (s *Service) retrieveHits(ctx context.Context, in *RunInput) {
+	if s == nil || in == nil || in.RAGHits != nil || s.rag == nil {
+		return
+	}
+	topK := in.TopK
+	if topK <= 0 && s.cfg != nil {
+		topK = s.cfg.RAG.TopK
+	}
+	var (
+		hits []rag.Hit
+		err  error
+	)
+	if len(in.CorpusIDs) > 0 {
+		hits, err = s.rag.SearchInCorpora(ctx, in.CorpusIDs, in.Input, topK)
+	} else if in.CorpusID != nil {
+		hits, err = s.rag.Search(ctx, *in.CorpusID, in.Input, topK)
+	} else {
+		hits, err = s.rag.SearchInCorpora(ctx, nil, in.Input, topK)
+	}
+	if err != nil {
+		if s.llmLog != nil {
+			s.llmLog.Warn("agent corpus retrieve failed", zap.Error(err), zap.String("request_id", in.RequestID))
+		}
+		return
+	}
+	in.RAGHits = hits
+}
 
 func agentSystemPrompt(specs []llm.ToolSpec) string {
 	if len(specs) == 0 {
@@ -477,6 +732,22 @@ func mergeAgentSystem(base string, hits []rag.Hit) string {
 		return block
 	}
 	return base + "\n\n" + block
+}
+
+// sanitizeRAGHits 去掉会诱导模型推诿「去开工具」的摘录片段。
+func sanitizeRAGHits(hits []rag.Hit) []rag.Hit {
+	if len(hits) == 0 {
+		return hits
+	}
+	out := make([]rag.Hit, 0, len(hits))
+	for _, h := range hits {
+		c := h.Content
+		if strings.Contains(c, "工具函数管理") || strings.Contains(c, "未启用任何工具") || strings.Contains(c, "开启对应工具") {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
 }
 
 func initialMessages(system string, history []model.Message, user string) []llm.Message {

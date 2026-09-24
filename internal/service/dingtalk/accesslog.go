@@ -3,6 +3,7 @@ package dingtalk
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,6 +26,7 @@ const (
 	eventRAG        = "dingtalk.rag"
 	eventLLMRequest = "dingtalk.llm_request"
 	eventAgent      = "dingtalk.agent"
+	eventWebAgent   = "dingtalk.web_agent"
 	eventResult     = "dingtalk.result"
 )
 
@@ -41,6 +43,7 @@ type msgTrace struct {
 	hitScores      []float64
 	corpusID       *uuid.UUID
 	conversationID *uuid.UUID
+	agentRunID     *uuid.UUID
 	outcome        string
 	reply          string
 	status         int
@@ -56,14 +59,19 @@ type pipelineStep struct {
 }
 
 type pipelinePayload struct {
-	Channel      string         `json:"channel"`
-	RequestID    string         `json:"request_id"`
-	Query        string         `json:"query,omitempty"`
-	RAGQuery     string         `json:"rag_query,omitempty"`
-	ForceOnline  bool           `json:"force_online,omitempty"`
-	EnableSearch bool           `json:"enable_search,omitempty"`
-	Outcome      string         `json:"outcome,omitempty"`
-	Steps        []pipelineStep `json:"steps"`
+	Channel            string         `json:"channel"`
+	RequestID          string         `json:"request_id"`
+	DingConversationID string         `json:"ding_conversation_id,omitempty"`
+	ConversationTitle  string         `json:"conversation_title,omitempty"`
+	ConversationType   string         `json:"conversation_type,omitempty"`
+	Group              bool           `json:"group,omitempty"`
+	ConversationID     string         `json:"conversation_id,omitempty"`
+	Query              string         `json:"query,omitempty"`
+	RAGQuery           string         `json:"rag_query,omitempty"`
+	ForceOnline        bool           `json:"force_online,omitempty"`
+	EnableSearch       bool           `json:"enable_search,omitempty"`
+	Outcome            string         `json:"outcome,omitempty"`
+	Steps              []pipelineStep `json:"steps"`
 }
 
 type ragHitLog struct {
@@ -150,6 +158,15 @@ func (b *Bot) emitMsgLog(tr *msgTrace) {
 		"conversation_id": uuidString(tr.conversationID),
 		"reply":           previewText(tr.reply, b.previewMax),
 	}
+	if tr.data != nil {
+		detail["ding_conversation_id"] = tr.data.ConversationID
+		detail["conversation_title"] = strings.TrimSpace(tr.data.ConversationTitle)
+		if detail["conversation_title"] == "" {
+			detail["conversation_title"] = chatDisplayTitle(tr.data)
+		}
+		detail["conversation_type"] = tr.data.ConversationType
+		detail["group"] = isGroup(tr.data.ConversationType)
+	}
 	fields := []zap.Field{
 		zap.String("uid", tr.uid),
 		zap.String("outcome", tr.outcome),
@@ -159,6 +176,14 @@ func (b *Bot) emitMsgLog(tr *msgTrace) {
 		zap.Bool("enable_search", tr.enableSearch),
 		zap.String("conversation_id", uuidString(tr.conversationID)),
 		zap.String("reply", previewText(tr.reply, b.previewMax)),
+	}
+	if tr.data != nil {
+		title, _ := detail["conversation_title"].(string)
+		fields = append(fields,
+			zap.String("ding_conversation_id", tr.data.ConversationID),
+			zap.String("conversation_title", title),
+			zap.Bool("group", isGroup(tr.data.ConversationType)),
+		)
 	}
 	if tr.errMsg != "" {
 		detail["error_message"] = tr.errMsg
@@ -175,7 +200,7 @@ func pipelineBody(tr *msgTrace) string {
 	if steps == nil {
 		steps = []pipelineStep{}
 	}
-	raw, err := json.Marshal(pipelinePayload{
+	payload := pipelinePayload{
 		Channel:      channelDingTalk,
 		RequestID:    tr.requestID,
 		Query:        tr.query,
@@ -184,11 +209,59 @@ func pipelineBody(tr *msgTrace) string {
 		EnableSearch: tr.enableSearch,
 		Outcome:      tr.outcome,
 		Steps:        steps,
-	})
+	}
+	if tr.conversationID != nil {
+		payload.ConversationID = tr.conversationID.String()
+	}
+	if tr.data != nil {
+		payload.DingConversationID = tr.data.ConversationID
+		payload.ConversationTitle = strings.TrimSpace(tr.data.ConversationTitle)
+		payload.ConversationType = strings.TrimSpace(tr.data.ConversationType)
+		payload.Group = isGroup(tr.data.ConversationType)
+		if payload.ConversationTitle == "" {
+			payload.ConversationTitle = chatDisplayTitle(tr.data)
+		}
+	}
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "{}"
 	}
 	return string(raw)
+}
+
+func receiveDetail(data *botCallback, uid string) map[string]any {
+	if data == nil {
+		return map[string]any{"uid": uid}
+	}
+	title := strings.TrimSpace(data.ConversationTitle)
+	if title == "" {
+		title = chatDisplayTitle(data)
+	}
+	return map[string]any{
+		"uid":                  uid,
+		"sender_nick":          data.SenderNick,
+		"msg_type":             data.MsgType,
+		"ding_conversation_id": data.ConversationID,
+		"conversation_title":   title,
+		"conversation_type":    data.ConversationType,
+		"group":                isGroup(data.ConversationType),
+		"is_in_at_list":        data.inAtList(),
+		"raw_text":             "", // filled by caller with preview
+	}
+}
+
+func (b *Bot) hasRequestLog(requestID string) bool {
+	if b == nil || b.db == nil || strings.TrimSpace(requestID) == "" {
+		return false
+	}
+	var n int64
+	if err := b.db.Model(&model.RequestLog{}).Where("request_id = ?", requestID).Count(&n).Error; err != nil {
+		if b.log != nil {
+			b.log.Warn("count dingtalk request_log", zap.Error(err), zap.String("request_id", requestID))
+		}
+		return false
+	}
+	return n > 0
 }
 
 func (b *Bot) upsertRequestLog(tr *msgTrace) {
@@ -218,6 +291,7 @@ func (b *Bot) upsertRequestLog(tr *msgTrace) {
 			Stream:          true,
 			SSEEventCount:   len(tr.steps),
 			ConversationID:  tr.conversationID,
+			AgentRunID:      tr.agentRunID,
 			ErrorMessage:    tr.errMsg,
 		}
 		if cerr := b.db.Create(&row).Error; cerr != nil {
@@ -236,6 +310,9 @@ func (b *Bot) upsertRequestLog(tr *msgTrace) {
 	}
 	if tr.conversationID != nil {
 		updates["conversation_id"] = *tr.conversationID
+	}
+	if tr.agentRunID != nil {
+		updates["agent_run_id"] = *tr.agentRunID
 	}
 	if err := b.db.Model(&existing).Updates(updates).Error; err != nil {
 		b.log.Warn("update dingtalk request_log", zap.Error(err), zap.String("request_id", tr.requestID))
@@ -279,6 +356,14 @@ func uuidString(id *uuid.UUID) string {
 		return ""
 	}
 	return id.String()
+}
+
+func uuidStrings(ids []uuid.UUID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
 }
 
 func previewText(s string, max int) string {

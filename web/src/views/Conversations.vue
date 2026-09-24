@@ -37,15 +37,16 @@
           </template>
         </el-table-column>
         <el-table-column label="状态" width="110">
-          <template #default>
-            <span><i class="status-dot ok"></i>正常</span>
+          <template #default="{ row }">
+            <span v-if="row.deleted_at"><i class="status-dot err"></i>已删除</span>
+            <span v-else><i class="status-dot ok"></i>正常</span>
           </template>
         </el-table-column>
         <el-table-column prop="id" label="会话 ID" min-width="260" show-overflow-tooltip />
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="open(row)">消息</el-button>
-            <el-button link type="danger" @click="remove(row)">删除</el-button>
+            <el-button v-if="!row.deleted_at" link type="danger" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -85,7 +86,7 @@ const hero: HeroItem[] = [
   { icon: Search, title: "会话列表", desc: "admin_api_keys 可查看全部用户，普通密钥仅自己的会话", tone: "blue" },
   { icon: User, title: "按用户过滤", desc: "管理员密钥可按 UID 筛选指定用户的会话", tone: "green" },
   { icon: ChatLineSquare, title: "查看消息", desc: "点「消息」查看该会话的完整往来记录", tone: "purple" },
-  { icon: Delete, title: "删除会话", desc: "软删除，管理员也可删除他人会话", tone: "orange" },
+  { icon: Delete, title: "删除会话", desc: "软删除后仍在列表，消息可查看，钉钉/控制台不会再往该会话写", tone: "orange" },
 ];
 
 const uid = ref("");
@@ -121,6 +122,7 @@ async function load() {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   params.set("offset", String((page.value - 1) * limit));
+  params.set("include_deleted", "1");
   if (models.isAdmin && uid.value.trim()) params.set("uid", uid.value.trim());
   try {
     const data = await requestJSON<{ items: Conversation[]; total: number }>(

@@ -49,6 +49,9 @@ func TestHitsPrompt(t *testing.T) {
 	if !strings.Contains(got, HitsPromptHeader) || !strings.Contains(got, "[1] 报销需发票") {
 		t.Fatalf("got %q", got)
 	}
+	if !strings.Contains(got, "前置条件") {
+		t.Fatal("header should require following corpus workflow")
+	}
 }
 
 func TestMaxDistanceGetter(t *testing.T) {

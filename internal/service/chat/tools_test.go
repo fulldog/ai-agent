@@ -9,28 +9,46 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 )
 
-func TestToolSpecsSwitch(t *testing.T) {
+func TestToolSpecsAlwaysIncludesDefaultTools(t *testing.T) {
 	t.Parallel()
 	off := false
 	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 
-	if got := s.toolSpecs(); len(got) != 1 || got[0].Function.Name != "knowledge_search" {
+	if got := s.toolSpecs(); len(got) < 1 || got[0].Function.Name != "knowledge_search" {
 		t.Fatalf("default on: %+v", got)
 	}
 	s.cfg.Chat.ToolsEnabled = &off
-	if got := s.toolSpecs(); got != nil {
-		t.Fatalf("disabled: %+v", got)
+	got := s.toolSpecs()
+	if len(got) < 1 || got[0].Function.Name != "knowledge_search" {
+		t.Fatalf("tools_enabled=false still keeps default_tools: %+v", got)
 	}
 }
 
-func TestToolSpecsPrefersChatTools(t *testing.T) {
+func TestToolSpecsMergesChatTools(t *testing.T) {
 	t.Parallel()
 	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
-	s.cfg.Chat.Tools = []string{"not_registered"}
-	if got := s.toolSpecs(); len(got) != 0 {
-		t.Fatalf("chat.tools should win: %+v", got)
+	s.cfg.Chat.Tools = []string{"not_registered", "calculator"}
+	got := s.toolSpecs()
+	names := make([]string, 0, len(got))
+	for _, sp := range got {
+		names = append(names, sp.Function.Name)
+	}
+	if len(names) < 2 || names[0] != "knowledge_search" {
+		t.Fatalf("should keep default then extras: %+v", names)
+	}
+	foundCalc := false
+	for _, n := range names {
+		if n == "calculator" {
+			foundCalc = true
+		}
+		if n == "not_registered" {
+			t.Fatal("unregistered name must be dropped")
+		}
+	}
+	if !foundCalc {
+		t.Fatalf("missing calculator: %+v", names)
 	}
 }
 
@@ -83,5 +101,8 @@ func TestToolSystemPrompt(t *testing.T) {
 	got = toolSystemPrompt([]llm.ToolSpec{spec("knowledge_search"), spec("dbconn")})
 	if !strings.Contains(got, baseToolPrompt) || !strings.Contains(got, dbconnToolPrompt) {
 		t.Fatalf("with dbconn: %q", got)
+	}
+	if !strings.Contains(got, "知识摘录") {
+		t.Fatal("dbconn prompt should follow corpus hits first")
 	}
 }

@@ -140,21 +140,21 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 ### GET `/api/v1/conversations`
 
-当前 uid 的会话列表（管理员密钥为全库）。Query：`limit`（默认 20，最大 200）、`offset`、`uid`（仅管理员密钥时生效，按用户过滤）。
+当前 uid 的会话列表（管理员密钥为全库）。Query：`limit`（默认 20，最大 200）、`offset`、`uid`（仅管理员密钥时生效，按用户过滤）、`include_deleted`（`1`/`true`/`yes` 时含软删会话，供会话历史页）。
 
-响应含 `items`、`total`、`limit`、`offset`、`scope_admin`。
+会话对象含可选 `deleted_at`（RFC3339；未删则省略）。响应另含 `items`、`total`、`limit`、`offset`、`scope_admin`。
 
 ### GET `/api/v1/conversations/:id`
 
-详情；不属于当前 uid → `404`。管理员密钥时按 id 直查。
+详情（含已软删）；不属于当前 uid → `404`。管理员密钥时按 id 直查。
 
 ### DELETE `/api/v1/conversations/:id`
 
-删除会话（软删）；不属于当前 uid → `404`。管理员密钥时可删任意会话。
+软删会话（写 `deleted_at`，**保留 messages**）；不属于当前 uid → `404`。管理员密钥时可删任意会话。已删会话不可再写入（续聊/钉钉会新建会话）。
 
 ### GET `/api/v1/conversations/:id/messages`
 
-消息列表；先校验会话归属。管理员密钥时按 id 读取。
+消息列表；先校验会话归属（含已软删）。管理员密钥时按 id 读取。
 
 ---
 
@@ -170,7 +170,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 同步补全（非流式）。普通密钥 **必填** `X-User-Id`，且 `conversation_id` 须属于该 uid，否则 `404`。管理员密钥可对任意会话补全。
 
-普通对话默认开启 RAG（`chat.rag_enabled`，可用 `CHAT_RAG_ENABLED=false` 关闭）：请求未传 `rag` 时自动检索；未指定 `corpus_id` 时搜索全部语料库。同样默认带工具（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），由模型自行决定是否调用，`usage` 为各轮累计。工具集取 `chat.tools`（留空则 `agent.default_tools`），轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 或 `CHAT_TOOLS_ENABLED=false` 可关闭。
+普通对话默认开启 RAG（`chat.rag_enabled`，可用 `CHAT_RAG_ENABLED=false` 关闭）：请求未传 `rag` 时**先检索语料库**并注入 system，再按摘录中的流程作答或调工具；未指定 `corpus_id` 时搜索全部语料库。同样默认强制带上 `agent.default_tools`（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），`chat.tools` 仅追加；由模型按语料提示决定是否调用，`usage` 为各轮累计。轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 时仍保留 `default_tools`，仅不再并入 `chat.tools`。
 
 ```json
 {
@@ -345,7 +345,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 ### GET `/api/v1/agent/tools`
 
-列出后端**实际注册**的工具（含中文 `description`）。`default=true` 表示出现在 `agent.default_tools` 中。未注册的配置项（例如注释掉的 `current_time`）不会出现。
+列出后端**实际注册**的工具（含中文 `description`）。`default=true` 表示出现在 `agent.default_tools` 中。未注册的配置项不会出现。
 
 响应：`{ "items": [{ "name", "description", "default" }] }`。
 
@@ -376,7 +376,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 **响应** `200`：最终文本、`run_id`、`steps` 摘要、`usage`。
 
-`tools` 可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。模型按题意自行决定是否调用。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。`knowledge_search` 未传 `rag.corpus_id` 时检索全部语料。
+`tools` 在 `agent.default_tools` **之上追加**（不可剔除默认集），可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。运行开始时会按问题检索语料并注入 system；有摘录时按其中流程追问或调工具。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。未传 `rag.corpus_id` 时检索全部语料。
 
 ### POST `/api/v1/agent/runs/stream`
 
@@ -423,18 +423,53 @@ data: {"status":"ok","run_id":"uuid"}
 
 详情（含文档数、chunk 数等统计，可选）。
 
+### PATCH `/api/v1/corpora/:id`
+
+修改语料库名称（必填）与描述（可选）。名称须唯一。
+
+```json
+{
+  "name": "供应商付款",
+  "description": "付款规则（可选）"
+}
+```
+
+仅改名称时可省略 `description`；传入 `description`（含空字符串）会更新描述字段。
+
 ### DELETE `/api/v1/corpora/:id`
 
 删除语料及下属文档/chunk。
 
 ### POST `/api/v1/corpora/:id/documents`
 
-上传文档。`multipart/form-data`：`file`，可选 `force_reread`（强制重新抽取并软删旧缓存）。支持：
+上传文档。`multipart/form-data`：
+
+- 单文件：字段名 `file`（兼容旧客户端）
+- **批量**：字段名 `files`（可重复多个），或同一请求多个 `file`
+- 可选 `force_reread`（强制重新抽取并软删旧缓存）
+
+支持：
 
 - 文本：txt/md/…
 - Word：docx
 - PDF：文字层提取；扫描件 OCR
 - 图片：png/jpg/…（OCR）
+
+单文件成功响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`。  
+多文件响应：
+
+```json
+{
+  "items": [
+    { "filename": "a.md", "document": {}, "cache_hit": false },
+    { "filename": "b.pdf", "error": "unsupported file type ..." }
+  ],
+  "ok": 1,
+  "failed": 1
+}
+```
+
+全部失败 → `400`；部分成功 → `207`；全部成功 → `201`。
 
 或 JSON：
 
@@ -445,7 +480,7 @@ data: {"status":"ok","run_id":"uuid"}
 }
 ```
 
-multipart 响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`。附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEMA.md) `file_extractions`。
+multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEMA.md) `file_extractions`。
 
 服务端：解析/OCR（或命中缓存）→ 分块 → Embedding → 写入 `chunks`。
 
@@ -460,6 +495,47 @@ multipart 响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`�
 ### POST `/api/v1/corpora/:id/reindex`
 
 重建索引（重新 Embedding；可选重建 pgvector 索引）。
+
+---
+
+## 6.1 钉钉群语料绑定
+
+钉钉 Stream 入站会按 `conversationId` 写入 `dingtalk_chats`（群 ID + 群名）。控制台「知识库 → 钉钉群」可给每个会话绑定多个语料库。未绑定则仍检索全部语料库。
+
+### GET `/api/v1/dingtalk/chats`
+
+列表（按最近消息时间倒序）。
+
+**响应** `200`
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "conversation_id": "cidXXXX",
+      "title": "采购群",
+      "conversation_type": "2",
+      "is_group": true,
+      "last_seen_at": "2026-09-24T06:00:00Z",
+      "corpus_ids": ["uuid"],
+      "corpora": [{ "id": "uuid", "name": "供应商付款" }]
+    }
+  ]
+}
+```
+
+### PUT `/api/v1/dingtalk/chats/:id/corpora`
+
+整表替换绑定。`id` 为档案 UUID（不是钉钉 conversationId）。空数组表示解除全部绑定。
+
+```json
+{
+  "corpus_ids": ["uuid-1", "uuid-2"]
+}
+```
+
+语料库不存在 → `400`；档案不存在 → `404`。
 
 ---
 
@@ -540,12 +616,13 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Agent Runs | GET | `/api/v1/agent/runs` | 是 |
 | Agent Run | GET | `/api/v1/agent/runs/:id` | 是 |
 | Corpus | CRUD + upload | `/api/v1/corpora`、`.../documents` | 是 |
+| DingTalk chats | GET / PUT bind | `/api/v1/dingtalk/chats`、`.../corpora` | 是 |
 | Reindex | POST | `/api/v1/corpora/:id/reindex` | 是 |
 | RAG | POST | `/api/v1/rag/search` | 是 |
 | Logs | GET | `/api/v1/logs/requests` | 是 |
 | Token Stats | GET | `/api/v1/stats/tokens` | 是 |
 
-钉钉群机器人 **不是 HTTP API**：进程内 Stream 收消息，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。`dingtalk.reply_mode` 默认 `chat`（`CompleteStream`）；设为 `agent` 时与 `/agent/runs` 共用工具注册表，并写入 `agent_runs`。
+钉钉群机器人收消息仍走进程内 Stream，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。群档案与语料绑定见上节 `/api/v1/dingtalk/chats`。`dingtalk.reply_mode` 默认 `chat`（`CompleteStream`）；`agent` 为钉钉预检索后的 `Agent.Run`；`web` 与 `/agent/runs` 同一套薄包装（不预注入 hits），均写入 `agent_runs`。
 
 ---
 

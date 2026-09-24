@@ -19,6 +19,7 @@ type Tool interface {
 // Env 执行期注入（语料、下游服务等）。
 type Env struct {
 	CorpusID    *uuid.UUID
+	CorpusIDs   []uuid.UUID
 	TopK        int
 	DefaultTopK int
 	RAG         *rag.Service

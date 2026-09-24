@@ -83,8 +83,7 @@ func (s *Service) FindOrCreateByChannel(in CreateConversationInput) (*model.Conv
 	if ch == "" || sid == "" {
 		return nil, fmt.Errorf("channel and channel_session_id required")
 	}
-	var c model.Conversation
-	err := s.db.Where("uid = ? AND channel = ? AND channel_session_id = ?", uid, ch, sid).First(&c).Error
+	c, err := s.latestByChannel(uid, ch, sid)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
@@ -98,23 +97,66 @@ func (s *Service) FindOrCreateByChannel(in CreateConversationInput) (*model.Conv
 			c.CorpusID = in.CorpusID
 		}
 		if len(updates) > 0 {
-			_ = s.db.Model(&c).Updates(updates).Error
+			_ = s.db.Model(c).Updates(updates).Error
 		}
-		return &c, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
+		return c, nil
 	}
 	return s.CreateConversation(in)
 }
 
+// latestByChannel 取 uid+通道+通道会话 ID 下最新的未删除会话。
+func (s *Service) latestByChannel(uid, channel, sessionID string) (*model.Conversation, error) {
+	var c model.Conversation
+	err := s.db.Where("uid = ? AND channel = ? AND channel_session_id = ?", uid, channel, sessionID).
+		Order("created_at DESC").
+		First(&c).Error
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// GetByChannel 按 uid + 通道 + 通道会话 ID 查找已有会话；不存在时返回 nil, nil。
+func (s *Service) GetByChannel(uid, channel, sessionID string) (*model.Conversation, error) {
+	uid = strings.TrimSpace(uid)
+	ch := strings.TrimSpace(channel)
+	sid := strings.TrimSpace(sessionID)
+	if uid == "" || ch == "" || sid == "" {
+		return nil, nil
+	}
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	c, err := s.latestByChannel(uid, ch, sid)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func (s *Service) HasMessages(conversationID uuid.UUID) (bool, error) {
+	if s == nil || s.db == nil || conversationID == uuid.Nil {
+		return false, nil
+	}
+	var n int64
+	err := s.db.Model(&model.Message{}).Where("conversation_id = ?", conversationID).Count(&n).Error
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (s *Service) ListConversations(uid string, limit, offset int) ([]model.Conversation, error) {
-	rows, _, err := s.QueryConversations(uid, false, limit, offset)
+	rows, _, err := s.QueryConversations(uid, false, false, limit, offset)
 	return rows, err
 }
 
 // QueryConversations 分页列出会话。all=true 时列出全库（可选 uid 过滤）；否则必须带 uid。
-func (s *Service) QueryConversations(uid string, all bool, limit, offset int) ([]model.Conversation, int64, error) {
+// includeDeleted=true 时含软删行（会话历史）；默认排除，供续聊侧栏使用。
+func (s *Service) QueryConversations(uid string, all, includeDeleted bool, limit, offset int) ([]model.Conversation, int64, error) {
 	uid = strings.TrimSpace(uid)
 	if !all && uid == "" {
 		return nil, 0, fmt.Errorf("uid required")
@@ -129,6 +171,9 @@ func (s *Service) QueryConversations(uid string, all bool, limit, offset int) ([
 		offset = 0
 	}
 	q := s.db.Model(&model.Conversation{})
+	if includeDeleted {
+		q = q.Unscoped()
+	}
 	if uid != "" {
 		q = q.Where("uid = ?", uid)
 	}
@@ -142,34 +187,16 @@ func (s *Service) QueryConversations(uid string, all bool, limit, offset int) ([
 }
 
 func (s *Service) GetConversationByID(id uuid.UUID) (*model.Conversation, error) {
-	var c model.Conversation
-	if err := s.db.First(&c, "id = ?", id).Error; err != nil {
-		return nil, err
-	}
-	return &c, nil
+	return s.lookupConversation(id, "", false)
+}
+
+// GetConversationByIDIncludingDeleted 按 id 读会话，含已软删（历史详情/消息）。
+func (s *Service) GetConversationByIDIncludingDeleted(id uuid.UUID) (*model.Conversation, error) {
+	return s.lookupConversation(id, "", true)
 }
 
 func (s *Service) DeleteConversationByID(id uuid.UUID) error {
-	res := s.db.Where("id = ?", id).Delete(&model.Conversation{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-func (s *Service) ListMessagesByID(conversationID uuid.UUID, limit int) ([]model.Message, error) {
-	if _, err := s.GetConversationByID(conversationID); err != nil {
-		return nil, err
-	}
-	if limit <= 0 {
-		limit = 100
-	}
-	var rows []model.Message
-	err := s.db.Where("conversation_id = ?", conversationID).Order("created_at asc").Limit(limit).Find(&rows).Error
-	return rows, err
+	return s.deleteConversation(id, "")
 }
 
 func (s *Service) GetConversation(id uuid.UUID, uid string) (*model.Conversation, error) {
@@ -177,8 +204,31 @@ func (s *Service) GetConversation(id uuid.UUID, uid string) (*model.Conversation
 	if uid == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
+	return s.lookupConversation(id, uid, false)
+}
+
+// GetConversationIncludingDeleted 按 id+uid 读会话，含已软删（历史详情/消息）。
+func (s *Service) GetConversationIncludingDeleted(id uuid.UUID, uid string) (*model.Conversation, error) {
+	uid = strings.TrimSpace(uid)
+	if uid == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return s.lookupConversation(id, uid, true)
+}
+
+func (s *Service) lookupConversation(id uuid.UUID, uid string, includeDeleted bool) (*model.Conversation, error) {
+	q := s.db
+	if includeDeleted {
+		q = q.Unscoped()
+	}
 	var c model.Conversation
-	if err := s.db.First(&c, "id = ? AND uid = ?", id, uid).Error; err != nil {
+	var err error
+	if uid != "" {
+		err = q.First(&c, "id = ? AND uid = ?", id, uid).Error
+	} else {
+		err = q.First(&c, "id = ?", id).Error
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &c, nil
@@ -189,7 +239,19 @@ func (s *Service) DeleteConversation(id uuid.UUID, uid string) error {
 	if uid == "" {
 		return gorm.ErrRecordNotFound
 	}
-	res := s.db.Where("id = ? AND uid = ?", id, uid).Delete(&model.Conversation{})
+	return s.deleteConversation(id, uid)
+}
+
+// deleteConversation 软删会话，保留 messages 供历史查看。uid 非空时校验归属。
+func (s *Service) deleteConversation(id uuid.UUID, uid string) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("database not configured")
+	}
+	q := s.db.Where("id = ?", id)
+	if uid != "" {
+		q = q.Where("uid = ?", uid)
+	}
+	res := q.Delete(&model.Conversation{})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -199,8 +261,20 @@ func (s *Service) DeleteConversation(id uuid.UUID, uid string) error {
 	return nil
 }
 
+func (s *Service) ListMessagesByID(conversationID uuid.UUID, limit int) ([]model.Message, error) {
+	if _, err := s.GetConversationByIDIncludingDeleted(conversationID); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var rows []model.Message
+	err := s.db.Where("conversation_id = ?", conversationID).Order("created_at asc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
 func (s *Service) ListMessages(conversationID uuid.UUID, uid string, limit int) ([]model.Message, error) {
-	if _, err := s.GetConversation(conversationID, uid); err != nil {
+	if _, err := s.GetConversationIncludingDeleted(conversationID, uid); err != nil {
 		return nil, err
 	}
 	if limit <= 0 {
@@ -259,6 +333,7 @@ type CompleteInput struct {
 	// RAGExplicit 为 true 时尊重 RAGEnabled；为 false 时用 chat.rag_enabled 默认（缺省开启）。
 	RAGExplicit   bool
 	CorpusID      *uuid.UUID
+	CorpusIDs     []uuid.UUID
 	RAGHits       []rag.Hit
 	TopK          int
 	EnableSearch  bool // 无语料命中且用户强制联网时，通义 enable_search
@@ -418,9 +493,12 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		}
 		var found []rag.Hit
 		var rerr error
-		if corpusID != nil {
+		switch {
+		case len(in.CorpusIDs) > 0:
+			found, rerr = s.rag.SearchInCorpora(ctx, in.CorpusIDs, in.Message, topK)
+		case corpusID != nil:
 			found, rerr = s.rag.Search(ctx, *corpusID, in.Message, topK)
-		} else {
+		default:
 			found, rerr = s.rag.SearchInCorpora(ctx, nil, in.Message, topK)
 		}
 		if rerr == nil {

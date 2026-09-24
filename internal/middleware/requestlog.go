@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,28 +28,29 @@ type bodyWriter struct {
 func (w *bodyWriter) Write(b []byte) (int, error) {
 	if w.stream {
 		w.sseCount++
-		if w.buf.Len() < w.previewMax {
-			remain := w.previewMax - w.buf.Len()
-			if len(b) > remain {
-				w.buf.Write(b[:remain])
-			} else {
-				w.buf.Write(b)
-			}
-		}
+		w.appendPreview(b)
 		return w.ResponseWriter.Write(b)
 	}
 	if w.held != nil {
 		_, _ = w.held.Write(b)
 	}
-	if w.buf.Len() < w.previewMax {
-		remain := w.previewMax - w.buf.Len()
-		if len(b) > remain {
-			w.buf.Write(b[:remain])
-		} else {
-			w.buf.Write(b)
-		}
-	}
+	w.appendPreview(b)
 	return len(b), nil
+}
+
+// appendPreview 写入响应预览，按字节上限截断且不切断 UTF-8 多字节序列。
+func (w *bodyWriter) appendPreview(b []byte) {
+	if w == nil || w.buf == nil || w.previewMax <= 0 || w.buf.Len() >= w.previewMax {
+		return
+	}
+	remain := w.previewMax - w.buf.Len()
+	if len(b) > remain {
+		b = b[:remain]
+	}
+	b = trimIncompleteUTF8(b)
+	if len(b) > 0 {
+		_, _ = w.buf.Write(b)
+	}
 }
 
 func (w *bodyWriter) WriteString(s string) (int, error) {
@@ -189,11 +191,24 @@ func itoa64(n int64) string {
 	return string(buf[i:])
 }
 
+// truncate 按字节上限截断，并保证结果为合法 UTF-8（避免 PostgreSQL SQLSTATE 22021）。
 func truncate(s string, max int) string {
-	if max <= 0 || len(s) <= max {
-		return s
+	if max > 0 && len(s) > max {
+		s = string(trimIncompleteUTF8([]byte(s[:max])))
 	}
-	return s[:max]
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
+func trimIncompleteUTF8(b []byte) []byte {
+	for len(b) > 0 {
+		r, size := utf8.DecodeLastRune(b)
+		if r != utf8.RuneError || size > 1 {
+			break
+		}
+		// size==1 且 RuneError：末尾是不完整多字节序列或孤立非法字节。
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 func endsWith(s, suffix string) bool {
