@@ -44,6 +44,8 @@ type msgTrace struct {
 	corpusID       *uuid.UUID
 	conversationID *uuid.UUID
 	agentRunID     *uuid.UUID
+	// assistantMsgID 本轮已落库的助手消息。出站装饰后更新这一条，避免再插一条重复回复。
+	assistantMsgID *uuid.UUID
 	// sourceNote 本轮 RAG 命中语料摘要，出站末尾追加（如「来源：付款SOP（命中 2 条）」）。
 	sourceNote string
 	outcome    string

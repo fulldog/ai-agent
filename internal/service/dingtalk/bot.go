@@ -556,6 +556,10 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 	if strings.TrimSpace(text) == "" {
 		text = "没有生成内容。"
 	}
+	if res.MessageID != uuid.Nil {
+		id := res.MessageID
+		tr.assistantMsgID = &id
+	}
 	tr.reply = text
 	_ = streamer.finish(text, false)
 }
@@ -651,6 +655,10 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 	text := ""
 	if res != nil {
 		text = res.Output
+		if res.MessageID != uuid.Nil {
+			id := res.MessageID
+			tr.assistantMsgID = &id
+		}
 	}
 	if strings.TrimSpace(text) == "" {
 		text = acc.String()
@@ -767,6 +775,10 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 	text := ""
 	if res != nil {
 		text = res.Output
+		if res.MessageID != uuid.Nil {
+			id := res.MessageID
+			tr.assistantMsgID = &id
+		}
 	}
 	if strings.TrimSpace(text) == "" {
 		text = acc.String()
@@ -959,7 +971,7 @@ func (s *streamer) finish(content string, isError bool) error {
 	return s.bot.sendOutbound(ctx, s.data, content)
 }
 
-// persistOutbound 出站前强制写入 request_log，并补一条 assistant 消息（若会话里还没有同文）。
+// persistOutbound 出站前写入 request_log。本轮已有助手消息时改写为出站正文（带来源与实例标记），否则再插入一条。
 func (b *Bot) persistOutbound(tr *msgTrace, text string) {
 	if b == nil {
 		return
@@ -979,11 +991,7 @@ func (b *Bot) persistOutbound(tr *msgTrace, text string) {
 			zap.Int("pid", os.Getpid()),
 		)
 		if tr.conversationID != nil && text != "" && b.db != nil {
-			var n int64
-			_ = b.db.Model(&model.Message{}).
-				Where("conversation_id = ? AND role = ? AND content = ?", *tr.conversationID, "assistant", text).
-				Count(&n).Error
-			if n == 0 {
+			if !b.upsertOutboundAssistant(tr, text, rid) {
 				msg := model.Message{ConversationID: *tr.conversationID, Role: "assistant", Content: text}
 				if err := b.db.Create(&msg).Error; err != nil {
 					b.log.Error("persist outbound assistant message", zap.Error(err), zap.String("request_id", rid))
@@ -998,6 +1006,39 @@ func (b *Bot) persistOutbound(tr *msgTrace, text string) {
 			zap.Int("pid", os.Getpid()),
 		)
 	}
+}
+
+// upsertOutboundAssistant 把出站正文写回本轮助手消息。
+// 返回 true 表示这条回复已经落库，调用方不要再插入。
+func (b *Bot) upsertOutboundAssistant(tr *msgTrace, text, requestID string) bool {
+	if b == nil || b.db == nil || tr == nil || tr.conversationID == nil {
+		return false
+	}
+	if tr.assistantMsgID != nil && *tr.assistantMsgID != uuid.Nil {
+		var existing model.Message
+		err := b.db.Where("id = ? AND conversation_id = ? AND role = ?", *tr.assistantMsgID, *tr.conversationID, "assistant").
+			First(&existing).Error
+		if err != nil {
+			if b.log != nil {
+				b.log.Error("load outbound assistant message", zap.Error(err), zap.String("request_id", requestID))
+			}
+			return false
+		}
+		if existing.Content == text {
+			return true
+		}
+		if err := b.db.Model(&existing).Update("content", text).Error; err != nil {
+			if b.log != nil {
+				b.log.Error("update outbound assistant message", zap.Error(err), zap.String("request_id", requestID))
+			}
+		}
+		return true
+	}
+	var n int64
+	_ = b.db.Model(&model.Message{}).
+		Where("conversation_id = ? AND role = ? AND content = ?", *tr.conversationID, "assistant", text).
+		Count(&n).Error
+	return n > 0
 }
 
 func (b *Bot) sanitizeOutbound(text string) string {

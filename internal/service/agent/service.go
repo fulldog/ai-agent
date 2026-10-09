@@ -76,6 +76,7 @@ type RunInput struct {
 
 type RunResult struct {
 	RunID            uuid.UUID
+	MessageID        uuid.UUID
 	Output           string
 	StepCount        int
 	PromptTokens     int
@@ -457,6 +458,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		"status": "succeeded", "output": final, "finished_at": &now,
 		"step_count": stepIndex, "prompt_tokens": promptTokens, "completion_tokens": completionTokens,
 	}).Error
+	var messageID uuid.UUID
 	if in.ConversationID != nil {
 		pt, ct := promptTokens, completionTokens
 		asst := model.Message{
@@ -468,6 +470,8 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		}
 		if err := s.db.Create(&asst).Error; err != nil {
 			s.llmLog.Error("persist assistant message", zap.Error(err), zap.String("request_id", in.RequestID))
+		} else {
+			messageID = asst.ID
 		}
 	}
 	metrics.AgentRuns.WithLabelValues("succeeded").Inc()
@@ -477,7 +481,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		}})
 	}
 	return &RunResult{
-		RunID: run.ID, Output: final, StepCount: stepIndex,
+		RunID: run.ID, MessageID: messageID, Output: final, StepCount: stepIndex,
 		PromptTokens: promptTokens, CompletionTokens: completionTokens, Status: "succeeded",
 	}, nil
 }
