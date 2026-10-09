@@ -229,6 +229,21 @@ func TestAlsoStdoutDefaultsByMode(t *testing.T) {
 	}
 }
 
+func TestDBConnDictionaryDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dict.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DBConn.Dictionary != "docs/srm_dictionary.json" {
+		t.Fatalf("dictionary default: %q", cfg.DBConn.Dictionary)
+	}
+}
+
 func TestDBConnIsEnabledAndEnv(t *testing.T) {
 	f, ttrue := false, true
 	if (DBConnConfig{Enabled: &f, DSN: "user:p@tcp(127.0.0.1:3306)/biz"}).IsEnabled() {

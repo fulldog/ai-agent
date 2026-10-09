@@ -100,6 +100,7 @@ dbconn:
   enabled: true
   driver: mysql
   dsn: "root:Netjoy@123@tcp(10.0.10.43:3306)/crm?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai&multiStatements=true" # 例: user:pass@tcp(127.0.0.1:3306)/biz?charset=utf8mb4&parseTime=true&loc=Local
+  dictionary: docs/srm_dictionary.json # schema 读取的本地数据字典；空则使用该默认路径
   max_open_conns: 5
   max_idle_conns: 2
   max_rows: 50

@@ -1,0 +1,42 @@
+{
+  "conventions": ["查有效数据加 IsDelete = 0"],
+  "relations": [
+    {
+      "column": "VendorId",
+      "tables": [
+        {"name": "Srm_VendorInfo", "key": "PRI"},
+        {"name": "Srm_PayInfo", "key": "MUL"}
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "name": "Srm_VendorInfo",
+      "comment": "供应商基本信息表",
+      "approx_rows": 10,
+      "primary_key": ["VendorId", "VendorLabel"],
+      "indexes": [
+        {"name": "PRIMARY", "unique": true, "columns": ["VendorId", "VendorLabel"]}
+      ],
+      "columns": [
+        {"name": "VendorId", "type": "varchar(64)", "nullable": false, "key": "PRI", "comment": "供应商Id"},
+        {"name": "VendorName", "type": "varchar(256)", "nullable": false, "comment": "供应商名称"},
+        {"name": "IsDelete", "type": "bit(1)", "nullable": false, "key": "PRI", "default": "b'0'", "comment": "是否删除 0 正常 1 删除"}
+      ]
+    },
+    {
+      "name": "Srm_PayInfo",
+      "comment": "供应商收款信息表",
+      "approx_rows": 3,
+      "primary_key": ["SysNo"],
+      "indexes": [
+        {"name": "PRIMARY", "unique": true, "columns": ["SysNo"]}
+      ],
+      "columns": [
+        {"name": "SysNo", "type": "int(11)", "nullable": false, "key": "PRI", "extra": "auto_increment"},
+        {"name": "VendorId", "type": "varchar(64)", "nullable": false, "key": "MUL", "comment": "供应商Id"},
+        {"name": "BankName", "type": "varchar(64)", "nullable": true, "comment": "开户行"}
+      ]
+    }
+  ]
+}

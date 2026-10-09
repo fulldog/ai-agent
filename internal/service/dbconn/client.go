@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,12 +22,17 @@ const maxSchemaRows = 100
 
 var dialSeq atomic.Uint64
 
-// Client 独立 MySQL 业务库只读访问。
+const defaultDictionaryPath = "docs/srm_dictionary.json"
+
+// Client 独立 MySQL 业务库只读访问。schema 读本地数据字典。
 type Client struct {
-	db      *sql.DB
-	tunnel  *sshTunnel
-	maxRows int
-	timeout time.Duration
+	db       *sql.DB
+	tunnel   *sshTunnel
+	mu       sync.RWMutex
+	dict     *Dictionary
+	dictPath string
+	maxRows  int
+	timeout  time.Duration
 }
 
 func Open(cfg config.DBConnConfig, log *zap.Logger) (*Client, error) {
@@ -46,6 +52,15 @@ func Open(cfg config.DBConnConfig, log *zap.Logger) (*Client, error) {
 
 	if cfg.SSH.Enabled && strings.TrimSpace(cfg.SSH.Host) == "" {
 		return nil, fmt.Errorf("ssh.enabled 为 true 时必须配置 ssh.host")
+	}
+
+	dictPath := strings.TrimSpace(cfg.Dictionary)
+	if dictPath == "" {
+		dictPath = defaultDictionaryPath
+	}
+	dict, err := LoadDictionary(dictPath)
+	if err != nil {
+		return nil, err
 	}
 
 	dsn := cfg.DSN
@@ -86,7 +101,7 @@ func Open(cfg config.DBConnConfig, log *zap.Logger) (*Client, error) {
 	db.SetConnMaxLifetime(lifetime)
 	db.SetConnMaxIdleTime(2 * time.Minute)
 
-	c := &Client{db: db, tunnel: tunnel, maxRows: cfg.MaxRows, timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
+	c := &Client{db: db, tunnel: tunnel, dict: dict, dictPath: dictPath, maxRows: cfg.MaxRows, timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
 	if c.maxRows <= 0 {
 		c.maxRows = 50
 	}

@@ -213,6 +213,7 @@ type DBConnConfig struct {
 	Enabled        *bool           `yaml:"enabled"`
 	Driver         string          `yaml:"driver"` // 仅 mysql
 	DSN            string          `yaml:"dsn"`
+	Dictionary     string          `yaml:"dictionary"` // schema 读取的 JSON；空则 docs/srm_dictionary.json
 	MaxOpenConns   int             `yaml:"max_open_conns"`
 	MaxIdleConns   int             `yaml:"max_idle_conns"`
 	MaxRows        int             `yaml:"max_rows"`
@@ -634,6 +635,10 @@ func (c *Config) normalize() {
 	}
 	if c.DBConn.TimeoutSeconds <= 0 {
 		c.DBConn.TimeoutSeconds = 15
+	}
+	c.DBConn.Dictionary = strings.TrimSpace(c.DBConn.Dictionary)
+	if c.DBConn.Dictionary == "" {
+		c.DBConn.Dictionary = "docs/srm_dictionary.json"
 	}
 	c.DBConn.SSH.Host = strings.TrimSpace(c.DBConn.SSH.Host)
 	c.DBConn.SSH.User = strings.TrimSpace(c.DBConn.SSH.User)

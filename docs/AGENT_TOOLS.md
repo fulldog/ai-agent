@@ -193,9 +193,9 @@ agent:
 | `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | `rag.corpus_id` 可选；未传则检索全部语料；命中受 `rag.max_distance` 过滤 |
 | `current_time` | 获取服务器当前时间（RFC3339） | 无 |
 | `calculator` | 简单四则运算 `a op b`（`+ - * /`） | 无 |
-| `dbconn` | 查 MySQL 业务库数据字典（`information_schema` 注释）或执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
+| `dbconn` | schema 读本地数据字典 `docs/srm_dictionary.json`（表、字段、主键、关联键）；query 执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
 
-`dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 对照表/列注释，最后 `action=query` 跑 SELECT。`schema` 仅扫描表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
+`dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 读本地数据字典（不查 `information_schema`），最后 `action=query` 跑 SELECT。`schema` 仅包含表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。字典路径为 `dbconn.dictionary`，默认 `docs/srm_dictionary.json`。更新字典：`PUT /api/v1/dbconn/dictionary`，请求体为完整 JSON，需管理员 `X-API-Key`；成功后立即替换进程内副本，不必重启。仅允许单条只读 SELECT；请使用只读账号。
 
 `dbconn.ssh.enabled`（或 `BIZ_SSH_ENABLED`）为 SSH 开关：`true` 经隧道拨号，`false` 直连 MySQL。认证为**用户名 + 密码**（`ssh.user` / `ssh.password`，或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）。TCP/SSH 保活，断线后指数退避重连；查询遇瞬时网络错误会先重连再重试一次。DSN 里的主机是跳板机对端的 MySQL 地址。
 

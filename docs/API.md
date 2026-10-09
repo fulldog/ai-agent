@@ -376,7 +376,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 **响应** `200`：最终文本、`run_id`、`steps` 摘要、`usage`。
 
-`tools` 在 `agent.default_tools` **之上追加**（不可剔除默认集），可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。运行开始时会按问题检索语料并注入 system；有摘录时按其中流程追问或调工具。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。未传 `rag.corpus_id` 时检索全部语料。
+`tools` 在 `agent.default_tools` **之上追加**（不可剔除默认集），可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。运行开始时会按问题检索语料并注入 system；有摘录时按其中流程追问或调工具。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。更新字典文件：`PUT /api/v1/dbconn/dictionary`（管理员 `X-API-Key`，请求体为完整 `srm_dictionary.json`），写入磁盘并热更新内存。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。未传 `rag.corpus_id` 时检索全部语料。
 
 ### POST `/api/v1/agent/runs/stream`
 

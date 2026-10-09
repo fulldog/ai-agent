@@ -91,11 +91,3 @@ func TestHasTablePrefix(t *testing.T) {
 		})
 	}
 }
-
-func TestLikeContains(t *testing.T) {
-	t.Parallel()
-	got := likeContains(`a%b_c`)
-	if got != `%a\%b\_c%` {
-		t.Fatalf("got %q", got)
-	}
-}

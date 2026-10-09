@@ -1,0 +1,6185 @@
+{
+  "conventions": [
+    "只读查询，表名必须原样使用（`Srm_` 开头，大小写敏感）",
+    "多数表用 `IsDelete`（`bit(1)`，`0` 正常、`1` 删除）做软删除。查当前有效数据时加 `IsDelete = 0`",
+    "`IsDelete_Mark` 常与 `IsDelete` 一起进入主键或唯一键：未删除时为 `0001-01-01`，删除后写入删除时间，用来允许同一业务键多次软删",
+    "`SysNo` 是各表自己的自增号，不能用来跨表关联",
+    "人员字段（`OwnerId`、`CreateById`、`ModifyById` 等）是 ERP 人员 Id，不在 `Srm` 表内",
+    "`VendorLabel` 在多张表里既是业务标签，也是联合主键的一部分。过滤供应商时要同时带上标签，避免串数据",
+    "注释里的枚举（如 `0/1/2/4`）以字段 `COLUMN_COMMENT` 为准，不要自行发明取值",
+    "逗号包裹的列表字段（如 `,1,2,`）按字符串存储，匹配时用 `LIKE '%,值,%'`"
+  ],
+  "relations": [
+    {
+      "column": "VendorLabel",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_ContactInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_IndustryServiceTypeConfig",
+          "key": ""
+        },
+        {
+          "name": "Srm_IndustryServiceTypeEvaluateRules",
+          "key": ""
+        },
+        {
+          "name": "Srm_PayInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingQuality",
+          "key": ""
+        },
+        {
+          "name": "Srm_SpecialApprovalReport",
+          "key": ""
+        },
+        {
+          "name": "Srm_UserTreeNode",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorEvaluateInviteItem",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorEvaluateRecord",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorInfo",
+          "key": "PRI"
+        },
+        {
+          "name": "Srm_VendorOperationRecord",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPolicy",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorWhite",
+          "key": ""
+        },
+        {
+          "name": "Srm_Vendor_Draft",
+          "key": ""
+        },
+        {
+          "name": "Srm_Vendor_Main_Info",
+          "key": ""
+        }
+      ]
+    },
+    {
+      "column": "VendorId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_ContactInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_PayInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_RatingQuality",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_SpecialApprovalReport",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorEvaluateInviteItem",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorEvaluateRecord",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorInfo",
+          "key": "PRI"
+        },
+        {
+          "name": "Srm_VendorOperationRecord",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorPolicy",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorWhite",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "VersionNumber",
+      "tables": [
+        {
+          "name": "Srm_RatingQuality",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTarget",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTargetConfig",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTargetConfigHistory",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTargetHistory",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTemplate",
+          "key": ""
+        },
+        {
+          "name": "Srm_RatingTemplateHistory",
+          "key": ""
+        },
+        {
+          "name": "Srm_SpecialApprovalReport",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "WorkflowId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_RatingQuality",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_RatingQualityDetail",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_SpecialApprovalReport",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_SpecialApprovalReport_Comment",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "BusinessId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorOperationRecord",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": ""
+        }
+      ]
+    },
+    {
+      "column": "BelongingCostLine",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "IndustryServiceTypeId",
+      "tables": [
+        {
+          "name": "Srm_IndustryServiceTypeConfig",
+          "key": ""
+        },
+        {
+          "name": "Srm_IndustryServiceTypeEvaluateRules",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorEvaluateRecord",
+          "key": ""
+        }
+      ]
+    },
+    {
+      "column": "RuleId",
+      "tables": [
+        {
+          "name": "Srm_IndustryServiceTypeEvaluateDimensions",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_IndustryServiceTypeEvaluateRules",
+          "key": "UNI"
+        },
+        {
+          "name": "Srm_VendorEvaluateRecord",
+          "key": ""
+        }
+      ]
+    },
+    {
+      "column": "VendorContractId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": "PRI"
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "VendorPolicyId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": ""
+        },
+        {
+          "name": "Srm_VendorPolicy",
+          "key": "PRI"
+        }
+      ]
+    },
+    {
+      "column": "BankAccountId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorPaymentInfo",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "InstanceId",
+      "tables": [
+        {
+          "name": "Srm_BusinessPaymentInfo",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_VendorContract",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "InviteId",
+      "tables": [
+        {
+          "name": "Srm_VendorEvaluateInvite",
+          "key": "UNI"
+        },
+        {
+          "name": "Srm_VendorEvaluateInviteItem",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "RecordId",
+      "tables": [
+        {
+          "name": "Srm_VendorEvaluateRecord",
+          "key": "UNI"
+        },
+        {
+          "name": "Srm_VendorEvaluateRecordData",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "UserId",
+      "tables": [
+        {
+          "name": "Srm_UserLabelAuth",
+          "key": ""
+        },
+        {
+          "name": "Srm_UserTreeNode",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "WorkflowFatherId",
+      "tables": [
+        {
+          "name": "Srm_RatingQualityAdjust",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_RatingQualityDetailAdjust",
+          "key": "MUL"
+        }
+      ]
+    },
+    {
+      "column": "WorkflowSonId",
+      "tables": [
+        {
+          "name": "Srm_RatingQualityAdjust",
+          "key": "MUL"
+        },
+        {
+          "name": "Srm_RatingQualityDetailAdjust",
+          "key": "MUL"
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "name": "Srm_BusinessPaymentInfo",
+      "comment": "业务付款流程v2.0,v3.0",
+      "approx_rows": 2390,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "fk_BankAccountId",
+          "unique": false,
+          "columns": [
+            "BankAccountId"
+          ]
+        },
+        {
+          "name": "fk_BelongingCostLine",
+          "unique": false,
+          "columns": [
+            "BelongingCostLine",
+            "CostBelongingDepartment",
+            "Department"
+          ]
+        },
+        {
+          "name": "fk_CreateById",
+          "unique": false,
+          "columns": [
+            "CreateById"
+          ]
+        },
+        {
+          "name": "fk_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "fk_InstanceId",
+          "unique": false,
+          "columns": [
+            "InstanceId"
+          ]
+        },
+        {
+          "name": "fk_ProcessCode",
+          "unique": false,
+          "columns": [
+            "ProcessCode"
+          ]
+        },
+        {
+          "name": "fk_VendorContractId",
+          "unique": false,
+          "columns": [
+            "VendorContractId"
+          ]
+        },
+        {
+          "name": "fk_VendorId",
+          "unique": false,
+          "columns": [
+            "VendorId"
+          ]
+        },
+        {
+          "name": "fk_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "ApplyType",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "审批类型:300 业务付款流程v2.0;310 业务付款流程v3.0"
+        },
+        {
+          "name": "ProcessCode",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "审批模板的唯一码"
+        },
+        {
+          "name": "InstanceId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "实例Id"
+        },
+        {
+          "name": "BusinessId",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "钉钉审批编号"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorName",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商名称"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "VendorContractId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "合同Id"
+        },
+        {
+          "name": "VendorPolicyId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "政策ID"
+        },
+        {
+          "name": "BelongingCostLine",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": "所属成本线 T_CascadeData.SysNo，这里直接写 0"
+        },
+        {
+          "name": "BelongingCostLineName_v",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "所属成本线名称"
+        },
+        {
+          "name": "PaymentNature",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "付款性质Id 1境内付款 2境外付款，这里直接写 0"
+        },
+        {
+          "name": "PaymentNatureName_v",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款性质名称"
+        },
+        {
+          "name": "CostBelongingDepartment",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "费用所属部门Id T_CascadeData.SysNo，这里直接写 0"
+        },
+        {
+          "name": "CostBelongingDepartmentName_v",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用所属部门名称"
+        },
+        {
+          "name": "Department",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "部门Id T_CascadeData.SysNo，这里直接写 0"
+        },
+        {
+          "name": "DepartmentName_v",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "部门名称"
+        },
+        {
+          "name": "CostBelongingCompany",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用所属公司"
+        },
+        {
+          "name": "AmountCategory",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用类别"
+        },
+        {
+          "name": "AssetNumber",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "固定资产编号"
+        },
+        {
+          "name": "AmountReason",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款事由"
+        },
+        {
+          "name": "AmountTotal",
+          "type": "decimal(18,4)",
+          "nullable": false,
+          "key": "",
+          "default": "0.0000",
+          "extra": "",
+          "comment": "付款总额"
+        },
+        {
+          "name": "Currency",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "币种 1人民币 2美金 3港币 4新加坡币 99 其他"
+        },
+        {
+          "name": "CurrencyName_v",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "币种名称"
+        },
+        {
+          "name": "BankAccount",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "开户行"
+        },
+        {
+          "name": "BankAccountId",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "银行账号"
+        },
+        {
+          "name": "PaymentType",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "付款方式Id 1转账 2其他，这里直接写 0"
+        },
+        {
+          "name": "PaymentTypeName_v",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款方式名称"
+        },
+        {
+          "name": "HasInvoice",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "现是否有发票"
+        },
+        {
+          "name": "InvoiceFile",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "发票扫描件"
+        },
+        {
+          "name": "IsNeedCallBack",
+          "type": "bit(1)",
+          "nullable": true,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否需要回单"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注"
+        },
+        {
+          "name": "Attachment",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "附件"
+        },
+        {
+          "name": "AuditStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "申请审批状态 0 草稿，1 新建/提交审核 2 审核中， 4 审核通过， -1 驳回 -2 申请人撤回"
+        },
+        {
+          "name": "AuditTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "审核时间"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "DingDingApproveUrl_v",
+          "type": "varchar(1024)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "钉钉审批的url"
+        },
+        {
+          "name": "RowCreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "数据行创建时间"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "CreateByName_v",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人姓名"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_ContactInfo",
+      "comment": "供应商联系人信息表",
+      "approx_rows": 2006,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_ContactInfo_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_ContactInfo_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "ContactName",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "联系人姓名"
+        },
+        {
+          "name": "Position",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "职位"
+        },
+        {
+          "name": "Email",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "邮箱"
+        },
+        {
+          "name": "Mobile",
+          "type": "varchar(16)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "手机号"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_IndustryServiceType",
+      "comment": "供应商行业及服务类型",
+      "approx_rows": 72,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "行业及服务类型Id，自增，主键"
+        },
+        {
+          "name": "IndustryServiceTypeName",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业及服务类型名称"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户备注信息"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_IndustryServiceTypeConfig",
+      "comment": "供应商行业及服务类型配置表",
+      "approx_rows": 113,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "IndustryServiceTypeId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业及服务类型Id，关联 Srm_VendorIndustryServiceType 表 SysNo 字段"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户备注信息"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_IndustryServiceTypeEvaluateDimensions",
+      "comment": "评价维度",
+      "approx_rows": 436,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_RuleId",
+          "unique": false,
+          "columns": [
+            "RuleId"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "RuleId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "规则ID"
+        },
+        {
+          "name": "Dimension",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "维度"
+        },
+        {
+          "name": "LevelA",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级1（极差）"
+        },
+        {
+          "name": "LevelB",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级2（较差）"
+        },
+        {
+          "name": "LevelC",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级3（合格）"
+        },
+        {
+          "name": "LevelD",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级4（优秀）"
+        },
+        {
+          "name": "LevelE",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级5（卓越）"
+        },
+        {
+          "name": "Weight",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "权重（%）"
+        }
+      ]
+    },
+    {
+      "name": "Srm_IndustryServiceTypeEvaluateRules",
+      "comment": "评价规则",
+      "approx_rows": 113,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IndustryServiceTypeId_VendorLabel",
+          "unique": false,
+          "columns": [
+            "IndustryServiceTypeId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_RuleId",
+          "unique": true,
+          "columns": [
+            "RuleId"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "EvaluateType",
+          "type": "int(10)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "评价类型 1 服务评价  2 财务评价"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签"
+        },
+        {
+          "name": "IndustryServiceTypeId",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "行业ID"
+        },
+        {
+          "name": "RuleId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "",
+          "comment": "规则ID"
+        },
+        {
+          "name": "Description",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "描述"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_PayInfo",
+      "comment": "供应商收款信息表",
+      "approx_rows": 1989,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_PayInfo_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_PayInfo_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "BankName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "银行名称"
+        },
+        {
+          "name": "BankAccount",
+          "type": "varchar(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "银行账户"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingQuality",
+      "comment": "供应商质量评级表",
+      "approx_rows": 1375,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_RatingQuality_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_RatingQuality_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "IX_Srm_RatingQuality_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "AdjustContent",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "调整事项"
+        },
+        {
+          "name": "AdjustContentScore",
+          "type": "decimal(18,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "调整事项，评分"
+        },
+        {
+          "name": "Legal_Rating",
+          "type": "varchar(2)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "质量评级 A B C"
+        },
+        {
+          "name": "Legal_ComScore",
+          "type": "decimal(18,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "综合评分"
+        },
+        {
+          "name": "Legal_Remarks",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "法务备注"
+        },
+        {
+          "name": "RatingStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "评级状态 0 未准入 1 新建 2 准入审批中 4 准入通过，等待评级 6 已准入，已评级  -1 驳回 -2 撤回"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingQualityAdjust",
+      "comment": "供应商质量评级调整表",
+      "approx_rows": 1788,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_RatingQualityAdjust_WorkflowFatherId",
+          "unique": false,
+          "columns": [
+            "WorkflowFatherId"
+          ]
+        },
+        {
+          "name": "IX_Srm_RatingQualityAdjust_WorkflowSonId",
+          "unique": false,
+          "columns": [
+            "WorkflowSonId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "WorkflowFatherId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "父工作流Id"
+        },
+        {
+          "name": "WorkflowSonId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "子工作流Id"
+        },
+        {
+          "name": "AdjustContent",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "调整事项"
+        },
+        {
+          "name": "AdjustContentScore",
+          "type": "decimal(18,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "调整事项，评分"
+        },
+        {
+          "name": "Legal_Rating",
+          "type": "varchar(2)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "质量评级 A B C"
+        },
+        {
+          "name": "Legal_ComScore",
+          "type": "decimal(18,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "综合评分"
+        },
+        {
+          "name": "Legal_Remarks",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "法务备注"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingQualityDetail",
+      "comment": "供应商质量评级明细表",
+      "approx_rows": 10591,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_RatingQualityDetail_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "TemplateVersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TemplateName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版名称"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标名称"
+        },
+        {
+          "name": "TargetWeightRatio",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "指标权重，百分比"
+        },
+        {
+          "name": "TargetIsQccTarget",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "指标是否是企查查指标 0 不是 1 是"
+        },
+        {
+          "name": "TargetSort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "指标排序，数值越小越靠前"
+        },
+        {
+          "name": "TargetItemId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项Id"
+        },
+        {
+          "name": "TargetItemName",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项"
+        },
+        {
+          "name": "TargetItemScore",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项分数"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingQualityDetailAdjust",
+      "comment": "供应商质量评级明细调整表",
+      "approx_rows": 11880,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_RatingQualityDetailAdjust_WorkflowFatherId",
+          "unique": false,
+          "columns": [
+            "WorkflowFatherId"
+          ]
+        },
+        {
+          "name": "IX_Srm_RatingQualityDetailAdjust_WorkflowSonId",
+          "unique": false,
+          "columns": [
+            "WorkflowSonId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "WorkflowFatherId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "父工作流Id"
+        },
+        {
+          "name": "WorkflowSonId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "子工作流Id"
+        },
+        {
+          "name": "TemplateVersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TemplateName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版名称"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标名称"
+        },
+        {
+          "name": "TargetWeightRatio",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "指标权重，百分比"
+        },
+        {
+          "name": "TargetIsQccTarget",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "指标是否是企查查指标 0 不是 1 是"
+        },
+        {
+          "name": "TargetSort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "指标排序，数值越小越靠前"
+        },
+        {
+          "name": "TargetItemId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项Id"
+        },
+        {
+          "name": "TargetItemName",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项"
+        },
+        {
+          "name": "TargetItemScore",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项分数"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTarget",
+      "comment": "供应商评级模版指标表",
+      "approx_rows": 103,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标名称"
+        },
+        {
+          "name": "WeightRatio",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "权重，百分比"
+        },
+        {
+          "name": "IsQccTarget",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "是否是企查查指标 0 不是 1 是"
+        },
+        {
+          "name": "Sort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "排序，数值越小越靠前"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTargetConfig",
+      "comment": "供应商评级模版指标配置表",
+      "approx_rows": 466,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetItemId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项Id"
+        },
+        {
+          "name": "TargetItemName",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项"
+        },
+        {
+          "name": "TargetItemScore",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项分数"
+        },
+        {
+          "name": "Sort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "排序，数值越小越靠前"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTargetConfigHistory",
+      "comment": "供应商评级模版指标配置历史表",
+      "approx_rows": 1760,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetItemId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项Id"
+        },
+        {
+          "name": "TargetItemName",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项"
+        },
+        {
+          "name": "TargetItemScore",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标项分数"
+        },
+        {
+          "name": "Sort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "排序，数值越小越靠前"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        },
+        {
+          "name": "RowCreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "数据行创建时间"
+        },
+        {
+          "name": "RowCreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "数据行创建人Id，ERP用户Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTargetHistory",
+      "comment": "供应商评级模版指标历史表",
+      "approx_rows": 397,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TargetId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标Id"
+        },
+        {
+          "name": "TargetName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "指标名称"
+        },
+        {
+          "name": "WeightRatio",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "权重，百分比"
+        },
+        {
+          "name": "IsQccTarget",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否是企查查指标 0 不是 1 是"
+        },
+        {
+          "name": "Sort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "排序，数值越小越靠前"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        },
+        {
+          "name": "RowCreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "数据行创建时间"
+        },
+        {
+          "name": "RowCreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "数据行创建人Id，ERP用户Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTemplate",
+      "comment": "供应商评级模版表",
+      "approx_rows": 11,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键、模版编号"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TemplateName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版名称"
+        },
+        {
+          "name": "VendorLabels",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版适用标签，存放格式：,1,2,"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户备注信息"
+        },
+        {
+          "name": "Status",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "是否启用 0 关闭 1 启用"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_RatingTemplateHistory",
+      "comment": "供应商评级模版历史表",
+      "approx_rows": 43,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "char(64)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：V2022-06-16 10:37:51"
+        },
+        {
+          "name": "TemplateNumber",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版编号，关联 Srm_RatingTemplate 表 SysNo 字段"
+        },
+        {
+          "name": "TemplateId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版Id"
+        },
+        {
+          "name": "TemplateName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版名称"
+        },
+        {
+          "name": "VendorLabels",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "模版适用标签，存放格式：,1,2,"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户备注信息"
+        },
+        {
+          "name": "Status",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "1 启用 -1 停用"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        },
+        {
+          "name": "RowCreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "数据行创建时间"
+        },
+        {
+          "name": "RowCreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "数据行创建人Id，ERP用户Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_SpecialApprovalReport",
+      "comment": "特批报备",
+      "approx_rows": 102,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_T_SrmSpecialApprove_AccountId_VendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "IX_T_SrmSpecialApprove_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_T_SrmSpecialApprove_VersionNumber",
+          "unique": false,
+          "columns": [
+            "VersionNumber"
+          ]
+        },
+        {
+          "name": "IX_T_SrmSpecialApprove_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "主键，自增"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "VersionNumber",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "版本号，格式：Vyyyy-MM-dd HH:mm:ss"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id，唯一"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "AuditStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "授信评审委员会审批结果 4 通过 -1 评审不通过"
+        },
+        {
+          "name": "AuditEnclosureId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "审批附件Id"
+        },
+        {
+          "name": "OtherEnclosureId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "相关增信文件或实地拜访报告Id"
+        },
+        {
+          "name": "Remarks",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注"
+        },
+        {
+          "name": "DingTalks",
+          "type": "varchar(1024)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "发送钉钉json数据"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_SpecialApprovalReport_Comment",
+      "comment": "特批评论表",
+      "approx_rows": 19,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_T_SrmSpecialComment_CommentId",
+          "unique": false,
+          "columns": [
+            "CommentId"
+          ]
+        },
+        {
+          "name": "IX_T_SrmSpecialComment_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_T_SrmSpecialComment_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "主键，自增"
+        },
+        {
+          "name": "CommentId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "评论Id"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id，关联 T_CreditSpecial 表 WorkflowId 字段"
+        },
+        {
+          "name": "CommentContent",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "评论内容"
+        },
+        {
+          "name": "CommentEnclosureId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "评论附件Id"
+        },
+        {
+          "name": "DingTalks",
+          "type": "varchar(1024)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "发送钉钉json数据"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_UserLabelAuth",
+      "comment": "用户标签权限表",
+      "approx_rows": 45,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "UserId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "Erp用户Id"
+        },
+        {
+          "name": "VendorLabels",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台；存放格式：,1,2,"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "Erp创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "Erp修改人Id"
+        },
+        {
+          "name": "RemarkIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_UserTreeNode",
+      "comment": "用户组织树节点(按NodeId UUID做数据可见范围)",
+      "approx_rows": 126,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "idx_tree_parent",
+          "unique": false,
+          "columns": [
+            "ParentNodeId",
+            "IsDelete"
+          ]
+        },
+        {
+          "name": "idx_tree_path",
+          "unique": false,
+          "columns": [
+            "NodePath",
+            "IsDelete"
+          ]
+        },
+        {
+          "name": "idx_tree_user",
+          "unique": false,
+          "columns": [
+            "UserId",
+            "IsDelete"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "uk_node_delete",
+          "unique": true,
+          "columns": [
+            "NodeId",
+            "IsDelete",
+            "IsDeletedMark"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增主键（内部使用）"
+        },
+        {
+          "name": "NodeId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "节点Id(UUID)"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 EnumSrmVendorLabel，如1广告线"
+        },
+        {
+          "name": "UserId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "Erp用户Id"
+        },
+        {
+          "name": "ParentNodeId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "父节点NodeId(UUID)，空UUID表示1级根"
+        },
+        {
+          "name": "NodePath",
+          "type": "varchar(2048)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "物化路径（UserId链），如 /101/205/306/"
+        },
+        {
+          "name": "Sort",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "同级排序，越大越靠前"
+        },
+        {
+          "name": "Remark",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "Erp创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "Erp修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0正常 1删除"
+        },
+        {
+          "name": "IsDeletedMark",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "0001-01-01 00:00:00.000",
+          "extra": "",
+          "comment": "删除时间标记，未删除为默认值"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorContract",
+      "comment": "供应商合同表",
+      "approx_rows": 804,
+      "primary_key": [
+        "VendorContractId"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_VendorContract_BusinessId",
+          "unique": false,
+          "columns": [
+            "BusinessId"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorContract_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorContract_InstanceId",
+          "unique": false,
+          "columns": [
+            "InstanceId"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorContract_VendorContractId",
+          "unique": false,
+          "columns": [
+            "VendorContractId"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorContract_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorContract_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "VendorContractId"
+          ]
+        },
+        {
+          "name": "SysNo",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "VendorContractId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "",
+          "comment": "合同Id"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "VendorBusinessUnit",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商所属业务，0 默认,1 广告线-仅供应商，2 广告线-仅服务商，4 广告线-供应商和服务商"
+        },
+        {
+          "name": "StartTime",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "合同开始时间，格式：yyyy-MM-dd 00:00:00"
+        },
+        {
+          "name": "EndTime",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "合同结束时间，格式：yyyy-MM-dd 23:59:59"
+        },
+        {
+          "name": "BelongingCostLine",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "所属成本线"
+        },
+        {
+          "name": "CostBelongingDepartment",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用所属部门"
+        },
+        {
+          "name": "IsSupplementaryAgreement",
+          "type": "varchar(4)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否为补充协议：是/否"
+        },
+        {
+          "name": "FileType",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "文件类型"
+        },
+        {
+          "name": "NameOfOurCompany",
+          "type": "varchar(1024)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "我方单位名称，多个，存放json格式"
+        },
+        {
+          "name": "ImportanceOfContract",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "合同重要性"
+        },
+        {
+          "name": "WhetherWeSealFirst",
+          "type": "varchar(4)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "我方是否先盖章：是/否"
+        },
+        {
+          "name": "UseContractTemplateWhere",
+          "type": "varchar(8)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "使用哪方合同模板：我方/对方"
+        },
+        {
+          "name": "IsCanModify",
+          "type": "varchar(4)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "是否可修改：是/否"
+        },
+        {
+          "name": "FileName",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "文件名称"
+        },
+        {
+          "name": "FileNum",
+          "type": "varchar(16)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "文件份数"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注"
+        },
+        {
+          "name": "AuditStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "申请审批状态 0 草稿，1 新建/提交审核 2 审核中， 4 审核通过， -1 驳回 -2 申请人撤回"
+        },
+        {
+          "name": "AuditTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "审核时间"
+        },
+        {
+          "name": "InstanceId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "实例Id"
+        },
+        {
+          "name": "BusinessId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "审批编号"
+        },
+        {
+          "name": "DingDingApproveUrl",
+          "type": "varchar(1024)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "钉钉审批的url"
+        },
+        {
+          "name": "DingTalkJsonData",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "存放当前钉钉表单完整的原始json格式数据"
+        },
+        {
+          "name": "DingTalkFileJsonData",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "从DingTalkJsonData中抽离表单的文件、附件二次处理的集合json格式数据"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "合同创建时间/钉钉发起审批时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "StaffId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "钉钉用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "RowCreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "数据行创建时间"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorEvaluateInvite",
+      "comment": "评价邀请记录表",
+      "approx_rows": 37,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_InviteId",
+          "unique": true,
+          "columns": [
+            "InviteId"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "InviteId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "",
+          "comment": "邀请ID"
+        },
+        {
+          "name": "EvaluateType",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "评价类型 1 服务评价  2 财务评价"
+        },
+        {
+          "name": "Comment",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "问候"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorEvaluateInviteItem",
+      "comment": "评价邀请记录表明细",
+      "approx_rows": 551,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_InviteId",
+          "unique": false,
+          "columns": [
+            "InviteId"
+          ]
+        },
+        {
+          "name": "VendorId_VendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "InviteId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "SrmVendorEvaluateInvite.InviteId"
+        },
+        {
+          "name": "EvaluateType",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "评价类型 1 服务评价  2 财务评价"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商ID"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签"
+        },
+        {
+          "name": "Status",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "状态 0 待评价  1已评价 -1覆盖"
+        },
+        {
+          "name": "BeInviteUserId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "被邀请人"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorEvaluateRecord",
+      "comment": "供应商评价记录",
+      "approx_rows": 590,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_RecordId",
+          "unique": true,
+          "columns": [
+            "RecordId"
+          ]
+        },
+        {
+          "name": "VendorId_VendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商ID"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签"
+        },
+        {
+          "name": "EvaluateType",
+          "type": "int(10)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "评价类型 1 服务评价  2 财务评价"
+        },
+        {
+          "name": "IndustryServiceTypeId",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业ID"
+        },
+        {
+          "name": "RuleId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "规则ID"
+        },
+        {
+          "name": "RecordId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "",
+          "comment": "记录ID"
+        },
+        {
+          "name": "Score",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "得分"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorEvaluateRecordData",
+      "comment": "供应商评价记录明细",
+      "approx_rows": 2151,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "u_RecordId",
+          "unique": false,
+          "columns": [
+            "RecordId"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "RecordId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "SrmVendorEvaluateRecord.RecordId"
+        },
+        {
+          "name": "Dimension",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "SrmIndustryServiceTypeEvaluateDimensions.Dimension(维度)"
+        },
+        {
+          "name": "Weight",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "权重（%）"
+        },
+        {
+          "name": "Selected",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "SrmIndustryServiceTypeEvaluateDimensions.LevelA-B(结果)"
+        },
+        {
+          "name": "Level",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "等级1-5"
+        },
+        {
+          "name": "Score",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "得分"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorInfo",
+      "comment": "供应商基本信息表",
+      "approx_rows": 2183,
+      "primary_key": [
+        "VendorId",
+        "VendorLabel",
+        "IsDelete",
+        "IsDelete_Mark"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_VendorInfo_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorInfo_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "VendorId",
+            "VendorLabel",
+            "IsDelete",
+            "IsDelete_Mark"
+          ]
+        },
+        {
+          "name": "SysNo",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id，唯一"
+        },
+        {
+          "name": "CrCode",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "统一信用代码"
+        },
+        {
+          "name": "VendorName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商名称"
+        },
+        {
+          "name": "VendorNameShort",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商名称简称"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活线；4 数娱线；6 电商线；8 中后台; 10 创节业务;"
+        },
+        {
+          "name": "VendorBusinessUnit",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商所属业务，0 默认,1 广告线-仅供应商，2 广告线-仅服务商，4 广告线-供应商和服务商"
+        },
+        {
+          "name": "IndustryServiceTypes",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业及服务类型，存放格式：,1,2,"
+        },
+        {
+          "name": "RegisteredAddress",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "注册地址"
+        },
+        {
+          "name": "OfficeAddress",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "办公地址"
+        },
+        {
+          "name": "EnterpriseEmail",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "企业邮箱"
+        },
+        {
+          "name": "CompanyOfficeNumber",
+          "type": "varchar(16)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "公司电话"
+        },
+        {
+          "name": "FaxNumber",
+          "type": "varchar(16)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "传真号码"
+        },
+        {
+          "name": "CompanyWebsite",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "公司网址"
+        },
+        {
+          "name": "Department",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "所属部门"
+        },
+        {
+          "name": "OwnerId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "所属人，ERP会员Id"
+        },
+        {
+          "name": "PayDateDay",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "应付款日期，VendorBusinessUnit = 2/4 服务商时，每月的X日，范围：1-31，默认：25"
+        },
+        {
+          "name": "CompanyIds",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "所属账套 存放格式：,1,2,"
+        },
+        {
+          "name": "IsEnable",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "是否启用 0 禁用 1 启用"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "评级成功后的工作流Id，关联 Srm_RatingQuality 表 WorkflowId，只有在已经评级时才会写入值，有值时一定是已评级"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        },
+        {
+          "name": "IsDelete_Mark",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "0001-01-01 00:00:00.000",
+          "extra": "",
+          "comment": "删除标记"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorOperationRecord",
+      "comment": "供应商操作记录表",
+      "approx_rows": 1865,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_VendorOperationRecord_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorOperationRecord_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "OperationRecordType",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "操作记录类型 1 开启供应商；2 禁用供应商；4 修改所属人；6 修改供应商名称；100 其他，备注内容"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "BusinessId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "关联的业务Id"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户填写备注信息"
+        },
+        {
+          "name": "Content",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "操作内容"
+        },
+        {
+          "name": "EnclosureId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "操作凭证Id"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(256)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorPaymentInfo",
+      "comment": "供应商付款",
+      "approx_rows": 256,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "fk_BankAccountId",
+          "unique": false,
+          "columns": [
+            "BankAccountId"
+          ]
+        },
+        {
+          "name": "fk_BelongingCostLine",
+          "unique": false,
+          "columns": [
+            "BelongingCostLine",
+            "CostBelongingDepartment",
+            "Department"
+          ]
+        },
+        {
+          "name": "fk_CreateById",
+          "unique": false,
+          "columns": [
+            "CreateById"
+          ]
+        },
+        {
+          "name": "fk_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "fk_VendorContractId",
+          "unique": false,
+          "columns": [
+            "VendorContractId"
+          ]
+        },
+        {
+          "name": "fk_VendorId",
+          "unique": false,
+          "columns": [
+            "VendorId"
+          ]
+        },
+        {
+          "name": "fk_WorkflowId",
+          "unique": false,
+          "columns": [
+            "WorkflowId"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "WorkflowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "工作流Id"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "VendorContractId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "合同Id"
+        },
+        {
+          "name": "VendorPolicyId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "政策ID"
+        },
+        {
+          "name": "BelongingCostLine",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "所属成本线 T_CascadeData.SysNo"
+        },
+        {
+          "name": "PaymentNature",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款性质 1境内付款 2境外付款"
+        },
+        {
+          "name": "CostBelongingDepartment",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "费用所属部门 T_CascadeData.SysNo"
+        },
+        {
+          "name": "Department",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "部门 T_CascadeData.SysNo"
+        },
+        {
+          "name": "CostBelongingCompany",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用所属公司"
+        },
+        {
+          "name": "AmountCategory",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "费用类别"
+        },
+        {
+          "name": "AssetNumber",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "固定资产编号"
+        },
+        {
+          "name": "AmountReason",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款事由"
+        },
+        {
+          "name": "AmountTotal",
+          "type": "decimal(18,4)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "付款总额"
+        },
+        {
+          "name": "Currency",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "币种 1人民币 2美金 3港币 4新加坡币"
+        },
+        {
+          "name": "BankAccount",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "开户行"
+        },
+        {
+          "name": "BankAccountId",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "银行账号"
+        },
+        {
+          "name": "PaymentType",
+          "type": "int(10)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "付款方式 1转账 2其他"
+        },
+        {
+          "name": "HasInvoice",
+          "type": "bit(1)",
+          "nullable": true,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "现是否有发票"
+        },
+        {
+          "name": "InvoiceFile",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "发票扫描件"
+        },
+        {
+          "name": "IsNeedCallBack",
+          "type": "bit(1)",
+          "nullable": true,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否需要回单"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注"
+        },
+        {
+          "name": "Attachment",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "附件"
+        },
+        {
+          "name": "AuditStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "申请审批状态 0 草稿，1 新建/提交审核 2 审核中， 4 审核通过， -1 驳回 -2 申请人撤回"
+        },
+        {
+          "name": "AuditTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "审核时间"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "BusinessId",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "钉钉审批编号"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorPolicy",
+      "comment": "供应商政策表",
+      "approx_rows": 1815,
+      "primary_key": [
+        "VendorPolicyId"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_VendorPolicy_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorPolicy_VendorIdVendorLabelIndustryServiceType",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel",
+            "IndustryServiceType"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorPolicy_VendorIdVendorLabelSkuId",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel",
+            "SkuId"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorPolicy_VendorPolicyId",
+          "unique": false,
+          "columns": [
+            "VendorPolicyId"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorPolicy_version_modified_at",
+          "unique": false,
+          "columns": [
+            "version_modified_at"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "VendorPolicyId"
+          ]
+        },
+        {
+          "name": "SysNo",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        },
+        {
+          "name": "WorkFlowId",
+          "unique": false,
+          "columns": [
+            "WorkFlowId"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "UNI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增长，唯一"
+        },
+        {
+          "name": "WorkFlowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "审批流ID,单个审批流"
+        },
+        {
+          "name": "VendorPolicyId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "",
+          "comment": "政策Id"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "VendorBusinessUnit",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商所属业务，0 默认,1 广告线-仅供应商，2 广告线-仅服务商，4 广告线-供应商和服务商"
+        },
+        {
+          "name": "SkuId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "SkuId"
+        },
+        {
+          "name": "IndustryServiceType",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业及服务类型"
+        },
+        {
+          "name": "IndustryServiceTypeName",
+          "type": "varchar(128)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业类型名称"
+        },
+        {
+          "name": "PolicyContent",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "政策信息"
+        },
+        {
+          "name": "PurchasePlans",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "采购计划"
+        },
+        {
+          "name": "ProcurementPlanName",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "erp采购计划名称"
+        },
+        {
+          "name": "BudgetAndSettlementContent",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "预算&结算内容"
+        },
+        {
+          "name": "PolicyName",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "政策名称"
+        },
+        {
+          "name": "CooperationMode",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "合作模式:单次合作=1,年度框架合作=2"
+        },
+        {
+          "name": "StartTime",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "政策开始时间，格式：yyyy-MM-dd 00:00:00"
+        },
+        {
+          "name": "EndTime",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "政策结束时间，格式：yyyy-MM-dd 23:59:59"
+        },
+        {
+          "name": "EndTimeApply",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "政策申请时的结束时间，格式：yyyy-MM-dd 23:59:59"
+        },
+        {
+          "name": "ServiceTarget",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "服务对象 1 为我司服务；2 为客户服务"
+        },
+        {
+          "name": "CustomerServiceJsonData",
+          "type": "mediumtext",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "为客户服务内容，json格式，ServiceTarget = 2 时，有数据"
+        },
+        {
+          "name": "SettlementId",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "结算方式 100 客户预付；200 一次性付款(按账期结算)；300 分期结算(按账期结算)"
+        },
+        {
+          "name": "PlannedDisbursementRatio",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "计划出款比例"
+        },
+        {
+          "name": "ReceivableDay",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "账期，单位：天"
+        },
+        {
+          "name": "PurchaseBudgetAmount",
+          "type": "decimal(18,4)",
+          "nullable": false,
+          "key": "",
+          "default": "0.0000",
+          "extra": "",
+          "comment": "采购预算金额，单位：万元"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "用户备注"
+        },
+        {
+          "name": "EnclosureId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "附件组Id"
+        },
+        {
+          "name": "PolicyStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "政策状态 0 正常 1 标记失效 2 被新政策替换（老政策不可用了） 4 被新政策覆盖（更改老政策的结束时间，老政策历史可用） 6 被新政策覆盖（不更改老政策数据，新老政策开始结束时间一模一样，老政策彻底不可用）"
+        },
+        {
+          "name": "AuditStatus",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "申请审批状态 0 草稿，1 新建/提交审核 2 审核中， 4 审核通过， -1 驳回 -2 申请人撤回"
+        },
+        {
+          "name": "AuditTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "审核时间"
+        },
+        {
+          "name": "PolicyCoverId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "当前政策被覆盖的政策Id"
+        },
+        {
+          "name": "RemarksIn",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "对内备注信息，不可对用户展示"
+        },
+        {
+          "name": "RatingWorkFlowId",
+          "type": "char(36)",
+          "nullable": false,
+          "key": "",
+          "default": "00000000-0000-0000-0000-000000000000",
+          "extra": "",
+          "comment": "申请政策时的供应商评级信息，对应Srm_RatingQuality的WorkFlowId"
+        },
+        {
+          "name": "VendorTypes",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "申请政策时的供应商类型，存放格式：,1,2,"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": "创建时间"
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id，ERP用户Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id，ERP用户Id"
+        },
+        {
+          "name": "version_modified_at",
+          "type": "datetime(3)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "数据变更记录标识"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_VendorWhite",
+      "comment": "供应商白名单表",
+      "approx_rows": 65,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "IX_Srm_VendorWhite_CreateTime",
+          "unique": false,
+          "columns": [
+            "CreateTime"
+          ]
+        },
+        {
+          "name": "IX_Srm_VendorWhite_VendorIdVendorLabel",
+          "unique": false,
+          "columns": [
+            "VendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "自增、主键"
+        },
+        {
+          "name": "VendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "Remarks",
+          "type": "varchar(512)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "备注信息"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_Vendor_Draft",
+      "comment": "供应商草稿表",
+      "approx_rows": 167,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "idx_buss_id",
+          "unique": false,
+          "columns": [
+            "business",
+            "create_id"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11) unsigned",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "主键，自增"
+        },
+        {
+          "name": "business",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "业务类型"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "json_data",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "数据"
+        },
+        {
+          "name": "create_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人ID"
+        },
+        {
+          "name": "create_time",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建人时间"
+        },
+        {
+          "name": "modify_time",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "修改人时间"
+        },
+        {
+          "name": "is_delete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常 1 删除"
+        }
+      ]
+    },
+    {
+      "name": "Srm_Vendor_Main_Info",
+      "comment": "供应商基本信息主体表",
+      "approx_rows": 2198,
+      "primary_key": [
+        "SysNo"
+      ],
+      "indexes": [
+        {
+          "name": "idx_vendorId",
+          "unique": true,
+          "columns": [
+            "vendorId",
+            "VendorLabel"
+          ]
+        },
+        {
+          "name": "PRIMARY",
+          "unique": true,
+          "columns": [
+            "SysNo"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "SysNo",
+          "type": "int(11) unsigned",
+          "nullable": false,
+          "key": "PRI",
+          "default": "",
+          "extra": "auto_increment",
+          "comment": "主键，自增"
+        },
+        {
+          "name": "vendorId",
+          "type": "varchar(64)",
+          "nullable": false,
+          "key": "MUL",
+          "default": "",
+          "extra": "",
+          "comment": "供应商Id，唯一"
+        },
+        {
+          "name": "VendorLabel",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "标签 1 广告线；2 本地生活；4 数娱线；6 电商线；8 中后台"
+        },
+        {
+          "name": "VendorTypes",
+          "type": "varchar(32)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "供应商类型 1 运营服务商；2 媒体方；4 媒体代理商；6 其他 存放格式：,1,2,"
+        },
+        {
+          "name": "Collaborators",
+          "type": "varchar(256)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "合作主体 存放格式：,1,2,"
+        },
+        {
+          "name": "main_business",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "主营业务"
+        },
+        {
+          "name": "coop_business",
+          "type": "varchar(512)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "合作业务"
+        },
+        {
+          "name": "company_advantage",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "公司优势描述"
+        },
+        {
+          "name": "speed",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "反应速度承诺"
+        },
+        {
+          "name": "quality",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "质量承诺"
+        },
+        {
+          "name": "video_team_person",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "视频团队人数"
+        },
+        {
+          "name": "video_team_structure",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "视频团队结构"
+        },
+        {
+          "name": "video_weekcount",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "视频周数量"
+        },
+        {
+          "name": "custom_business",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "客户行业类型"
+        },
+        {
+          "name": "operate_person",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "优化运营人数"
+        },
+        {
+          "name": "skilled_medium",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "擅长媒体"
+        },
+        {
+          "name": "skilled_business",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "擅长行业"
+        },
+        {
+          "name": "disire",
+          "type": "varchar(128)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "期望合作"
+        },
+        {
+          "name": "license_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "营业执照扫描件（彩色扫描件加盖公章）"
+        },
+        {
+          "name": "corporate_representative_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "法定代表人身份证（彩色扫描件加盖公章）"
+        },
+        {
+          "name": "industry_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "行业相关资质证书（如代理资质证书、广告经营许可等）"
+        },
+        {
+          "name": "case_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "项目案例（合同、发票、水单、验收情况说明）"
+        },
+        {
+          "name": "company_introduction_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "企业介绍（实地拜访报告：规模、行业、体量等介绍）"
+        },
+        {
+          "name": "other_desc",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "其他补充说明（文字)"
+        },
+        {
+          "name": "other_enclosureid",
+          "type": "char(36)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "其他补充说明（附件）"
+        },
+        {
+          "name": "CreateTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "CURRENT_TIMESTAMP(3)",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "CreateById",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "创建人Id"
+        },
+        {
+          "name": "ModifyTime",
+          "type": "datetime(3)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "on update CURRENT_TIMESTAMP(3)",
+          "comment": "修改时间"
+        },
+        {
+          "name": "ModifyById",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "",
+          "extra": "",
+          "comment": "修改人Id"
+        },
+        {
+          "name": "IsDelete",
+          "type": "bit(1)",
+          "nullable": false,
+          "key": "",
+          "default": "b'0'",
+          "extra": "",
+          "comment": "是否删除 0 正常  1 删除"
+        }
+      ]
+    }
+  ]
+}

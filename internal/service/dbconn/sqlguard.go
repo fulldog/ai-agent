@@ -133,13 +133,6 @@ func hasTablePrefix(name string) bool {
 	return strings.HasPrefix(strings.TrimSpace(name), tableNamePrefix)
 }
 
-func likeContains(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return "%" + s + "%"
-}
-
 func splitTableIdent(raw string) (schema, table string, err error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {

@@ -81,6 +81,7 @@ dbconn:
   enabled: true
   driver: mysql
   dsn: "" # 或环境变量 BIZ_DATABASE_URL
+  dictionary: docs/srm_dictionary.json # schema 读取的本地数据字典
   max_open_conns: 5
   max_idle_conns: 2
   max_rows: 50
