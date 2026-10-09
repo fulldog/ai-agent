@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Linux ARM 后端部署。在仓库根目录执行：
+# Linux x86_64 后端部署。在仓库根目录执行：
 #   bash deploy/backend.sh
 #
 # 1. 编译 ./cmd/server/main.go → ./bin/ai-agent
@@ -35,18 +35,12 @@ if [[ ! -f "${CONFIG_REL}" ]]; then
 fi
 
 case "$(uname -s)-$(uname -m)" in
-  Linux-aarch64|Linux-arm64)
+  Linux-x86_64|Linux-amd64)
     export GOOS=linux
-    export GOARCH=arm64
-    unset GOARM
-    ;;
-  Linux-armv7l|Linux-armv6l|Linux-armhf|Linux-arm)
-    export GOOS=linux
-    export GOARCH=arm
-    export GOARM="${GOARM:-7}"
+    export GOARCH=amd64
     ;;
   *)
-    log "ERROR: 需要 Linux ARM，当前是 $(uname -s) $(uname -m)"
+    log "ERROR: 需要 Linux x86_64，当前是 $(uname -s) $(uname -m)"
     exit 1
     ;;
 esac
