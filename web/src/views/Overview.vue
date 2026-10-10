@@ -15,6 +15,25 @@
       </div>
     </div>
 
+    <div class="panel">
+      <p class="panel-title">钉钉回复模式</p>
+      <el-form inline @submit.prevent>
+        <el-form-item>
+          <el-select
+            v-model="replyMode"
+            style="width: 320px"
+            :disabled="replyModeLoading || replyModeSaving"
+            :loading="replyModeSaving"
+            @change="onReplyModeChange"
+          >
+            <el-option v-for="opt in replyModeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <p class="muted">{{ replyModeDetail }}</p>
+      <p v-if="replyModeError" class="muted">{{ replyModeError }}</p>
+    </div>
+
     <el-row :gutter="12">
       <el-col :span="8">
         <div class="panel">
@@ -106,7 +125,7 @@ import { Coin, Cpu, Monitor, Platform } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
-import type { TokenBucket, TokenUsage } from "@/api/types";
+import type { ReplyModeOption, ReplyModeSetting, TokenBucket, TokenUsage } from "@/api/types";
 
 const emptyBucket = (): TokenBucket => ({ calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
 
@@ -115,6 +134,18 @@ const usage = ref<TokenUsage | null>(null);
 const usageLoading = ref(false);
 const usageError = ref("");
 const dictUpdating = ref(false);
+const replyMode = ref("chat");
+const replyModeOptions = ref<ReplyModeOption[]>([
+  { value: "chat", label: "对话（CompleteStream）", hint: "钉钉消息走对话 Completions，预检索结果注入 system。" },
+  { value: "agent", label: "钉钉预检索 Agent", hint: "先检索语料，再走 Agent.Run。" },
+  { value: "web", label: "同控制台 Agent 薄包装", hint: "与控制台 Agent 页同一套 Run，不预注入检索结果。" },
+]);
+const replyModeFromStore = ref(false);
+const replyModeLoading = ref(false);
+const replyModeSaving = ref(false);
+const replyModeError = ref("");
+let replyModePrev = "chat";
+let replyModeApplying = false;
 
 const hero: HeroItem[] = [
   { icon: Monitor, title: "服务健康", desc: "读取 /health，展示数据库连通性与部署模式", tone: "blue" },
@@ -124,6 +155,14 @@ const hero: HeroItem[] = [
 ];
 
 const configuredCount = computed(() => models.providers.filter((p) => p.configured).length);
+
+const replyModeDetail = computed(() => {
+  const hint = replyModeOptions.value.find((opt) => opt.value === replyMode.value)?.hint || "";
+  const source = replyModeFromStore.value
+    ? "已保存在数据库，优先于配置文件。"
+    : "当前使用配置文件或环境变量中的默认值。";
+  return `${hint} 下一条钉钉消息即按此模式回复，无需重启。${source}`;
+});
 
 const usageCards = computed(() => {
   const t = usage.value?.totals;
@@ -157,9 +196,52 @@ async function loadUsage() {
   }
 }
 
+async function loadReplyMode() {
+  replyModeLoading.value = true;
+  replyModeError.value = "";
+  try {
+    const res = await requestJSON<ReplyModeSetting>("/api/v1/dingtalk/reply-mode");
+    replyModeApplying = true;
+    replyMode.value = res.reply_mode || "chat";
+    replyModePrev = replyMode.value;
+    replyModeFromStore.value = !!res.from_store;
+    if (res.options?.length) replyModeOptions.value = res.options;
+  } catch (e) {
+    replyModeError.value = formatAPIError(e);
+  } finally {
+    replyModeApplying = false;
+    replyModeLoading.value = false;
+  }
+}
+
+async function onReplyModeChange(mode: string) {
+  if (replyModeApplying || mode === replyModePrev) return;
+  replyModeSaving.value = true;
+  replyModeError.value = "";
+  try {
+    const res = await requestJSON<ReplyModeSetting>("/api/v1/dingtalk/reply-mode", {
+      method: "PUT",
+      body: JSON.stringify({ reply_mode: mode }),
+    });
+    replyModeApplying = true;
+    replyMode.value = res.reply_mode;
+    replyModePrev = res.reply_mode;
+    replyModeFromStore.value = !!res.from_store;
+    if (res.options?.length) replyModeOptions.value = res.options;
+    const label = replyModeOptions.value.find((opt) => opt.value === res.reply_mode)?.label || res.reply_mode;
+    ElMessage.success(`钉钉回复模式已切换为${label}`);
+  } catch (e) {
+    replyModeApplying = true;
+    replyMode.value = replyModePrev;
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    replyModeApplying = false;
+    replyModeSaving.value = false;
+  }
+}
+
 async function reload() {
-  await models.refresh();
-  await loadUsage();
+  await Promise.all([models.refresh(), loadUsage(), loadReplyMode()]);
 }
 
 async function updateDictionary() {

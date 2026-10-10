@@ -944,6 +944,59 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/dingtalk/reply-mode:
+    get:
+      tags: [DingTalk]
+      summary: 读取钉钉回复模式
+      description: 库中无覆盖时返回配置文件启动默认值（from_store=false）。
+      operationId: getDingTalkReplyMode
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: 当前模式
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkReplyMode"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [DingTalk]
+      summary: 切换钉钉回复模式
+      description: 写入 app_settings，下一条钉钉消息即生效，无需重启。
+      operationId: setDingTalkReplyMode
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reply_mode]
+              properties:
+                reply_mode:
+                  type: string
+                  enum: [chat, agent, web]
+            example:
+              reply_mode: agent
+      responses:
+        "200":
+          description: 更新后的模式
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkReplyMode"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/dingtalk/chats:
     get:
       tags: [DingTalk]
@@ -1548,6 +1601,27 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    DingTalkReplyMode:
+      type: object
+      properties:
+        reply_mode:
+          type: string
+          enum: [chat, agent, web]
+        from_store:
+          type: boolean
+          description: true 表示来自 app_settings，优先于配置文件
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              label:
+                type: string
+              hint:
+                type: string
 
     DingTalkChat:
       type: object

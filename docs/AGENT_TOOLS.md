@@ -223,8 +223,9 @@ agent:
 | 配置文件 | `chat.rag_enabled` | 普通对话是否默认 RAG，缺省 true；`CHAT_RAG_ENABLED` 可覆盖；无 corpus_id 时搜全部语料 |
 | 配置文件 | `chat.tools` | 普通对话额外工具，与 `agent.default_tools` 合并 |
 | 配置文件 | `chat.max_tool_steps` | 普通对话内最多工具轮数，缺省 4 |
-| 配置文件 | `dingtalk.reply_mode` | `chat`（默认）钉钉走对话 Completions；`agent` 钉钉预检索后走 `Agent.Run`；`web` 与控制台 Agent 页同一套 `Agent.Run`（不预注入 hits） |
-| 环境变量 | `DINGTALK_REPLY_MODE` | 同上 |
+| 配置文件 | `dingtalk.reply_mode` | 启动默认值。`chat` 钉钉走对话 Completions；`agent` 钉钉预检索后走 `Agent.Run`；`web` 与控制台 Agent 页同一套 `Agent.Run`（不预注入 hits） |
+| 环境变量 | `DINGTALK_REPLY_MODE` | 同上，仍只作为启动默认值 |
+| 控制台 | 概览「钉钉回复模式」 | `PUT /api/v1/dingtalk/reply-mode` 写入 `app_settings`，优先于配置文件，下一条消息生效 |
 | 请求体 | `tools` | 在默认列表上追加工具名（仍保留 `default_tools`） |
 | 请求体 | `rag.corpus_id` / `rag.top_k` | 预检索与 `knowledge_search` 的默认范围 |
 

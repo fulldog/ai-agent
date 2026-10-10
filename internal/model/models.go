@@ -297,3 +297,12 @@ type DingTalkChatCorpus struct {
 }
 
 func (DingTalkChatCorpus) TableName() string { return "dingtalk_chat_corpora" }
+
+// AppSetting 进程内可热更新的键值配置（控制台写入，重启后仍生效）。
+type AppSetting struct {
+	Key       string    `gorm:"column:setting_key;primaryKey;type:text;comment:配置键" json:"key"`
+	Value     string    `gorm:"type:text;not null;default:'';comment:配置值" json:"value"`
+	UpdatedAt time.Time `gorm:"comment:更新时间" json:"updated_at"`
+}
+
+func (AppSetting) TableName() string { return "app_settings" }

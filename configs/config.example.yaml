@@ -174,5 +174,5 @@ dingtalk:
   client_id: ""         # 凭证与基础信息的 Client ID（旧称 AppKey）
   client_secret: ""     # 同一应用的 Client Secret
   card_template_id: ""  # 可选；留空则整段回复走 sessionWebhook
-  reply_mode: web      # chat=CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；web=与控制台 Agent 同一套 Run（不预注入 hits）
+  reply_mode: web      # 启动默认值。控制台「概览」可覆盖并写入数据库，下一条消息即生效。chat=CompleteStream；agent=钉钉预检索后 Agent.Run；web=与控制台 Agent 同一套 Run（不预注入 hits）
   # reply_tag: ""       # 出站末尾实例标记；留空默认本机 hostname

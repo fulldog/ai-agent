@@ -15,6 +15,41 @@ type DingTalkHandler struct {
 	Bot *dingtalk.Bot
 }
 
+func (h *DingTalkHandler) GetReplyMode(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	c.JSON(http.StatusOK, h.Bot.ReplyModeView())
+}
+
+func (h *DingTalkHandler) SetReplyMode(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	var req struct {
+		ReplyMode string `json:"reply_mode"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	if err := h.Bot.SetReplyMode(req.ReplyMode); err != nil {
+		if errors.Is(err, dingtalk.ErrInvalidReplyMode) {
+			writeError(c, http.StatusBadRequest, "bad_request", "reply_mode must be chat, agent, or web")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrReplyModeStore) {
+			writeError(c, http.StatusServiceUnavailable, "unavailable", "database required to save reply mode")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, h.Bot.ReplyModeView())
+}
+
 func (h *DingTalkHandler) ListChats(c *gin.Context) {
 	if h == nil || h.Bot == nil {
 		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")

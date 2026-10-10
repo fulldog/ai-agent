@@ -37,6 +37,7 @@ type DingTalkConfig struct {
 	CardTemplateID string `yaml:"card_template_id"`
 	// ReplyMode chat=现有 CompleteStream（默认）；agent=钉钉预检索后 Agent.Run；
 	// web=薄包装，与控制台 Agent 页同一套 Agent.Run（不预注入 hits、不拦语料未命中）。
+	// 仅作启动默认值；控制台概览保存后写入 app_settings，优先于本字段。
 	ReplyMode string `yaml:"reply_mode"`
 	// ReplyTag 追加到每条出站末尾，用于确认是哪套进程在回群（排查串号）。
 	// 未配置时默认为本机 hostname。
@@ -48,6 +49,20 @@ const (
 	DingTalkReplyAgent = "agent"
 	DingTalkReplyWeb   = "web"
 )
+
+// ParseDingTalkReplyMode 返回规范的 chat、agent 或 web。非法值 ok 为 false。
+func ParseDingTalkReplyMode(v string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case DingTalkReplyChat:
+		return DingTalkReplyChat, true
+	case DingTalkReplyAgent:
+		return DingTalkReplyAgent, true
+	case DingTalkReplyWeb:
+		return DingTalkReplyWeb, true
+	default:
+		return "", false
+	}
+}
 
 // UseAgent 是否走钉钉预检索 + Agent 工具循环。未配置或非法值视为 chat。
 func (c DingTalkConfig) UseAgent() bool {
@@ -707,12 +722,9 @@ func (c *Config) normalize() {
 	if c.DingTalk.ReplyTag == "" {
 		c.DingTalk.ReplyTag = defaultHostReplyTag()
 	}
-	switch strings.ToLower(strings.TrimSpace(c.DingTalk.ReplyMode)) {
-	case DingTalkReplyAgent:
-		c.DingTalk.ReplyMode = DingTalkReplyAgent
-	case DingTalkReplyWeb:
-		c.DingTalk.ReplyMode = DingTalkReplyWeb
-	default:
+	if mode, ok := ParseDingTalkReplyMode(c.DingTalk.ReplyMode); ok {
+		c.DingTalk.ReplyMode = mode
+	} else {
 		c.DingTalk.ReplyMode = DingTalkReplyChat
 	}
 

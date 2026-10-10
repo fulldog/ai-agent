@@ -549,6 +549,32 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 
 语料库不存在 → `400`；档案不存在 → `404`。
 
+### GET `/api/v1/dingtalk/reply-mode`
+
+当前钉钉回复模式。`from_store=false` 时使用配置文件 / `DINGTALK_REPLY_MODE` 的启动默认值。
+
+```json
+{
+  "reply_mode": "agent",
+  "from_store": true,
+  "options": [
+    { "value": "chat", "label": "对话（CompleteStream）", "hint": "钉钉消息走对话 Completions，预检索结果注入 system。" },
+    { "value": "agent", "label": "钉钉预检索 Agent", "hint": "先检索语料，再走 Agent.Run。" },
+    { "value": "web", "label": "同控制台 Agent 薄包装", "hint": "与控制台 Agent 页同一套 Run，不预注入检索结果。" }
+  ]
+}
+```
+
+### PUT `/api/v1/dingtalk/reply-mode`
+
+写入 `app_settings` 并立即切换后续钉钉消息的回复模式，无需重启。
+
+```json
+{ "reply_mode": "web" }
+```
+
+`reply_mode` 只能是 `chat`、`agent`、`web`，否则 `400`。响应与 GET 相同，`from_store` 为 `true`。
+
 ---
 
 ## 7. RAG 调试
@@ -629,12 +655,13 @@ Query：`limit`、`offset`、`request_id`、`conversation_id`、`agent_run_id`�
 | Agent Run | GET | `/api/v1/agent/runs/:id` | 是 |
 | Corpus | CRUD + upload | `/api/v1/corpora`、`.../documents` | 是 |
 | DingTalk chats | GET / PUT bind | `/api/v1/dingtalk/chats`、`.../corpora` | 是 |
+| DingTalk reply mode | GET / PUT | `/api/v1/dingtalk/reply-mode` | 是 |
 | Reindex | POST | `/api/v1/corpora/:id/reindex` | 是 |
 | RAG | POST | `/api/v1/rag/search` | 是 |
 | Logs | GET | `/api/v1/logs/requests` | 是 |
 | Token Stats | GET | `/api/v1/stats/tokens` | 是 |
 
-钉钉群机器人收消息仍走进程内 Stream，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。群档案与语料绑定见上节 `/api/v1/dingtalk/chats`。`dingtalk.reply_mode` 默认 `chat`（`CompleteStream`）；`agent` 为钉钉预检索后的 `Agent.Run`；`web` 与 `/agent/runs` 同一套薄包装（不预注入 hits），均写入 `agent_runs`。
+钉钉群机器人收消息仍走进程内 Stream，详见 [DINGTALK.md](./DINGTALK.md)。会话 `uid` 为钉钉 `senderStaffId`，`channel=dingtalk`。群档案与语料绑定见上节 `/api/v1/dingtalk/chats`。`dingtalk.reply_mode` 是启动默认值：`chat`（`CompleteStream`）、`agent`（钉钉预检索后的 `Agent.Run`）、`web`（与 `/agent/runs` 同一套薄包装，不预注入 hits）。控制台概览通过 `/api/v1/dingtalk/reply-mode` 覆盖后写入 `app_settings`，优先于配置文件。`agent` / `web` 均写入 `agent_runs`。
 
 ---
 

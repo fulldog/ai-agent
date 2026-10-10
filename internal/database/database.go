@@ -62,6 +62,7 @@ func migrate(db *gorm.DB) error {
 		&model.FileExtraction{},
 		&model.DingTalkChat{},
 		&model.DingTalkChatCorpus{},
+		&model.AppSetting{},
 	); err != nil {
 		return fmt.Errorf("automigrate: %w", err)
 	}

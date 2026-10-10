@@ -49,6 +49,9 @@ type Bot struct {
 	sess         *streamSession
 	streamCancel context.CancelFunc
 	streamWG     sync.WaitGroup
+
+	modeMu             sync.RWMutex
+	replyModeFromStore bool
 }
 
 func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, ragSvc *rag.Service, corpusSvc *corpus.Service, log, accessLog *zap.Logger, db *gorm.DB) *Bot {
@@ -69,7 +72,7 @@ func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, rag
 	if preview <= 0 {
 		preview = 4096
 	}
-	return &Bot{
+	b := &Bot{
 		cfg:         cfg.DingTalk,
 		ragTop:      top,
 		maxDistance: cfg.RAG.MaxDistance,
@@ -84,6 +87,8 @@ func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, rag
 		api:         newOpenAPI(cfg.DingTalk.ClientID, cfg.DingTalk.ClientSecret),
 		dedup:       newMsgDeduper(10 * time.Minute),
 	}
+	b.loadStoredReplyMode()
+	return b
 }
 
 func (b *Bot) Enabled() bool {
@@ -473,11 +478,11 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 }
 
 func (b *Bot) useAgent() bool {
-	return b != nil && b.cfg.UseAgent() && b.agent != nil
+	return b != nil && b.ReplyMode() == config.DingTalkReplyAgent && b.agent != nil
 }
 
 func (b *Bot) useWebAgent() bool {
-	return b != nil && b.cfg.UseWebAgent() && b.agent != nil
+	return b != nil && b.ReplyMode() == config.DingTalkReplyWeb && b.agent != nil
 }
 
 func sessionTitle(data *botCallback) string {

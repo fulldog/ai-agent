@@ -196,6 +196,18 @@ export interface IntentItem {
   CopyTaskNo: string;
 }
 
+export interface ReplyModeOption {
+  value: string;
+  label: string;
+  hint: string;
+}
+
+export interface ReplyModeSetting {
+  reply_mode: string;
+  from_store: boolean;
+  options: ReplyModeOption[];
+}
+
 export interface AnalyzeResult {
   data?: Record<string, unknown>;
   file_name?: string;

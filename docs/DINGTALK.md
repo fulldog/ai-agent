@@ -35,8 +35,10 @@ dingtalk:
   client_id: "your-app-key"
   client_secret: "your-app-secret"
   card_template_id: "your-ai-card-template-id"  # 可选
-  reply_mode: chat  # chat（默认，CompleteStream）| agent（钉钉预检索 + Agent.Run）| web（同控制台 Agent 薄包装）
+  reply_mode: chat  # 启动默认值。chat（CompleteStream）| agent（钉钉预检索 + Agent.Run）| web（同控制台 Agent 薄包装）
 ```
+
+控制台「概览」里的下拉会把当前模式写入 `app_settings`（键 `dingtalk.reply_mode`），**下一条钉钉消息即生效，无需重启**。库里有记录时优先于 YAML 和 `DINGTALK_REPLY_MODE`；删掉该行后恢复配置文件默认值。
 
 发卡片/群消息时的 robotCode 使用同一应用的 Client ID，无需单独配置。卡片模板未配或创建失败时：整段回复走 `sessionWebhook`；群聊还可再降级到 `robot_1_0.OrgGroupSend`。
 

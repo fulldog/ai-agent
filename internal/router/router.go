@@ -104,6 +104,8 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.DELETE("/corpora/:id/documents/:doc_id", corpusH.DeleteDocument)
 			dbGroup.POST("/corpora/:id/reindex", corpusH.Reindex)
 
+			dbGroup.GET("/dingtalk/reply-mode", dingH.GetReplyMode)
+			dbGroup.PUT("/dingtalk/reply-mode", dingH.SetReplyMode)
 			dbGroup.GET("/dingtalk/chats", dingH.ListChats)
 			dbGroup.PUT("/dingtalk/chats/:id/corpora", dingH.SetChatCorpora)
 
