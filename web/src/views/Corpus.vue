@@ -95,7 +95,7 @@
       accept=".txt,.md,.markdown,.csv,.json,.xml,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif"
       @change="onReuploadFile"
     />
-    <el-drawer v-model="textOpen" :title="textTitle" size="46%" destroy-on-close>
+    <el-drawer v-model="textOpen" :title="textTitle" size="65%" destroy-on-close>
       <p v-if="textSource && textSource !== textTitle" class="muted drawer-source">{{ textSource }}</p>
       <p v-if="textLoading" class="muted">加载中…</p>
       <p v-else-if="!textContent" class="muted">暂无正文</p>
