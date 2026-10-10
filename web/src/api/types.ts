@@ -97,6 +97,8 @@ export interface Document {
   corpus_id: string;
   title: string;
   source: string;
+  kind: string;
+  extraction_id?: string;
   content_hash: string;
   status: string;
   error_message?: string;

@@ -38,7 +38,6 @@ export function apiURL(path: string): string {
 export function authHeaders(extra?: HeadersInit): Headers {
   const settings = useSettingsStore();
   const h = new Headers(extra);
-  if (settings.apiKey) h.set("X-API-Key", settings.apiKey);
   if (settings.userId) h.set("X-User-Id", settings.userId);
   return h;
 }
@@ -68,6 +67,37 @@ export async function requestJSON<T>(path: string, init: RequestInit = {}): Prom
     throw await parseError(res);
   }
   return (await res.json()) as T;
+}
+
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(apiURL(path), { headers: authHeaders() });
+  if (!res.ok) {
+    throw await parseError(res);
+  }
+  const blob = await res.blob();
+  const name = filenameFromDisposition(res.headers.get("Content-Disposition")) || fallbackName || "download";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function filenameFromDisposition(header: string | null): string {
+  if (!header) return "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      return star[1];
+    }
+  }
+  const plain = /filename="([^"]+)"/i.exec(header);
+  return plain?.[1] || "";
 }
 
 export async function requestForm<T>(path: string, form: FormData, method = "POST"): Promise<T> {

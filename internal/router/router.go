@@ -58,7 +58,7 @@ func Setup(application *app.App) *gin.Engine {
 
 	needDB := middleware.RequireDB(application.DB)
 
-	// ---------- /api/v1（需 X-API-Key）----------
+	// ---------- /api/v1（鉴权已跳过，无需 X-API-Key）----------
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.APIKey(cfg))
 	v1.Use(middleware.UserID())
@@ -98,6 +98,9 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.DELETE("/corpora/:id", corpusH.Delete)
 			dbGroup.POST("/corpora/:id/documents", corpusH.AddDocument)
 			dbGroup.GET("/corpora/:id/documents", corpusH.ListDocuments)
+			dbGroup.GET("/corpora/:id/documents/:doc_id", corpusH.GetDocument)
+			dbGroup.GET("/corpora/:id/documents/:doc_id/file", corpusH.DownloadDocument)
+			dbGroup.POST("/corpora/:id/documents/:doc_id/reupload", corpusH.ReuploadDocument)
 			dbGroup.DELETE("/corpora/:id/documents/:doc_id", corpusH.DeleteDocument)
 			dbGroup.POST("/corpora/:id/reindex", corpusH.Reindex)
 

@@ -94,15 +94,18 @@ func (c *Corpus) BeforeCreate(tx *gorm.DB) error {
 
 // Document 语料文档。
 type Document struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey;comment:文档ID" json:"id"`
-	CorpusID     uuid.UUID `gorm:"type:uuid;index:idx_documents_corpus,priority:1;comment:所属语料库ID" json:"corpus_id"`
-	Title        string    `gorm:"type:text;comment:文档标题" json:"title"`
-	Source       string    `gorm:"type:text;comment:来源(文件名/URL等)" json:"source"`
-	ContentHash  string    `gorm:"type:text;comment:内容哈希(去重/变更检测)" json:"content_hash"`
-	Status       string    `gorm:"type:text;index;comment:状态:pending/indexing/ready/failed" json:"status"`
-	ErrorMessage string    `gorm:"type:text;comment:索引失败原因" json:"error_message,omitempty"`
-	CreatedAt    time.Time `gorm:"index:idx_documents_corpus,priority:2;comment:创建时间" json:"created_at"`
-	UpdatedAt    time.Time `gorm:"comment:更新时间" json:"updated_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey;comment:文档ID" json:"id"`
+	CorpusID     uuid.UUID  `gorm:"type:uuid;index:idx_documents_corpus,priority:1;comment:所属语料库ID" json:"corpus_id"`
+	Title        string     `gorm:"type:text;comment:文档标题" json:"title"`
+	Source       string     `gorm:"type:text;comment:来源(文件名/URL等)" json:"source"`
+	Kind         string     `gorm:"type:text;comment:来源类型:file/text" json:"kind"`
+	ExtractionID *uuid.UUID `gorm:"type:uuid;index;comment:关联文件抽取记录ID" json:"extraction_id,omitempty"`
+	Content      string     `gorm:"type:text;comment:原文" json:"-"`
+	ContentHash  string     `gorm:"type:text;comment:内容哈希(去重/变更检测)" json:"content_hash"`
+	Status       string     `gorm:"type:text;index;comment:状态:pending/indexing/ready/failed" json:"status"`
+	ErrorMessage string     `gorm:"type:text;comment:索引失败原因" json:"error_message,omitempty"`
+	CreatedAt    time.Time  `gorm:"index:idx_documents_corpus,priority:2;comment:创建时间" json:"created_at"`
+	UpdatedAt    time.Time  `gorm:"comment:更新时间" json:"updated_at"`
 }
 
 func (Document) TableName() string { return "documents" }

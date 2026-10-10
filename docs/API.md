@@ -376,7 +376,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
 
 **响应** `200`：最终文本、`run_id`、`steps` 摘要、`usage`。
 
-`tools` 在 `agent.default_tools` **之上追加**（不可剔除默认集），可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。运行开始时会按问题检索语料并注入 system；有摘录时按其中流程追问或调工具。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。更新字典文件：`PUT /api/v1/dbconn/dictionary`（管理员 `X-API-Key`，请求体为完整 `srm_dictionary.json`），写入磁盘并热更新内存。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。未传 `rag.corpus_id` 时检索全部语料。
+`tools` 在 `agent.default_tools` **之上追加**（不可剔除默认集），可含 `dbconn`（独立 MySQL 业务库：先 `schema` 对照表/列注释，再只读 `query`）。运行开始时会按问题检索语料并注入 system；有摘录时按其中流程追问或调工具。未配置 `dbconn.dsn` 或环境变量 `BIZ_DATABASE_URL` 时该工具不会注册。更新字典：`PUT /api/v1/dbconn/dictionary`。重新连接业务库，读取 `Srm` 前缀表，重建字典文件并热更新内存。`dbconn.ssh.enabled` / `BIZ_SSH_ENABLED` 为 SSH 开关。打开后用用户名密码（`ssh.user` / `ssh.password` 或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）经隧道连接，并自动保活、断线重连。未传 `rag.corpus_id` 时检索全部语料。
 
 ### POST `/api/v1/agent/runs/stream`
 
@@ -455,7 +455,7 @@ data: {"status":"ok","run_id":"uuid"}
 - PDF：文字层提取；扫描件 OCR
 - 图片：png/jpg/…（OCR）
 
-单文件成功响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`。  
+每个文件单独写入一篇文档并单独建索引，正文不会拼成一篇。单文件成功响应含 `document`、`cache_hit`、`content_hash`、`extraction_id`。  
 多文件响应：
 
 ```json
@@ -486,7 +486,19 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 
 ### GET `/api/v1/corpora/:id/documents`
 
-文档列表。
+文档列表。每条带 `kind`：`file`（上传文件）或 `text`（粘贴文本）。旧数据未写 `kind` 时，按 `source` 扩展名推断。
+
+### GET `/api/v1/corpora/:id/documents/:doc_id`
+
+文档详情，含 `kind` 与 `content`（原文；旧文档由分块拼回）。
+
+### GET `/api/v1/corpora/:id/documents/:doc_id/file`
+
+打开或下载这一篇上传时保存的原始文件。PDF、图片为 inline，其余为附件下载。粘贴文本和 txt/md 等文本不走此接口，用文档详情直接打开正文。仅 `kind=file`。找不到原件 → `404`。
+
+### POST `/api/v1/corpora/:id/documents/:doc_id/reupload`
+
+用一个新文件替换该文档并只重建这一篇的索引，不影响同库其他文档。`multipart/form-data`，字段名 `file`。文档不存在 → `404`。
 
 ### DELETE `/api/v1/corpora/:id/documents/:doc_id`
 

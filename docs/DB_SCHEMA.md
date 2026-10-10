@@ -120,6 +120,9 @@ API Key 第一期可仅存配置文件；若落库可增加 `api_keys`（见文�
 | corpus_id | UUID FK → corpora | 所属语料库ID |
 | title | TEXT | 文档标题 |
 | source | TEXT | 来源（文件名 / URI 等） |
+| kind | TEXT | 来源类型：`file` 上传文件 / `text` 粘贴文本 |
+| extraction_id | UUID NULL | 关联 `file_extractions.id`（文件下载用） |
+| content | TEXT | 原文（列表接口不返回） |
 | content_hash | TEXT | 内容哈希（去重 / 变更检测） |
 | status | TEXT | 状态：`pending` / `indexing` / `ready` / `failed` |
 | error_message | TEXT NULL | 索引失败原因 |

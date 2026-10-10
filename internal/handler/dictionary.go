@@ -1,38 +1,32 @@
 package handler
 
 import (
-	"io"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 )
 
-const maxDictionaryBytes = 8 << 20
-
-// DictionaryHandler 更新本地 Srm 数据字典文件，并立刻替换进程内副本。
+// DictionaryHandler 从业务库重建 Srm 数据字典。
 type DictionaryHandler struct {
 	DBConn *dbconn.Client
 }
 
-// Update PUT /api/v1/dbconn/dictionary — 请求体为完整的 srm_dictionary.json。需管理员 API Key。
+// Update PUT /api/v1/dbconn/dictionary — 重新连接业务库，读取 Srm 前缀表并重建字典。
 func (h *DictionaryHandler) Update(c *gin.Context) {
 	if h == nil || h.DBConn == nil {
 		writeError(c, http.StatusServiceUnavailable, "dbconn_disabled", "业务库未配置")
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, maxDictionaryBytes+1))
+	tables, columns, err := h.DBConn.RebuildDictionary(c.Request.Context())
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_body", "读取请求体失败")
-		return
-	}
-	if len(raw) > maxDictionaryBytes {
-		writeError(c, http.StatusRequestEntityTooLarge, "body_too_large", "字典不能超过 8MB")
-		return
-	}
-	tables, columns, err := h.DBConn.UpdateDictionary(raw)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "invalid_dictionary", err.Error())
+		status := http.StatusBadRequest
+		if errors.Is(err, dbconn.ErrDBNotConnected) || strings.Contains(err.Error(), "重新连接数据库") {
+			status = http.StatusServiceUnavailable
+		}
+		writeError(c, status, "dictionary_rebuild_failed", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

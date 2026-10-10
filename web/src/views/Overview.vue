@@ -6,6 +6,7 @@
       <el-form inline @submit.prevent>
         <el-form-item>
           <el-button type="primary" :loading="models.loading || usageLoading" @click="reload">刷新</el-button>
+          <el-button :loading="dictUpdating" @click="updateDictionary">更新数据字典</el-button>
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
@@ -100,6 +101,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import { Coin, Cpu, Monitor, Platform } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
@@ -112,6 +114,7 @@ const models = useModelsStore();
 const usage = ref<TokenUsage | null>(null);
 const usageLoading = ref(false);
 const usageError = ref("");
+const dictUpdating = ref(false);
 
 const hero: HeroItem[] = [
   { icon: Monitor, title: "服务健康", desc: "读取 /health，展示数据库连通性与部署模式", tone: "blue" },
@@ -157,6 +160,20 @@ async function loadUsage() {
 async function reload() {
   await models.refresh();
   await loadUsage();
+}
+
+async function updateDictionary() {
+  dictUpdating.value = true;
+  try {
+    const res = await requestJSON<{ tables: number; columns: number }>("/api/v1/dbconn/dictionary", {
+      method: "PUT",
+    });
+    ElMessage.success(`数据字典已更新：${res.tables} 张表，${res.columns} 个字段`);
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    dictUpdating.value = false;
+  }
 }
 
 onMounted(() => {

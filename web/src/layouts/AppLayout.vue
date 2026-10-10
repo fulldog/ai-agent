@@ -5,7 +5,7 @@
         <el-icon class="brand-icon"><Cpu /></el-icon>
         <span>AI Agent 控制台</span>
       </div>
-      <el-menu :router="true" :default-active="route.path" class="side-menu">
+      <el-menu :router="true" :default-active="activeMenu" class="side-menu">
         <el-menu-item index="/">
           <el-icon><Odometer /></el-icon><span>概览</span>
         </el-menu-item>
@@ -115,10 +115,11 @@ const subtitles: Record<string, string> = {
   "/analyze": "上传 PDF / Word / 图片，抽取结构化字段",
   "/intent": "微信助手关键字意图解析",
   "/logs": "HTTP 与钉钉入站审计日志；详情含关联的 LLM 调用摘要",
-  "/settings": "API Key、User Id 与后端地址",
+  "/settings": "User Id 与后端地址",
 };
 
-const subtitle = computed(() => subtitles[route.path] || "");
+const subtitle = computed(() => (route.meta.subtitle as string) || subtitles[route.path] || "");
+const activeMenu = computed(() => (route.meta.active as string) || route.path);
 const dbOff = computed(() => models.dbDisabled);
 
 const healthLabel = computed(() => {

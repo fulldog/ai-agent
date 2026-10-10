@@ -87,6 +87,21 @@ func NewDictionaryStore(path string) *Client {
 	return &Client{dictPath: strings.TrimSpace(path)}
 }
 
+// ReloadDictionary 重新读取磁盘上的字典文件并替换内存副本。
+func (c *Client) ReloadDictionary() (tables, columns int, err error) {
+	if c == nil || strings.TrimSpace(c.dictPath) == "" {
+		return 0, 0, fmt.Errorf("业务库未配置")
+	}
+	d, err := LoadDictionary(c.dictPath)
+	if err != nil {
+		return 0, 0, err
+	}
+	c.mu.Lock()
+	c.dict = d
+	c.mu.Unlock()
+	return len(d.Tables), columnCount(d), nil
+}
+
 // UpdateDictionary 校验请求体，写入 dictPath，并替换内存中的字典。
 func (c *Client) UpdateDictionary(raw []byte) (tables, columns int, err error) {
 	if c == nil || strings.TrimSpace(c.dictPath) == "" {
@@ -107,11 +122,18 @@ func (c *Client) UpdateDictionary(raw []byte) (tables, columns int, err error) {
 		return 0, 0, err
 	}
 	c.dict = d
-	cols := 0
-	for i := range d.Tables {
-		cols += len(d.Tables[i].Columns)
+	return len(d.Tables), columnCount(d), nil
+}
+
+func columnCount(d *Dictionary) int {
+	if d == nil {
+		return 0
 	}
-	return len(d.Tables), cols, nil
+	n := 0
+	for i := range d.Tables {
+		n += len(d.Tables[i].Columns)
+	}
+	return n
 }
 
 func writeDictionaryFile(path string, raw []byte) error {

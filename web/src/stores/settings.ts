@@ -36,9 +36,9 @@ export const useSettingsStore = defineStore("settings", () => {
     localStorage.setItem(KEY, JSON.stringify(data));
   }
 
-  function save(next: Persisted) {
+  function save(next: Pick<Persisted, "apiBase" | "userId">) {
     apiBase.value = next.apiBase.trim();
-    apiKey.value = next.apiKey.trim();
+    apiKey.value = "";
     userId.value = next.userId.trim();
     persist();
   }

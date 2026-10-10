@@ -92,21 +92,26 @@ func (s *Service) Delete(id uuid.UUID) error {
 }
 
 type AddDocumentInput struct {
-	CorpusID uuid.UUID
-	Title    string
-	Source   string
-	Content  string
+	CorpusID     uuid.UUID
+	Title        string
+	Source       string
+	Content      string
+	Kind         string
+	ExtractionID *uuid.UUID
 }
 
 func (s *Service) AddDocument(ctx context.Context, in AddDocumentInput) (*model.Document, error) {
 	sum := sha256.Sum256([]byte(in.Content))
 	hash := hex.EncodeToString(sum[:])
 	doc := &model.Document{
-		CorpusID:    in.CorpusID,
-		Title:       in.Title,
-		Source:      in.Source,
-		ContentHash: hash,
-		Status:      "pending",
+		CorpusID:     in.CorpusID,
+		Title:        in.Title,
+		Source:       in.Source,
+		Kind:         ResolveKind(in.Kind, in.Source),
+		ExtractionID: in.ExtractionID,
+		Content:      in.Content,
+		ContentHash:  hash,
+		Status:       "pending",
 	}
 	if err := s.db.Create(doc).Error; err != nil {
 		return nil, err
@@ -122,8 +127,46 @@ func (s *Service) AddDocument(ctx context.Context, in AddDocumentInput) (*model.
 
 func (s *Service) ListDocuments(corpusID uuid.UUID) ([]model.Document, error) {
 	var rows []model.Document
-	err := s.db.Where("corpus_id = ?", corpusID).Order("created_at desc").Find(&rows).Error
-	return rows, err
+	err := s.db.Omit("Content").Where("corpus_id = ?", corpusID).Order("created_at desc").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		rows[i].Kind = ResolveKind(rows[i].Kind, rows[i].Source)
+	}
+	return rows, nil
+}
+
+func (s *Service) GetDocument(corpusID, docID uuid.UUID) (*model.Document, error) {
+	var doc model.Document
+	if err := s.db.Where("id = ? AND corpus_id = ?", docID, corpusID).First(&doc).Error; err != nil {
+		return nil, err
+	}
+	doc.Kind = ResolveKind(doc.Kind, doc.Source)
+	return &doc, nil
+}
+
+// DocumentContent 返回原文。新文档读 content 列；旧文档按分块重叠拼回。
+func (s *Service) DocumentContent(doc *model.Document) (string, error) {
+	if doc == nil {
+		return "", fmt.Errorf("document required")
+	}
+	if strings.TrimSpace(doc.Content) != "" {
+		return doc.Content, nil
+	}
+	var chunks []model.Chunk
+	if err := s.db.Where("document_id = ?", doc.ID).Order("chunk_index asc").Find(&chunks).Error; err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		parts = append(parts, ch.Content)
+	}
+	overlap := 0
+	if s.cfg != nil {
+		overlap = s.cfg.RAG.ChunkOverlap
+	}
+	return joinChunks(parts, overlap), nil
 }
 
 func (s *Service) DeleteDocument(corpusID, docID uuid.UUID) error {
@@ -133,6 +176,58 @@ func (s *Service) DeleteDocument(corpusID, docID uuid.UUID) error {
 		}
 		return tx.Where("id = ? AND corpus_id = ?", docID, corpusID).Delete(&model.Document{}).Error
 	})
+}
+
+// ReplaceDocument 用新正文替换一篇文档并只重建该文档的向量索引。
+func (s *Service) ReplaceDocument(ctx context.Context, corpusID, docID uuid.UUID, in AddDocumentInput) (*model.Document, error) {
+	var doc model.Document
+	if err := s.db.Where("id = ? AND corpus_id = ?", docID, corpusID).First(&doc).Error; err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256([]byte(in.Content))
+	hash := hex.EncodeToString(sum[:])
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		title = doc.Title
+	}
+	source := strings.TrimSpace(in.Source)
+	if source == "" {
+		source = doc.Source
+	}
+	kind := ResolveKind(in.Kind, source)
+	if err := s.db.Model(&doc).Updates(map[string]any{
+		"title":         title,
+		"source":        source,
+		"kind":          kind,
+		"extraction_id": in.ExtractionID,
+		"content":       in.Content,
+		"content_hash":  hash,
+		"status":        "pending",
+		"error_message": "",
+	}).Error; err != nil {
+		return nil, err
+	}
+	doc.Title = title
+	doc.Source = source
+	doc.Kind = kind
+	doc.ExtractionID = in.ExtractionID
+	doc.Content = in.Content
+	doc.ContentHash = hash
+	doc.Status = "pending"
+	doc.ErrorMessage = ""
+	if err := s.db.Where("document_id = ? AND corpus_id = ?", docID, corpusID).Delete(&model.Chunk{}).Error; err != nil {
+		return &doc, err
+	}
+	if err := s.indexDocument(ctx, &doc, in.Content); err != nil {
+		_ = s.db.Where("document_id = ? AND corpus_id = ?", docID, corpusID).Delete(&model.Chunk{}).Error
+		_ = s.db.Model(&doc).Updates(map[string]any{"status": "failed", "error_message": err.Error()}).Error
+		doc.Status = "failed"
+		doc.ErrorMessage = err.Error()
+		return &doc, err
+	}
+	_ = s.db.Model(&doc).Updates(map[string]any{"status": "indexed", "error_message": ""}).Error
+	doc.Status = "indexed"
+	return &doc, nil
 }
 
 func (s *Service) Reindex(ctx context.Context, corpusID uuid.UUID) error {
@@ -148,17 +243,23 @@ func (s *Service) Reindex(ctx context.Context, corpusID uuid.UUID) error {
 		if len(chunks) == 0 {
 			continue
 		}
-		var texts []string
-		for _, ch := range chunks {
-			texts = append(texts, ch.Content)
+		var stored struct {
+			Content string
 		}
-		// rebuild from concatenated content for simplicity
-		content := ""
-		for i, t := range texts {
-			if i > 0 {
-				content += "\n"
+		if err := s.db.Model(&model.Document{}).Select("content").Where("id = ?", d.ID).Take(&stored).Error; err != nil {
+			return err
+		}
+		content := strings.TrimSpace(stored.Content)
+		if content == "" {
+			parts := make([]string, len(chunks))
+			for i, ch := range chunks {
+				parts[i] = ch.Content
 			}
-			content += t
+			overlap := 0
+			if s.cfg != nil {
+				overlap = s.cfg.RAG.ChunkOverlap
+			}
+			content = joinChunks(parts, overlap)
 		}
 		if err := s.db.Where("document_id = ?", d.ID).Delete(&model.Chunk{}).Error; err != nil {
 			return err

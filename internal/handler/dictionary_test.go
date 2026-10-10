@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -12,35 +11,18 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 )
 
-func TestDictionaryUpdate(t *testing.T) {
+func TestDictionaryUpdateRequiresDatabase(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
-	dir := t.TempDir()
-	client := dbconn.NewDictionaryStore(filepath.Join(dir, "srm_dictionary.json"))
+	client := dbconn.NewDictionaryStore(filepath.Join(t.TempDir(), "srm_dictionary.json"))
 	h := &DictionaryHandler{DBConn: client}
 	r := gin.New()
 	r.PUT("/dbconn/dictionary", h.Update)
-
-	body := `{"tables":[{"name":"Srm_New","comment":"新表","columns":[{"name":"Name","type":"varchar(8)","nullable":false,"comment":"名称"}]}]}`
-	req := httptest.NewRequest(http.MethodPut, "/dbconn/dictionary", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/dbconn/dictionary", nil)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"tables":1`) {
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "业务库未连接") {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	out, err := client.Schema(context.Background(), "", "Srm_New")
-	if err != nil || !strings.Contains(out, "名称") {
-		t.Fatalf("schema: %v\n%s", err, out)
-	}
-
-	bad := httptest.NewRequest(http.MethodPut, "/dbconn/dictionary", strings.NewReader(`{`))
-	badRec := httptest.NewRecorder()
-	r.ServeHTTP(badRec, bad)
-	if badRec.Code != http.StatusBadRequest {
-		t.Fatalf("bad status=%d body=%s", badRec.Code, badRec.Body.String())
-	}
-	if _, err := client.Schema(context.Background(), "", "Srm_New"); err != nil {
-		t.Fatalf("invalid body must keep previous dictionary: %v", err)
 	}
 }
 

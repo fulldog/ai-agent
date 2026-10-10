@@ -787,6 +787,7 @@ paths:
         支持 JSON 正文，或 `multipart/form-data` 上传。
 
         单文件字段 `file`；批量可用重复字段 `files`（或多个 `file`）。
+        每个文件单独成篇并单独建索引，不会把多个文件正文合并成一篇。
 
         文件类型：
         - 文本：txt/md/csv/json/html…
@@ -856,6 +857,46 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Document"
+
+  /api/v1/corpora/{id}/documents/{doc_id}/reupload:
+    post:
+      tags: [Corpus]
+      summary: 重传并重建单篇文档索引
+      description: 用一个新文件替换指定文档，只重建该文档的分块与向量，不影响同库其他文档。
+      operationId: reuploadDocument
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+        - name: doc_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                force_reread:
+                  type: boolean
+      responses:
+        "200":
+          description: 已替换并重新索引
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/v1/corpora/{id}/documents/{doc_id}:
     delete:
