@@ -83,3 +83,18 @@ func TestReuploadDocumentRequiresFile(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestReuploadTextRequiresContent(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+	h := &CorpusHandler{}
+	r := gin.New()
+	r.POST("/corpora/:id/documents/:doc_id/reupload", h.ReuploadDocument)
+	req := httptest.NewRequest(http.MethodPost, "/corpora/"+uuid.NewString()+"/documents/"+uuid.NewString()+"/reupload", bytes.NewBufferString(`{"title":"t"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte("content required")) {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

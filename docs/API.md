@@ -498,7 +498,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 
 ### POST `/api/v1/corpora/:id/documents/:doc_id/reupload`
 
-用一个新文件替换该文档并只重建这一篇的索引，不影响同库其他文档。`multipart/form-data`，字段名 `file`。文档不存在 → `404`。
+替换该文档并只重建这一篇的索引，不影响同库其他文档。文件用 `multipart/form-data`，字段名 `file`。粘贴文本用 `application/json`：`{"title","content"}`，`content` 不能为空。文档不存在 → `404`。
 
 ### DELETE `/api/v1/corpora/:id/documents/:doc_id`
 

@@ -76,7 +76,7 @@
             <el-table-column prop="source" label="来源" min-width="160" show-overflow-tooltip />
             <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" :loading="reuploadingId === row.id" @click="pickReupload(row.id)">重传</el-button>
+                <el-button link type="primary" :loading="reuploadingId === row.id" @click="pickReupload(row)">重传</el-button>
                 <el-button link type="primary" @click="viewDoc(row)">查看</el-button>
                 <el-button link type="danger" @click="delDoc(row.id)">删除</el-button>
               </template>
@@ -95,6 +95,19 @@
       accept=".txt,.md,.markdown,.csv,.json,.xml,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif"
       @change="onReuploadFile"
     />
+    <el-dialog v-model="textEditOpen" title="重传文本" width="720px" destroy-on-close>
+      <p v-if="textEditLoading" class="muted">加载中…</p>
+      <template v-else>
+        <el-input v-model="editTitle" placeholder="标题" style="margin-bottom: 8px" />
+        <el-input v-model="editContent" type="textarea" :rows="14" placeholder="正文" />
+      </template>
+      <template #footer>
+        <el-button @click="textEditOpen = false">取消</el-button>
+        <el-button type="primary" :loading="reuploadingId !== ''" :disabled="textEditLoading" @click="submitTextReupload">
+          保存并重新索引
+        </el-button>
+      </template>
+    </el-dialog>
     <el-drawer v-model="textOpen" :title="textTitle" size="65%" destroy-on-close>
       <p v-if="textSource && textSource !== textTitle" class="muted drawer-source">{{ textSource }}</p>
       <p v-if="textLoading" class="muted">加载中…</p>
@@ -133,6 +146,11 @@ const uploading = ref(false);
 const reuploadingId = ref("");
 const reuploadDocId = ref("");
 const reuploadInput = ref<HTMLInputElement | null>(null);
+const textEditOpen = ref(false);
+const textEditLoading = ref(false);
+const editDocId = ref("");
+const editTitle = ref("");
+const editContent = ref("");
 const textOpen = ref(false);
 const textLoading = ref(false);
 const textTitle = ref("");
@@ -252,12 +270,62 @@ async function uploadFiles() {
   }
 }
 
-function pickReupload(docId: string) {
-  reuploadDocId.value = docId;
+function pickReupload(row: Doc) {
+  if (isTextDocument(row)) {
+    void openTextReupload(row);
+    return;
+  }
+  reuploadDocId.value = row.id;
   const input = reuploadInput.value;
   if (!input) return;
   input.value = "";
   input.click();
+}
+
+async function openTextReupload(row: Doc) {
+  if (!current.value) return;
+  const corpusID = current.value.id;
+  textEditOpen.value = true;
+  textEditLoading.value = true;
+  editDocId.value = row.id;
+  editTitle.value = row.title || "";
+  editContent.value = "";
+  try {
+    const data = await requestJSON<{ document: Doc; content: string }>(
+      `/api/v1/corpora/${corpusID}/documents/${row.id}`,
+    );
+    editTitle.value = data.document?.title || editTitle.value;
+    editContent.value = data.content || "";
+  } catch (e) {
+    textEditOpen.value = false;
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    textEditLoading.value = false;
+  }
+}
+
+async function submitTextReupload() {
+  if (!current.value || !editDocId.value) return;
+  if (!editContent.value.trim()) {
+    ElMessage.warning("请填写正文");
+    return;
+  }
+  const corpusID = current.value.id;
+  const docId = editDocId.value;
+  reuploadingId.value = docId;
+  try {
+    await requestJSON(`/api/v1/corpora/${corpusID}/documents/${docId}/reupload`, {
+      method: "POST",
+      body: JSON.stringify({ title: editTitle.value.trim(), content: editContent.value }),
+    });
+    ElMessage.success("已重新索引该文本");
+    textEditOpen.value = false;
+    await loadDocs(corpusID);
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    reuploadingId.value = "";
+  }
 }
 
 async function onReuploadFile(ev: Event) {

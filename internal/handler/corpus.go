@@ -329,6 +329,10 @@ func (h *CorpusHandler) ReuploadDocument(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "bad_request", "invalid doc_id")
 		return
 	}
+	if strings.HasPrefix(c.ContentType(), "application/json") {
+		h.reuploadText(c, corpusID, docID)
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil || file == nil {
 		writeError(c, http.StatusBadRequest, "bad_request", "file required")
@@ -371,6 +375,42 @@ func (h *CorpusHandler) ReuploadDocument(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, prepared.item(doc))
+}
+
+func (h *CorpusHandler) reuploadText(c *gin.Context, corpusID, docID uuid.UUID) {
+	var req struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeError(c, http.StatusBadRequest, "bad_request", "content required")
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	doc, err := h.Corpus.ReplaceDocument(c.Request.Context(), corpusID, docID, corpus.AddDocumentInput{
+		CorpusID: corpusID,
+		Title:    title,
+		Source:   title,
+		Content:  req.Content,
+		Kind:     "text",
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "record not found") {
+			writeError(c, http.StatusNotFound, "not_found", "document not found")
+			return
+		}
+		if doc != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"document": doc, "error": err.Error()})
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"document": doc})
 }
 
 func (h *CorpusHandler) ListDocuments(c *gin.Context) {
