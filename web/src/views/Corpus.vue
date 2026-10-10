@@ -95,16 +95,23 @@
       accept=".txt,.md,.markdown,.csv,.json,.xml,.html,.htm,.pdf,.docx,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif"
       @change="onReuploadFile"
     />
+    <el-drawer v-model="textOpen" :title="textTitle" size="46%" destroy-on-close>
+      <p v-if="textSource && textSource !== textTitle" class="muted drawer-source">{{ textSource }}</p>
+      <p v-if="textLoading" class="muted">加载中…</p>
+      <p v-else-if="!textContent" class="muted">暂无正文</p>
+      <div v-else class="md-body doc-body" v-html="textHtml" />
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadFile, UploadRawFile, UploadUserFile } from "element-plus";
 import { Collection, Document, Refresh, Upload } from "@element-plus/icons-vue";
 import { apiURL, requestJSON, requestForm, downloadFile, formatAPIError } from "@/api/client";
+import { renderMarkdown } from "@/lib/markdown";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import type { Corpus, Document as Doc } from "@/api/types";
 
@@ -116,7 +123,6 @@ const hero: HeroItem[] = [
 ];
 
 const route = useRoute();
-const router = useRouter();
 const corpora = ref<Corpus[]>([]);
 const current = ref<Corpus | null>(null);
 const docs = ref<Doc[]>([]);
@@ -127,6 +133,12 @@ const uploading = ref(false);
 const reuploadingId = ref("");
 const reuploadDocId = ref("");
 const reuploadInput = ref<HTMLInputElement | null>(null);
+const textOpen = ref(false);
+const textLoading = ref(false);
+const textTitle = ref("");
+const textSource = ref("");
+const textContent = ref("");
+const textHtml = computed(() => renderMarkdown(textContent.value));
 
 const pendingFiles = computed(() =>
   fileList.value.map((f) => f.raw).filter((f): f is UploadRawFile => f != null),
@@ -299,13 +311,28 @@ function isTextDocument(row: Doc): boolean {
   return row.kind === "text" || ext === "";
 }
 
-function viewDoc(row: Doc) {
+async function viewDoc(row: Doc) {
   if (!current.value) return;
   if (isTextDocument(row)) {
-    router.push({
-      name: "corpus-document",
-      params: { corpusId: current.value.id, docId: row.id },
-    });
+    const corpusID = current.value.id;
+    textOpen.value = true;
+    textLoading.value = true;
+    textTitle.value = row.title || "未命名";
+    textSource.value = row.source || "";
+    textContent.value = "";
+    try {
+      const data = await requestJSON<{ document: Doc; content: string }>(
+        `/api/v1/corpora/${corpusID}/documents/${row.id}`,
+      );
+      textTitle.value = data.document?.title || textTitle.value;
+      textSource.value = data.document?.source || textSource.value;
+      textContent.value = data.content || "";
+    } catch (e) {
+      textOpen.value = false;
+      ElMessage.error(formatAPIError(e));
+    } finally {
+      textLoading.value = false;
+    }
     return;
   }
   const path = `/api/v1/corpora/${current.value.id}/documents/${row.id}/file`;
@@ -358,5 +385,13 @@ onMounted(async () => {
 
 .reupload-input {
   display: none;
+}
+
+.drawer-source {
+  margin-top: 0;
+}
+
+.doc-body {
+  line-height: 1.7;
 }
 </style>

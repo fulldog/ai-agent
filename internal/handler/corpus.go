@@ -307,6 +307,9 @@ func (h *CorpusHandler) prepareUpload(c *gin.Context, file *multipart.FileHeader
 	if err != nil {
 		return out, err
 	}
+	if strings.TrimSpace(resolved.Text) == "" {
+		return out, errors.New("未能从文件中提取到正文")
+	}
 	out.Text = resolved.Text
 	out.CacheHit = resolved.CacheHit
 	out.ContentHash = resolved.ContentHash

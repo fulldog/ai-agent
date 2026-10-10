@@ -107,9 +107,9 @@ func (s *Service) Prepare(ctx context.Context, in PrepareInput) (*PrepareResult,
 			s.locker.RUnlock(hash)
 			return hit, nil
 		}
-		// 通义：已有 remote_file_id 且无正文时，可直接复用 file_id（不重传）
+		// 通义：只有 file_id、没有正文时，不能拿去建索引。
 		if provider == "qwen" {
-			if reuse := s.loadQwenFileID(ctx, hash); reuse != nil {
+			if reuse := s.loadQwenFileID(ctx, hash); reuse != nil && qwenReuseOK(in.NeedText, reuse.Text) {
 				s.locker.RUnlock(hash)
 				return reuse, nil
 			}
@@ -129,7 +129,12 @@ func (s *Service) Prepare(ctx context.Context, in PrepareInput) (*PrepareResult,
 		}
 		if provider == "qwen" {
 			if reuse := s.loadQwenFileID(ctx, hash); reuse != nil {
-				return reuse, nil
+				if qwenReuseOK(in.NeedText, reuse.Text) {
+					return reuse, nil
+				}
+				if filled, ferr := s.fillCachedQwenText(ctx, hash, reuse); ferr == nil && qwenReuseOK(true, filled.Text) {
+					return filled, nil
+				}
 			}
 		}
 	}
@@ -405,6 +410,40 @@ func (s *Service) loadTextCache(ctx context.Context, hash string) *PrepareResult
 		CacheHit: true, SourcePath: row.SourcePath, TextPath: row.TextPath,
 		ExtractBackend: row.ExtractBackend, RemoteFileID: row.RemoteFileID,
 	}
+}
+
+// qwenReuseOK 判断通义缓存能否直接返回。入库需要正文时，仅有 file_id 不算命中。
+func qwenReuseOK(needText bool, text string) bool {
+	if !needText {
+		return true
+	}
+	return strings.TrimSpace(text) != ""
+}
+
+func (s *Service) fillCachedQwenText(ctx context.Context, hash string, reuse *PrepareResult) (*PrepareResult, error) {
+	if reuse == nil || strings.TrimSpace(reuse.RemoteFileID) == "" {
+		return nil, fmt.Errorf("qwen file id missing")
+	}
+	cli, err := s.filesClient("qwen")
+	if err != nil {
+		return nil, err
+	}
+	text, err := cli.Content(ctx, reuse.RemoteFileID)
+	if err != nil || strings.TrimSpace(text) == "" {
+		text, err = cli.ChatWithFileID(ctx, "qwen-long", reuse.RemoteFileID, "请原样输出该文件的全部文字内容，不要总结。")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("qwen 未返回文件正文")
+	}
+	if err := s.writeTextFileAndUpdate(ctx, reuse.ExtractionID, hash, text); err != nil {
+		return nil, err
+	}
+	reuse.Text = text
+	reuse.Mode = "text"
+	return reuse, nil
 }
 
 func (s *Service) loadQwenFileID(ctx context.Context, hash string) *PrepareResult {

@@ -101,6 +101,9 @@ type AddDocumentInput struct {
 }
 
 func (s *Service) AddDocument(ctx context.Context, in AddDocumentInput) (*model.Document, error) {
+	if strings.TrimSpace(in.Content) == "" {
+		return nil, fmt.Errorf("未能从文件中提取到正文")
+	}
 	sum := sha256.Sum256([]byte(in.Content))
 	hash := hex.EncodeToString(sum[:])
 	doc := &model.Document{
