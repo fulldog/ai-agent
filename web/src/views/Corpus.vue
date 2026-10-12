@@ -58,6 +58,15 @@
               <el-button type="primary" :loading="uploading" style="margin-top: 8px" @click="uploadFiles">
                 上传并索引{{ pendingFiles.length > 1 ? `（${pendingFiles.length} 个，分别建索引）` : "" }}
               </el-button>
+              <div v-if="uploading" class="upload-progress">
+                <el-progress
+                  :percentage="uploadPercent"
+                  :indeterminate="uploadIndeterminate"
+                  :stroke-width="8"
+                  :show-text="!uploadIndeterminate"
+                />
+                <p class="muted">{{ uploadDetail }}</p>
+              </div>
             </el-tab-pane>
             <el-tab-pane label="粘贴文本">
               <el-input v-model="docTitle" placeholder="标题" style="margin-bottom: 8px" />
@@ -143,6 +152,9 @@ const docTitle = ref("");
 const docContent = ref("");
 const fileList = ref<UploadUserFile[]>([]);
 const uploading = ref(false);
+const uploadPercent = ref(0);
+const uploadIndeterminate = ref(false);
+const uploadDetail = ref("");
 const reuploadingId = ref("");
 const reuploadDocId = ref("");
 const reuploadInput = ref<HTMLInputElement | null>(null);
@@ -242,20 +254,46 @@ async function uploadFiles() {
     return;
   }
   uploading.value = true;
+  uploadPercent.value = 0;
+  uploadIndeterminate.value = false;
+  uploadDetail.value = "";
   const corpusID = current.value.id;
   let ok = 0;
   const failed: string[] = [];
   const failedUIDs = new Set<number>();
+  const total = files.length;
   try {
-    for (const f of files) {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const base = (i / total) * 100;
+      const slice = 100 / total;
+      uploadIndeterminate.value = false;
+      uploadPercent.value = Math.round(base);
+      uploadDetail.value = `正在上传 ${i + 1}/${total}：${f.name}`;
       const fd = new FormData();
       fd.append("file", f, f.name);
       try {
-        await requestForm(`/api/v1/corpora/${corpusID}/documents`, fd);
+        await requestForm(`/api/v1/corpora/${corpusID}/documents`, fd, "POST", (progress) => {
+          if (progress.uploaded) {
+            uploadPercent.value = Math.round(base + slice * 0.2);
+            uploadDetail.value = `正在抽取并建索引 ${i + 1}/${total}：${f.name}`;
+            uploadIndeterminate.value = total === 1;
+            return;
+          }
+          if (progress.total > 0) {
+            const ratio = Math.min(1, progress.loaded / progress.total);
+            uploadPercent.value = Math.round(base + ratio * slice * 0.2);
+          }
+        });
+        uploadIndeterminate.value = false;
+        uploadPercent.value = Math.round(((i + 1) / total) * 100);
+        uploadDetail.value = `已完成 ${i + 1}/${total}：${f.name}`;
         ok++;
       } catch (e) {
+        uploadIndeterminate.value = false;
         failed.push(`${f.name}: ${formatAPIError(e)}`);
         failedUIDs.add(f.uid);
+        uploadPercent.value = Math.round(((i + 1) / total) * 100);
       }
     }
     fileList.value = fileList.value.filter((item) => item.raw != null && failedUIDs.has(item.raw.uid));
@@ -451,6 +489,13 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 
+.upload-progress {
+  margin-top: 12px;
+  max-width: 520px;
+}
+.upload-progress .muted {
+  margin: 6px 0 0;
+}
 .reupload-input {
   display: none;
 }

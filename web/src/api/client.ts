@@ -100,12 +100,61 @@ function filenameFromDisposition(header: string | null): string {
   return plain?.[1] || "";
 }
 
-export async function requestForm<T>(path: string, form: FormData, method = "POST"): Promise<T> {
-  const res = await fetch(apiURL(path), { method, headers: authHeaders(), body: form });
-  if (!res.ok) {
-    throw await parseError(res);
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  /** 请求体已发完，服务端仍在抽取正文并建索引。 */
+  uploaded: boolean;
+}
+
+export async function requestForm<T>(
+  path: string,
+  form: FormData,
+  method = "POST",
+  onUploadProgress?: (progress: UploadProgress) => void,
+): Promise<T> {
+  if (!onUploadProgress) {
+    const res = await fetch(apiURL(path), { method, headers: authHeaders(), body: form });
+    if (!res.ok) {
+      throw await parseError(res);
+    }
+    return (await res.json()) as T;
   }
-  return (await res.json()) as T;
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, apiURL(path));
+    authHeaders().forEach((value, key) => {
+      if (key.toLowerCase() !== "content-type") xhr.setRequestHeader(key, value);
+    });
+    xhr.upload.onprogress = (ev) => {
+      onUploadProgress({
+        loaded: ev.loaded,
+        total: ev.lengthComputable ? ev.total : 0,
+        uploaded: false,
+      });
+    };
+    xhr.upload.onload = () => {
+      onUploadProgress({ loaded: 1, total: 1, uploaded: true });
+    };
+    xhr.onload = () => {
+      const res = new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText });
+      if (!res.ok) {
+        void parseError(res).then(reject, reject);
+        return;
+      }
+      if (!xhr.responseText) {
+        resolve(undefined as T);
+        return;
+      }
+      try {
+        resolve(JSON.parse(xhr.responseText) as T);
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    };
+    xhr.onerror = () => reject(new APIError(0, "network", "网络错误，上传未完成"));
+    xhr.send(form);
+  });
 }
 
 export function formatAPIError(err: unknown): string {
