@@ -47,10 +47,10 @@ dingtalk:
 主路径（@ 机器人 / 单聊）顺序与下面三步一致：
 
 1. **先落会话**：按 `senderStaffId` + 钉钉 `conversationId` 取最新未删除内部会话；没有则新建，并立刻写/更新 `request_logs`（带 `conversation_id`）。已软删不会被复用。
-2. **本轮 RAG**：群有绑定语料则只在绑定库检索，未绑定才全量；名称命中可再收窄。距离大于 `rag.max_distance` 视为未命中。  
+2. **本轮 RAG**：仅用本轮用户输入作为检索词，不拼接历史消息。群有绑定语料则只在绑定库检索，未绑定才全量；名称命中可再收窄。距离大于 `rag.max_distance` 视为未命中。  
    **早退**（仅 `chat` / `agent`）：无相关命中 **且** 未要求联网 **且** 该会话无历史消息 → 回复「语料库未收录相关知识」，不调 LLM。  
    用户明确要求联网（如「联网查询」）时去掉用语后再检索；仍无命中则继续走 LLM，并对通义开 `enable_search`。`web` 模式跳过该闸门。
-3. **LLM + 工具**：带上第 2 步 RAG 结果与会话近期 messages，按 `reply_mode` 作答（`chat` / `agent` / `web`）。Agent 有工具时首轮强制 function call；推诿「未启用工具」会拦截重试。消息与 request_log 照常落库。
+3. **LLM + 工具**：带上第 2 步 RAG 结果与会话近期 messages，按 `reply_mode` 作答（`chat` / `agent` / `web`）。历史 messages 只作为大模型上下文，不参与 RAG 查询；`knowledge_search` 也固定使用本轮用户输入。Agent 有工具时首轮强制 function call；推诿「未启用工具」会拦截重试。消息与 request_log 照常落库。
 
 补充：
 

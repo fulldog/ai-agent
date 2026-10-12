@@ -300,6 +300,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		CorpusIDs:   in.CorpusIDs,
 		TopK:        in.TopK,
 		DefaultTopK: s.cfg.RAG.TopK,
+		RAGQuery:    in.Input,
 		RAG:         s.rag,
 	}
 	promptTokens, completionTokens := 0, 0
@@ -608,7 +609,7 @@ func (s *Service) retryAfterEvasion(
 	}
 	toolEnv := &tools.Env{
 		CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
-		DefaultTopK: defaultTopK, RAG: s.rag,
+		DefaultTopK: defaultTopK, RAGQuery: in.Input, RAG: s.rag,
 	}
 	for _, tc := range resp.ToolCalls {
 		if emit != nil {

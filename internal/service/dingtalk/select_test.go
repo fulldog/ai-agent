@@ -120,23 +120,6 @@ func TestContinueWithHistory(t *testing.T) {
 	}
 }
 
-func TestEnrichRAGQuery(t *testing.T) {
-	t.Parallel()
-	if got := enrichRAGQuery("广告线", []string{"乐推能付款吗", "请提供标签"}); !strings.Contains(got, "广告线") || !strings.Contains(got, "乐推能付款吗") {
-		t.Fatalf("short query should append history: %q", got)
-	}
-	long := strings.Repeat("供应商付款条件详细说明", 10)
-	if got := enrichRAGQuery(long, []string{"历史"}); got != long {
-		t.Fatalf("long query should stay unchanged")
-	}
-	if got := enrichRAGQuery("广告线", nil); got != "广告线" {
-		t.Fatalf("no history: %q", got)
-	}
-	if got := enrichRAGQuery("广告线", []string{"广告线", "  "}); got != "广告线" {
-		t.Fatalf("dedupe self: %q", got)
-	}
-}
-
 func TestSanitizeOutboundBlocksEvasion(t *testing.T) {
 	t.Parallel()
 	b := &Bot{log: zap.NewNop()}

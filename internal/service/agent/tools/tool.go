@@ -22,5 +22,7 @@ type Env struct {
 	CorpusIDs   []uuid.UUID
 	TopK        int
 	DefaultTopK int
-	RAG         *rag.Service
+	// RAGQuery 固定为本轮用户输入；非空时 knowledge_search 不采用模型改写的查询词。
+	RAGQuery string
+	RAG      *rag.Service
 }

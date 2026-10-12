@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
@@ -407,17 +406,16 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		ragQuery = query
 	}
 	tr.forceOnline = forceOnline
-	// 检索词可拼历史；交给 LLM / 落库的仍是本轮用户原句。
-	searchQuery := enrichRAGQuery(ragQuery, b.recentHistoryTexts(conv.ID, 6))
-	tr.ragQuery = searchQuery
-	corpusID, hits, searchIDs := b.retrieve(ctx, searchQuery, data.ConversationID)
+	// RAG 只检索本轮用户输入；历史消息仅在下一阶段作为 LLM 上下文。
+	tr.ragQuery = ragQuery
+	corpusID, hits, searchIDs := b.retrieve(ctx, ragQuery, data.ConversationID)
 	tr.corpusID = corpusID
 	tr.hitCount = len(hits)
 	tr.hitScores = hitScores(hits)
 	tr.sourceNote = b.buildCorpusSourceNote(hits)
 	hitsDetail := ragHitLogs(hits, b.previewMax)
 	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
-		"query":        searchQuery,
+		"query":        ragQuery,
 		"force_online": forceOnline,
 		"hits":         len(hits),
 		"scores":       tr.hitScores,
@@ -426,7 +424,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		"bound":        len(searchIDs) > 0,
 		"hits_detail":  hitsDetail,
 	},
-		zap.String("query", searchQuery),
+		zap.String("query", ragQuery),
 		zap.Bool("force_online", forceOnline),
 		zap.Int("hits", len(hits)),
 		zap.Float64s("scores", tr.hitScores),
@@ -870,59 +868,6 @@ func (b *Bot) retrieve(ctx context.Context, query, conversationID string) (*uuid
 		pinned = best
 	}
 	return pinned, hits, scope
-}
-
-// recentHistoryTexts 取近期 user/assistant 正文，供短追问扩写检索词。
-func (b *Bot) recentHistoryTexts(conversationID uuid.UUID, limit int) []string {
-	if b == nil || b.chat == nil || conversationID == uuid.Nil {
-		return nil
-	}
-	msgs, err := b.chat.RecentMessages(conversationID, limit)
-	if err != nil || len(msgs) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(msgs))
-	for _, m := range msgs {
-		if m.Role != "user" && m.Role != "assistant" {
-			continue
-		}
-		c := strings.TrimSpace(m.Content)
-		if c == "" {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-// enrichRAGQuery 短句追问时把近期对话拼进检索词，避免只搜到标签/合同等碎片。
-func enrichRAGQuery(query string, history []string) string {
-	q := strings.TrimSpace(query)
-	if q == "" {
-		return q
-	}
-	if utf8.RuneCountInString(q) > 48 {
-		return q
-	}
-	var parts []string
-	for _, h := range history {
-		c := strings.TrimSpace(h)
-		if c == "" || c == q {
-			continue
-		}
-		r := []rune(c)
-		if len(r) > 80 {
-			c = string(r[:80])
-		}
-		parts = append(parts, c)
-	}
-	if len(parts) == 0 {
-		return q
-	}
-	if len(parts) > 4 {
-		parts = parts[len(parts)-4:]
-	}
-	return q + "\n" + strings.Join(parts, "\n")
 }
 
 type streamer struct {

@@ -39,7 +39,8 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("参数无效: %w", err)
 	}
-	if strings.TrimSpace(p.Query) == "" {
+	query := knowledgeQuery(p.Query, env)
+	if query == "" {
 		return "", fmt.Errorf("query 不能为空")
 	}
 	if env == nil || env.RAG == nil {
@@ -54,11 +55,11 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 		err  error
 	)
 	if len(env.CorpusIDs) > 0 {
-		hits, err = env.RAG.SearchInCorpora(ctx, env.CorpusIDs, p.Query, topK)
+		hits, err = env.RAG.SearchInCorpora(ctx, env.CorpusIDs, query, topK)
 	} else if env.CorpusID != nil {
-		hits, err = env.RAG.Search(ctx, *env.CorpusID, p.Query, topK)
+		hits, err = env.RAG.Search(ctx, *env.CorpusID, query, topK)
 	} else {
-		hits, err = env.RAG.SearchInCorpora(ctx, nil, p.Query, topK)
+		hits, err = env.RAG.SearchInCorpora(ctx, nil, query, topK)
 	}
 	if err != nil {
 		return "", err
@@ -74,4 +75,13 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 		b.WriteString(fmt.Sprintf("[%d] (distance=%.4f) %s\n", i+1, h.Score, h.Content))
 	}
 	return b.String(), nil
+}
+
+func knowledgeQuery(toolQuery string, env *Env) string {
+	if env != nil {
+		if current := strings.TrimSpace(env.RAGQuery); current != "" {
+			return current
+		}
+	}
+	return strings.TrimSpace(toolQuery)
 }

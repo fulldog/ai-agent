@@ -49,7 +49,10 @@ func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env
 	if corpusID == nil && conv != nil {
 		corpusID = conv.CorpusID
 	}
-	env := &tools.Env{CorpusID: corpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK, RAG: s.rag}
+	env := &tools.Env{
+		CorpusID: corpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
+		RAGQuery: in.Message, RAG: s.rag,
+	}
 	if s.cfg != nil {
 		env.DefaultTopK = s.cfg.RAG.TopK
 	}

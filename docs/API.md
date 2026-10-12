@@ -170,7 +170,7 @@ Prometheus 文本格式指标。默认无需 API Key。
 
 同步补全（非流式）。普通密钥 **必填** `X-User-Id`，且 `conversation_id` 须属于该 uid，否则 `404`。管理员密钥可对任意会话补全。
 
-普通对话默认开启 RAG（`chat.rag_enabled`，可用 `CHAT_RAG_ENABLED=false` 关闭）：请求未传 `rag` 时**先检索语料库**并注入 system，再按摘录中的流程作答或调工具；未指定 `corpus_id` 时搜索全部语料库。同样默认强制带上 `agent.default_tools`（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），`chat.tools` 仅追加；由模型按语料提示决定是否调用，`usage` 为各轮累计。轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 时仍保留 `default_tools`，仅不再并入 `chat.tools`。
+普通对话默认开启 RAG（`chat.rag_enabled`，可用 `CHAT_RAG_ENABLED=false` 关闭）：请求未传 `rag` 时**只用本轮用户输入检索语料库**并注入 system，历史消息仅作为大模型上下文；未指定 `corpus_id` 时搜索全部语料库。同样默认强制带上 `agent.default_tools`（`knowledge_search`、`dbconn` 等，与 Agent 共用注册表），`chat.tools` 仅追加；其中 `knowledge_search` 固定使用本轮用户输入，不采用模型根据历史改写的查询词。`usage` 为各轮累计。轮数上限 `chat.max_tool_steps`；设 `chat.tools_enabled: false` 时仍保留 `default_tools`，仅不再并入 `chat.tools`。
 
 ```json
 {
