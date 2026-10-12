@@ -276,6 +276,7 @@ type DingTalkChat struct {
 	ConversationID   string    `gorm:"type:text;not null;uniqueIndex;comment:钉钉 conversationId" json:"conversation_id"`
 	Title            string    `gorm:"type:text;comment:群名称(conversationTitle)" json:"title"`
 	ConversationType string    `gorm:"type:text;not null;default:'';comment:会话类型:1单聊2群聊" json:"conversation_type"`
+	PrefixPrompt     string    `gorm:"type:text;not null;default:'';comment:群前置提示词，回复前注入系统提示" json:"prefix_prompt"`
 	LastSeenAt       time.Time `gorm:"index;comment:最近一次收到消息时间" json:"last_seen_at"`
 	CreatedAt        time.Time `gorm:"comment:创建时间" json:"created_at"`
 	UpdatedAt        time.Time `gorm:"comment:更新时间" json:"updated_at"`

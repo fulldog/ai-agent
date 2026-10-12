@@ -21,6 +21,7 @@ type ChatItem struct {
 	IsGroup          bool          `json:"is_group"`
 	LastSeenAt       time.Time     `json:"last_seen_at"`
 	UpdatedAt        time.Time     `json:"updated_at"`
+	PrefixPrompt     string        `json:"prefix_prompt"`
 	CorpusIDs        []uuid.UUID   `json:"corpus_ids"`
 	Corpora          []CorpusBrief `json:"corpora"`
 }
@@ -306,6 +307,55 @@ func (b *Bot) SetChatCorpora(id uuid.UUID, corpusIDs []uuid.UUID) (*ChatItem, er
 	return &item, nil
 }
 
+// SetChatPrefix 保存该群/单聊的前置提示词。空字符串表示清除。
+func (b *Bot) SetChatPrefix(id uuid.UUID, prompt string) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	prompt = strings.TrimSpace(prompt)
+	if len([]rune(prompt)) > 4000 {
+		return nil, ErrPrefixTooLong
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if err := b.db.Model(&chat).Update("prefix_prompt", prompt).Error; err != nil {
+		return nil, err
+	}
+	chat.PrefixPrompt = prompt
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
+func (b *Bot) chatPrefix(conversationID string) string {
+	if b == nil || b.db == nil {
+		return ""
+	}
+	cid := strings.TrimSpace(conversationID)
+	if cid == "" {
+		return ""
+	}
+	var row model.DingTalkChat
+	err := b.db.Select("prefix_prompt").Where("conversation_id = ?", cid).First(&row).Error
+	if err != nil {
+		return ""
+	}
+	return wrapPrefixPrompt(row.PrefixPrompt)
+}
+
+// ErrPrefixTooLong 群前置提示词超过 4000 字。
+var ErrPrefixTooLong = errors.New("prefix prompt too long")
+
+// wrapPrefixPrompt 把群规则放在系统提示最前，并允许缺信息时直接追问。
+func wrapPrefixPrompt(prompt string) string {
+	p := strings.TrimSpace(prompt)
+	if p == "" {
+		return ""
+	}
+	return "【本群规则，优先于后续工具调用约定】\n" + p + "\n若本群规则要求先向用户补充信息，本轮只回复追问，不要调用工具，也不要查库。"
+}
+
 func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 	ids := make([]uuid.UUID, 0, len(corpora))
 	briefs := make([]CorpusBrief, 0, len(corpora))
@@ -321,6 +371,7 @@ func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 		IsGroup:          isGroup(row.ConversationType),
 		LastSeenAt:       row.LastSeenAt,
 		UpdatedAt:        row.UpdatedAt,
+		PrefixPrompt:     row.PrefixPrompt,
 		CorpusIDs:        ids,
 		Corpora:          briefs,
 	}

@@ -16,7 +16,7 @@
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
-        共 {{ filtered.length }} 个会话。未出现过的群需先 @ 机器人一次；改群名后下次消息会更新。
+        共 {{ filtered.length }} 个会话。每个群可单独设置前置提示词，保存后下一条消息生效。
       </div>
     </div>
 
@@ -47,11 +47,37 @@
             </el-select>
           </template>
         </el-table-column>
+        <el-table-column label="前置提示词" width="120">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openPrompt(row)">
+              {{ row.prefix_prompt ? "已设置" : "未设置" }}
+            </el-button>
+          </template>
+        </el-table-column>
         <el-table-column label="最近消息" width="180">
           <template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template>
         </el-table-column>
       </el-table>
     </div>
+
+    <el-dialog v-model="promptOpen" :title="promptTitle" width="560px" destroy-on-close>
+      <p class="prompt-hint">
+        这段文字会放在该群系统提示最前面。供应商数据必须同时有名称和标签才能唯一确定一条记录；只给名称时先追问标签，不要查库。
+      </p>
+      <el-input
+        v-model="promptDraft"
+        type="textarea"
+        :rows="8"
+        maxlength="4000"
+        show-word-limit
+        placeholder="留空表示不附加群规则"
+      />
+      <template #footer>
+        <el-button @click="promptDraft = supplierPrefix">填入供应商规则</el-button>
+        <el-button @click="promptOpen = false">取消</el-button>
+        <el-button type="primary" :loading="promptSaving" @click="savePrompt">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -69,10 +95,22 @@ const hero: HeroItem[] = [
   { icon: Link, title: "未绑定", desc: "未绑定任何库时仍检索全部语料库", tone: "orange" },
 ];
 
+const supplierPrefix =
+  "查询供应商系统时，必须同时具备供应商名称和标签才能确定唯一一条数据。如果用户只提供了名称、没有标签，先提示用户补充标签，不要查库，也不要猜测标签。名称和标签都齐全后再查询。";
+
 const loading = ref(false);
 const kind = ref<"all" | "group" | "direct">("all");
 const rows = ref<DingTalkChat[]>([]);
 const corpora = ref<Corpus[]>([]);
+const promptOpen = ref(false);
+const promptSaving = ref(false);
+const promptDraft = ref("");
+const promptRow = ref<DingTalkChat | null>(null);
+
+const promptTitle = computed(() => {
+  const name = promptRow.value?.title || "会话";
+  return `前置提示词 · ${name}`;
+});
 
 const filtered = computed(() => {
   if (kind.value === "group") return rows.value.filter((r) => r.is_group);
@@ -107,6 +145,34 @@ async function load() {
   }
 }
 
+function openPrompt(row: DingTalkChat) {
+  promptRow.value = row;
+  promptDraft.value = row.prefix_prompt || "";
+  promptOpen.value = true;
+}
+
+async function savePrompt() {
+  const row = promptRow.value;
+  if (!row) return;
+  promptSaving.value = true;
+  try {
+    const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/prefix`, {
+      method: "PUT",
+      body: JSON.stringify({ prefix_prompt: promptDraft.value }),
+    });
+    const i = rows.value.findIndex((r) => r.id === row.id);
+    if (i >= 0) {
+      rows.value[i] = { ...updated, corpus_ids: updated.corpus_ids || [] };
+    }
+    promptOpen.value = false;
+    ElMessage.success("已保存，下一条消息生效");
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+  } finally {
+    promptSaving.value = false;
+  }
+}
+
 async function save(row: DingTalkChat) {
   try {
     const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/corpora`, {
@@ -127,3 +193,11 @@ onMounted(() => {
   void load();
 });
 </script>
+
+<style scoped>
+.prompt-hint {
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+</style>

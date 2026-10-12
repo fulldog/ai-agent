@@ -1060,6 +1060,43 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/dingtalk/chats/{id}/prefix:
+    put:
+      tags: [DingTalk]
+      summary: 设置钉钉会话前置提示词
+      description: 保存后下一条该群消息生效。空字符串清除。回复时放在系统提示最前；非空时首轮允许直接追问，不强制调用工具。
+      operationId: setDingTalkChatPrefix
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prefix_prompt:
+                  type: string
+                  maxLength: 4000
+            example:
+              prefix_prompt: 查询供应商系统时，必须同时具备供应商名称和标签才能确定唯一一条数据。如果用户只提供了名称，先提示补充标签，不要查库。
+      responses:
+        "200":
+          description: 更新后的档案
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkChat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/rag/search:
     post:
       tags: [RAG]
@@ -1643,6 +1680,9 @@ components:
         updated_at:
           type: string
           format: date-time
+        prefix_prompt:
+          type: string
+          description: 群前置提示词，回复时注入系统提示最前
         corpus_ids:
           type: array
           items:

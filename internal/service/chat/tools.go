@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -71,19 +72,20 @@ func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callConte
 	promptTokens, completionTokens := 0, 0
 	var last *llm.ChatResponse
 	usedTool := false
+	allowClarify := strings.TrimSpace(in.PrefixPrompt) != ""
 
 	for round := 0; round < rounds; round++ {
 		req := chatRequest(in, call.provider, call.model, msgs)
 		if round < rounds-1 {
 			req.Tools = specs
-			if len(specs) > 0 && !usedTool {
+			if len(specs) > 0 && !usedTool && !allowClarify {
 				req.ToolChoice = "required"
 			}
 		}
 		start := time.Now()
 		var resp *llm.ChatResponse
 		var err error
-		suppressDelta := len(req.Tools) > 0 && !usedTool
+		suppressDelta := len(req.Tools) > 0 && !usedTool && !allowClarify
 		streamCB := func(ev llm.StreamEvent) error {
 			if suppressDelta || ev.Content == "" || onDelta == nil {
 				return nil

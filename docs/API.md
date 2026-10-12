@@ -530,6 +530,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
       "conversation_type": "2",
       "is_group": true,
       "last_seen_at": "2026-09-24T06:00:00Z",
+      "prefix_prompt": "",
       "corpus_ids": ["uuid"],
       "corpora": [{ "id": "uuid", "name": "供应商付款" }]
     }
@@ -548,6 +549,16 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 ```
 
 语料库不存在 → `400`；档案不存在 → `404`。
+
+### PUT `/api/v1/dingtalk/chats/:id/prefix`
+
+保存该群/单聊的前置提示词。空字符串清除。超过 4000 字 → `400`；档案不存在 → `404`。保存后下一条消息生效，并放在系统提示最前面。非空时，这一轮允许模型直接追问（例如只给了供应商名称、没给标签），不强制先调用工具。
+
+```json
+{
+  "prefix_prompt": "查询供应商系统时，必须同时具备供应商名称和标签才能确定唯一一条数据。如果用户只提供了名称、没有标签，先提示用户补充标签，不要查库。"
+}
+```
 
 ### GET `/api/v1/dingtalk/reply-mode`
 

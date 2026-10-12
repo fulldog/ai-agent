@@ -336,7 +336,8 @@ type CompleteInput struct {
 	CorpusIDs     []uuid.UUID
 	RAGHits       []rag.Hit
 	TopK          int
-	EnableSearch  bool // 无语料命中且用户强制联网时，通义 enable_search
+	EnableSearch  bool   // 无语料命中且用户强制联网时，通义 enable_search
+	PrefixPrompt  string // 钉钉群前置提示，放在系统提示最前
 	RequestID     string
 	LogLLMRequest func(provider, model string, messages []llm.Message)
 }
@@ -510,6 +511,13 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		style += "\n\n" + tp
 	}
 	system := mergeSystem(style, conv.SystemPrompt, ragContext(hits))
+	if prefix := strings.TrimSpace(in.PrefixPrompt); prefix != "" {
+		if system == "" {
+			system = prefix
+		} else {
+			system = prefix + "\n\n" + system
+		}
+	}
 	if system != "" {
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}

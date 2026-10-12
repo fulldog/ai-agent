@@ -101,6 +101,39 @@ func (h *DingTalkHandler) SetChatCorpora(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *DingTalkHandler) SetChatPrefix(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var req struct {
+		PrefixPrompt string `json:"prefix_prompt"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	item, err := h.Bot.SetChatPrefix(id, req.PrefixPrompt)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "dingtalk chat not found")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrPrefixTooLong) {
+			writeError(c, http.StatusBadRequest, "bad_request", "前置提示词不能超过 4000 字")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func parseCorpusIDs(raw []string) ([]uuid.UUID, error) {
 	if raw == nil {
 		return []uuid.UUID{}, nil

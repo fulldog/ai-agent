@@ -88,6 +88,7 @@ export interface DingTalkChat {
   is_group: boolean;
   last_seen_at: string;
   updated_at: string;
+  prefix_prompt: string;
   corpus_ids: string[];
   corpora: { id: string; name: string }[];
 }

@@ -108,6 +108,7 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.PUT("/dingtalk/reply-mode", dingH.SetReplyMode)
 			dbGroup.GET("/dingtalk/chats", dingH.ListChats)
 			dbGroup.PUT("/dingtalk/chats/:id/corpora", dingH.SetChatCorpora)
+			dbGroup.PUT("/dingtalk/chats/:id/prefix", dingH.SetChatPrefix)
 
 			dbGroup.POST("/rag/search", ragH.Search)
 

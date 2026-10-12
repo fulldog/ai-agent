@@ -510,6 +510,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		RAGHits:        hits,
 		TopK:           b.ragTop,
 		EnableSearch:   enableSearch,
+		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		RequestID:      tr.requestID,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
 			turns := llmTurnLogs(messages, b.previewMax)
@@ -583,6 +584,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		TopK:           b.ragTop,
 		RAGHits:        hits,
 		EnableSearch:   enableSearch,
+		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		RequestID:      tr.requestID,
 		Stream:         true,
 	}, func(ev agent.Event) error {
@@ -700,6 +702,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		// 非 nil 空切片：禁止 agent.retrieveHits 写入 system；工具侧仍用 CorpusIDs。
 		RAGHits:      []rag.Hit{},
 		EnableSearch: enableSearch,
+		PrefixPrompt: b.chatPrefix(data.ConversationID),
 		RequestID:    tr.requestID,
 		Stream:       true,
 	}, func(ev agent.Event) error {

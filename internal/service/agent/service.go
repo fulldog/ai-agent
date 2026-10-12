@@ -70,6 +70,7 @@ type RunInput struct {
 	TopK           int
 	RAGHits        []rag.Hit
 	EnableSearch   bool
+	PrefixPrompt   string
 	RequestID      string
 	Stream         bool
 }
@@ -293,6 +294,13 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		}
 	}
 	system := mergeAgentSystem(agentSystemPrompt(toolSpecs), sanitizeRAGHits(in.RAGHits))
+	if prefix := strings.TrimSpace(in.PrefixPrompt); prefix != "" {
+		if system == "" {
+			system = prefix
+		} else {
+			system = prefix + "\n\n" + system
+		}
+	}
 	msgs := initialMessages(system, history, in.Input)
 	enableSearch := in.EnableSearch && strings.EqualFold(providerName, "qwen")
 	toolEnv := &tools.Env{
@@ -329,12 +337,14 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		chatReq := llm.ChatRequest{
 			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
 		}
+		// 群前置提示要求缺信息先追问时，首轮允许直接回复，不强制 function call。
+		allowClarify := strings.TrimSpace(in.PrefixPrompt) != ""
 		// 在至少成功走过一轮工具前，每步都强制 function call（防止网关丢掉 required 后空口推诿）。
-		if len(toolSpecs) > 0 && !usedTool {
+		if len(toolSpecs) > 0 && !usedTool && !allowClarify {
 			chatReq.ToolChoice = "required"
 		}
 		// 尚未跑过工具时不把正文 delta 推到钉钉：否则「未启用工具」会先刷到卡片。
-		suppressDelta := len(toolSpecs) > 0 && !usedTool
+		suppressDelta := len(toolSpecs) > 0 && !usedTool && !allowClarify
 		streamEmit := func(ev llm.StreamEvent) error {
 			if suppressDelta || ev.Content == "" || emit == nil {
 				return nil
