@@ -138,7 +138,7 @@ storage:
 
 # 文档抽取（可选）：超时等；是否云端上传由请求的 provider 决定（qwen/kimi 云端，deepseek 本机）
 extract:
-  timeout_seconds: 180
+  timeout_seconds: 180  # 上传文件与查询状态。通义回放全文走流式，另有 10 分钟上限
   # fallback_local / backend 已废弃：请用 provider 选择能力
 
 log:

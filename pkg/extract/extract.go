@@ -27,10 +27,11 @@ func (e *Extractor) FromBytes(filename string, data []byte) (string, error) {
 	if len(data) == 0 {
 		return "", fmt.Errorf("empty file")
 	}
+	if IsPlainText(filename) {
+		return trimText(string(data)), nil
+	}
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
-	case ".txt", ".md", ".markdown", ".csv", ".json", ".xml", ".html", ".htm":
-		return trimText(string(data)), nil
 	case ".pdf":
 		return e.extractPDF(data)
 	case ".docx":
@@ -183,6 +184,16 @@ func GuessName(filename string) string {
 		return "document"
 	}
 	return base
+}
+
+// IsPlainText 是可以直接当正文读取的文本文档，不需要 OCR 或大模型抽取。
+func IsPlainText(filename string) bool {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".txt", ".md", ".markdown", ".csv", ".json", ".xml", ".html", ".htm":
+		return true
+	default:
+		return false
+	}
 }
 
 // IsSupportedExtension checks if file extension is supported.

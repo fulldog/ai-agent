@@ -1,9 +1,11 @@
 package remote
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,6 +14,10 @@ import (
 	"strings"
 	"time"
 )
+
+// chatExtractTimeout 是通义 qwen-long 回放全文的上限。
+// 非流式要等整篇生成完才回响应头，extract.timeout_seconds（默认 180s）会在等头时被掐断。
+const chatExtractTimeout = 10 * time.Minute
 
 // FileObject OpenAI 兼容 Files 上传响应。
 type FileObject struct {
@@ -244,7 +250,8 @@ func (c *FilesClient) WaitProcessed(ctx context.Context, fileID string, maxWait 
 	}
 }
 
-// ChatWithFileID 通义 Qwen-Long 风格：system 里放 fileid://，请模型输出全文。
+// ChatWithFileID 通义 Qwen-Long 风格：system 里放 fileid://，流式要模型输出全文。
+// 流式是为了马上拿到响应头；正文仍可能生成很久，因此不用 Files 客户端的 180s Timeout。
 func (c *FilesClient) ChatWithFileID(ctx context.Context, model, fileID, userPrompt string) (string, error) {
 	if model == "" {
 		model = "qwen-long"
@@ -259,37 +266,118 @@ func (c *FilesClient) ChatWithFileID(ctx context.Context, model, fileID, userPro
 			{"role": "user", "content": userPrompt},
 		},
 		"temperature": 0,
+		"stream":      true,
 	}
-	rawBody, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(rawBody))
+	rawBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	chatCtx, cancel := context.WithTimeout(ctx, c.chatDeadline())
+	defer cancel()
+	req, err := http.NewRequestWithContext(chatCtx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(rawBody))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.HTTPClient.Do(req)
+	// Timeout 含读 body。非流式长文档会在响应头到达前耗尽 180s。
+	resp, err := (&http.Client{Timeout: 0}).Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 800))
 		return "", fmt.Errorf("chat with file HTTP %d: %s", resp.StatusCode, truncate(string(raw), 500))
 	}
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return readChatStream(resp.Body)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return chatCompletionText(raw)
+}
+
+func (c *FilesClient) chatDeadline() time.Duration {
+	if c != nil && c.HTTPClient != nil && c.HTTPClient.Timeout > chatExtractTimeout {
+		return c.HTTPClient.Timeout
+	}
+	return chatExtractTimeout
+}
+
+func readChatStream(r io.Reader) (string, error) {
+	br := bufio.NewReader(r)
+	var content strings.Builder
+	for {
+		line, err := br.ReadString('\n')
+		if len(line) > 0 {
+			text, done, perr := consumeChatSSELine(line)
+			if perr != nil {
+				return "", perr
+			}
+			content.WriteString(text)
+			if done {
+				break
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return "", err
+		}
+	}
+	return content.String(), nil
+}
+
+func consumeChatSSELine(line string) (text string, done bool, err error) {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "data:") {
+		return "", false, nil
+	}
+	data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if data == "" || data == "[DONE]" {
+		return "", data == "[DONE]", nil
+	}
+	text, err = chatCompletionText([]byte(data))
+	return text, false, err
+}
+
+func chatCompletionText(raw []byte) (string, error) {
 	var out struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Message string `json:"message"`
 		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return "", err
+		return "", fmt.Errorf("parse chat with file: %w", err)
 	}
-	if len(out.Choices) == 0 {
-		return "", nil
+	if out.Error != nil && strings.TrimSpace(out.Error.Message) != "" {
+		return "", fmt.Errorf("chat with file: %s", out.Error.Message)
 	}
-	return out.Choices[0].Message.Content, nil
+	if strings.TrimSpace(out.Message) != "" && len(out.Choices) == 0 {
+		return "", fmt.Errorf("chat with file: %s", out.Message)
+	}
+	var b strings.Builder
+	for _, ch := range out.Choices {
+		if ch.Delta.Content != "" {
+			b.WriteString(ch.Delta.Content)
+		} else if ch.Message.Content != "" {
+			b.WriteString(ch.Message.Content)
+		}
+	}
+	return b.String(), nil
 }
 
 func truncate(s string, n int) string {

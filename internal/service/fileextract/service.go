@@ -107,8 +107,8 @@ func (s *Service) Prepare(ctx context.Context, in PrepareInput) (*PrepareResult,
 			s.locker.RUnlock(hash)
 			return hit, nil
 		}
-		// 通义：只有 file_id、没有正文时，不能拿去建索引。
-		if provider == "qwen" {
+		// 通义：只有 file_id、没有正文时，不能拿去建索引。文本文档不走这条缓存。
+		if provider == "qwen" && !extract.IsPlainText(name) {
 			if reuse := s.loadQwenFileID(ctx, hash); reuse != nil && qwenReuseOK(in.NeedText, reuse.Text) {
 				s.locker.RUnlock(hash)
 				return reuse, nil
@@ -127,7 +127,7 @@ func (s *Service) Prepare(ctx context.Context, in PrepareInput) (*PrepareResult,
 		if hit := s.loadTextCache(ctx, hash); hit != nil {
 			return hit, nil
 		}
-		if provider == "qwen" {
+		if provider == "qwen" && !extract.IsPlainText(name) {
 			if reuse := s.loadQwenFileID(ctx, hash); reuse != nil {
 				if qwenReuseOK(in.NeedText, reuse.Text) {
 					return reuse, nil
@@ -139,7 +139,8 @@ func (s *Service) Prepare(ctx context.Context, in PrepareInput) (*PrepareResult,
 		}
 	}
 
-	native := ProviderSupportsNativeFile(provider)
+	// txt/md 等本身就是正文，直接本地读取，不上传通义/Kimi 再让模型回放。
+	native := ProviderSupportsNativeFile(provider) && !extract.IsPlainText(name)
 	switch {
 	case native && provider == "qwen":
 		return s.prepareQwen(ctx, hash, name, in.Data, in.NeedText)

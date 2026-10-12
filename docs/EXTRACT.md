@@ -259,7 +259,7 @@ tesseract page-1.png stdout -l chi_sim+eng --psm 3 --oem 3
 
 1. 算 SHA256；读缓存用读锁，强刷/抽取用写锁（`TryLock`，抢不到 →「文档正在识别中」；进程内，无 DB 锁）
 2. 未强制且已有可读 txt → 缓存命中
-3. `provider=qwen`：上传通义 → 用 file_id 对话；异步写 txt；**新记录成功后再软删旧行**
+3. `provider=qwen`：pdf/docx/图片上传通义 → 用 file_id 对话；异步写 txt；**新记录成功后再软删旧行**。txt/md/csv/json/xml/html 直接本地读取，不调用大模型抽正文
 4. `provider=kimi`：上传并取正文 → 对话 + 落库
 5. 其他：本机 OCR → 落库
 
