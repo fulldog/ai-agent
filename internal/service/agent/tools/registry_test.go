@@ -6,22 +6,19 @@ func TestRegistryListOrder(t *testing.T) {
 	t.Parallel()
 	r := Default()
 	got := r.List()
-	if len(got) != 3 {
-		t.Fatalf("default list len=%d: %+v", len(got), got)
+	if len(got) != 1 || got[0].Name != "knowledge_search" {
+		t.Fatalf("default list: %+v", got)
 	}
-	if got[0].Name != "knowledge_search" || got[1].Name != "current_time" || got[2].Name != "calculator" {
-		t.Fatalf("default order: %+v", got)
-	}
-	specs := r.Specs([]string{"missing", "knowledge_search", "calculator"})
-	if len(specs) != 2 || specs[0].Function.Name != "knowledge_search" || specs[1].Function.Name != "calculator" {
+	specs := r.Specs([]string{"missing", "knowledge_search"})
+	if len(specs) != 1 || specs[0].Function.Name != "knowledge_search" {
 		t.Fatalf("specs: %+v", specs)
 	}
 }
 
 func TestMergeNamesKeepsDefaultsFirst(t *testing.T) {
 	t.Parallel()
-	got := MergeNames([]string{"knowledge_search", "dbconn"}, []string{"dbconn", "calculator"}, []string{"current_time"})
-	want := []string{"knowledge_search", "dbconn", "calculator", "current_time"}
+	got := MergeNames([]string{"knowledge_search", "dbconn"}, []string{"dbconn", "extra"}, []string{"later"})
+	want := []string{"knowledge_search", "dbconn", "extra", "later"}
 	if len(got) != len(want) {
 		t.Fatalf("got %#v", got)
 	}

@@ -70,20 +70,10 @@ func TestListToolsDefaultFlag(t *testing.T) {
 		cfg:      &config.Config{},
 		registry: tools.Default(),
 	}
-	s.cfg.Agent.DefaultTools = []string{"knowledge_search", "current_time"}
+	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	got := s.ListTools()
-	if len(got) != 3 {
-		t.Fatalf("got %+v", got)
-	}
-	byName := map[string]bool{}
-	for _, tinfo := range got {
-		byName[tinfo.Name] = tinfo.Default
-	}
-	if !byName["knowledge_search"] || !byName["current_time"] {
+	if len(got) != 1 || !got[0].Default || got[0].Name != "knowledge_search" {
 		t.Fatalf("defaults: %+v", got)
-	}
-	if byName["calculator"] {
-		t.Fatalf("calculator should not be default: %+v", got)
 	}
 }
 
@@ -94,7 +84,7 @@ func TestListToolsHasNoImplicitDefaults(t *testing.T) {
 		registry: tools.Default(),
 	}
 	got := s.ListTools()
-	if len(got) != 3 {
+	if len(got) != 1 || got[0].Name != "knowledge_search" {
 		t.Fatalf("registered tools: %+v", got)
 	}
 	for _, info := range got {

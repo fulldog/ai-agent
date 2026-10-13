@@ -2,16 +2,13 @@ package tools_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 )
 
-func TestCalculator(t *testing.T) {
-	c := tools.Calculator{}
-	args, _ := json.Marshal(map[string]any{"a": 123.45, "b": 6.7, "op": "*"})
-	got, err := c.Exec(context.Background(), args, nil)
+func TestCalc(t *testing.T) {
+	got, err := tools.Calc(123.45, 6.7, "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,12 +19,12 @@ func TestCalculator(t *testing.T) {
 
 func TestRegistrySpecsAndUnknown(t *testing.T) {
 	reg := tools.Default()
-	specs := reg.Specs([]string{"knowledge_search", "missing", "current_time"})
-	if len(specs) != 2 {
+	specs := reg.Specs([]string{"knowledge_search", "missing"})
+	if len(specs) != 1 {
 		t.Fatalf("len=%d", len(specs))
 	}
-	if specs[0].Function.Name != "knowledge_search" || specs[1].Function.Name != "current_time" {
-		t.Fatalf("names=%s,%s", specs[0].Function.Name, specs[1].Function.Name)
+	if specs[0].Function.Name != "knowledge_search" {
+		t.Fatalf("names=%s", specs[0].Function.Name)
 	}
 	if specs[0].Function.Description == "" {
 		t.Fatal("empty chinese description")
@@ -35,12 +32,5 @@ func TestRegistrySpecsAndUnknown(t *testing.T) {
 	_, err := reg.Exec(context.Background(), "nope", "{}", nil)
 	if err == nil {
 		t.Fatal("expected unknown tool error")
-	}
-}
-
-func TestCurrentTime(t *testing.T) {
-	got, err := tools.CurrentTime{}.Exec(context.Background(), nil, nil)
-	if err != nil || got == "" {
-		t.Fatalf("got %q err=%v", got, err)
 	}
 }

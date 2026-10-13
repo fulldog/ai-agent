@@ -366,7 +366,7 @@ JSON 请求体也可用：`content`（正文）+ `fields` / `message`（不走�
   "provider": "deepseek",
   "model": "deepseek-v4-flash",
   "max_steps": 8,
-  "tools": ["knowledge_search", "current_time", "calculator", "dbconn"],
+  "tools": ["knowledge_search", "dbconn"],
   "rag": {
     "corpus_id": "uuid",
     "top_k": 5
@@ -567,7 +567,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 
 ```json
 {
-  "tools": ["calculator"]
+  "tools": ["dbconn"]
 }
 ```
 

@@ -1,11 +1,10 @@
 # MCP：Calculator
 
-将 Agent 内置的 `calculator` 工具以 **MCP Server**（stdio）再暴露一份，供 Cursor、Claude Desktop 等 MCP 客户端直接调用。运算逻辑与 `internal/service/agent/tools.Calc` 共用。
+独立的 MCP Server（stdio）示例，供 Cursor、Claude Desktop 等客户端调用四则运算。运算逻辑在 `internal/service/agent/tools.Calc`，不注册为 Agent 或钉钉工具。
 
 | 形态 | 入口 | 说明 |
 |------|------|------|
-| Agent Tool Calling | `tools.Calculator` | `POST /api/v1/agent/runs` 内置循环 |
-| **MCP Server** | `cmd/mcp-calculator` | stdio，工具名仍为 `calculator` |
+| **MCP Server** | `cmd/mcp-demo` | stdio，工具名 `calculator`，不进入 Agent 工具列表 |
 
 ---
 
@@ -89,7 +88,7 @@ Linux / macOS：
 无 MCP 客户端时，可用官方 SDK 客户端或任意 MCP inspector 连 stdio。逻辑单测仍走：
 
 ```bash
-go test ./internal/service/agent/tools/ -run Calculator
+go test ./internal/service/agent/tools/ -run TestCalc
 ```
 
 ---
@@ -99,5 +98,5 @@ go test ./internal/service/agent/tools/ -run Calculator
 | 路径 | 内容 |
 |------|------|
 | `cmd/mcp-calculator/main.go` | MCP Server 入口 |
-| `internal/service/agent/tools/calculator.go` | `Calc` + Agent `Calculator` Tool |
+| `internal/service/agent/tools/calculator.go` | `Calc` |
 | `docs/AGENT_TOOLS.md` | Agent 侧工具规范 |

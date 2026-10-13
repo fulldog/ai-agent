@@ -582,8 +582,6 @@ paths:
               max_steps: 8
               tools:
                 - knowledge_search
-                - current_time
-                - calculator
                 - dbconn
               rag:
                 corpus_id: "00000000-0000-0000-0000-000000000002"
@@ -1121,7 +1119,7 @@ paths:
                     type: string
             example:
               tools:
-                - calculator
+                - dbconn
       responses:
         "200":
           description: 更新后的档案
@@ -1558,7 +1556,7 @@ components:
           description: 本次选择的工具名；若配置了 agent.default_tools 则取并集，两者都为空时不挂工具
           items:
             type: string
-            enum: [knowledge_search, current_time, calculator, dbconn]
+            enum: [knowledge_search, dbconn]
         rag:
           $ref: "#/components/schemas/AgentRAGOptions"
 

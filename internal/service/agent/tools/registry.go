@@ -31,8 +31,6 @@ func NewRegistry(list ...Tool) *Registry {
 func builtin(c *dbconn.Client) []Tool {
 	list := []Tool{
 		KnowledgeSearch{},
-		CurrentTime{},
-		Calculator{},
 	}
 	if c != nil {
 		list = append(list, DBConn{Client: c})

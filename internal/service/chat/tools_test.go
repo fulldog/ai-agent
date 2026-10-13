@@ -35,9 +35,9 @@ func TestToolSpecsHasNoImplicitTools(t *testing.T) {
 
 func TestToolSpecsMergesChatTools(t *testing.T) {
 	t.Parallel()
-	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.DBConn{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
-	s.cfg.Chat.Tools = []string{"not_registered", "calculator"}
+	s.cfg.Chat.Tools = []string{"not_registered", "dbconn"}
 	got := s.toolSpecs(nil, false)
 	names := make([]string, 0, len(got))
 	for _, sp := range got {
@@ -48,7 +48,7 @@ func TestToolSpecsMergesChatTools(t *testing.T) {
 	}
 	foundCalc := false
 	for _, n := range names {
-		if n == "calculator" {
+		if n == "dbconn" {
 			foundCalc = true
 		}
 		if n == "not_registered" {
@@ -56,33 +56,33 @@ func TestToolSpecsMergesChatTools(t *testing.T) {
 		}
 	}
 	if !foundCalc {
-		t.Fatalf("missing calculator: %+v", names)
+		t.Fatalf("missing dbconn: %+v", names)
 	}
 }
 
 func TestToolSpecsMergesExtraTools(t *testing.T) {
 	t.Parallel()
 	off := false
-	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.DBConn{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	s.cfg.Chat.ToolsEnabled = &off
-	got := s.toolSpecs([]string{"calculator", "knowledge_search", "missing"}, false)
+	got := s.toolSpecs([]string{"dbconn", "knowledge_search", "missing"}, false)
 	names := make([]string, 0, len(got))
 	for _, sp := range got {
 		names = append(names, sp.Function.Name)
 	}
-	if len(names) != 2 || names[0] != "knowledge_search" || names[1] != "calculator" {
+	if len(names) != 2 || names[0] != "knowledge_search" || names[1] != "dbconn" {
 		t.Fatalf("union: %+v", names)
 	}
 }
 
 func TestToolSpecsOnlyUsesGivenNames(t *testing.T) {
 	t.Parallel()
-	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.DBConn{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	s.cfg.Chat.Tools = []string{"knowledge_search"}
-	got := s.toolSpecs([]string{"calculator"}, true)
-	if len(got) != 1 || got[0].Function.Name != "calculator" {
+	got := s.toolSpecs([]string{"dbconn"}, true)
+	if len(got) != 1 || got[0].Function.Name != "dbconn" {
 		t.Fatalf("only: %+v", got)
 	}
 	if got := s.toolSpecs(nil, true); len(got) != 0 {

@@ -16,9 +16,9 @@ func TestAgentSystemPrompt(t *testing.T) {
 	if got != baseAgentPrompt {
 		t.Fatalf("no tools: %q", got)
 	}
-	got = agentSystemPrompt([]llm.ToolSpec{{Function: llm.ToolSpecFunc{Name: "calculator"}}})
-	if !strings.Contains(got, toolsReadyPrompt) || !strings.Contains(got, "calculator") || strings.Contains(got, dbconnAgentPrompt) {
-		t.Fatalf("calculator only: %q", got)
+	got = agentSystemPrompt([]llm.ToolSpec{{Function: llm.ToolSpecFunc{Name: "example_tool"}}})
+	if !strings.Contains(got, toolsReadyPrompt) || !strings.Contains(got, "example_tool") || strings.Contains(got, dbconnAgentPrompt) {
+		t.Fatalf("non-dbconn tool: %q", got)
 	}
 	got = agentSystemPrompt([]llm.ToolSpec{
 		{Function: llm.ToolSpecFunc{Name: "knowledge_search"}},

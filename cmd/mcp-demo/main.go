@@ -1,4 +1,4 @@
-// Command mcp-demo 以 MCP（stdio）暴露与 Agent 内置 calculator 相同的四则运算工具。
+// Command mcp-demo 以 MCP（stdio）暴露四则运算工具。
 //
 // 构建:
 //
@@ -43,7 +43,7 @@ func main() {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "calculator",
-		Description: "计算简单四则运算：a op b。op 为 +、-、*、/ 之一。与 ai-agent 内置 Agent 工具 calculator 语义一致。",
+		Description: "计算简单四则运算：a op b。op 为 +、-、*、/ 之一。",
 	}, calculate)
 
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
