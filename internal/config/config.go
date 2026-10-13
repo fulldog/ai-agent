@@ -77,6 +77,8 @@ func (c DingTalkConfig) UseWebAgent() bool {
 type ServerConfig struct {
 	Addr string `yaml:"addr"`
 	Mode string `yaml:"mode"`
+	// PublicBaseURL 对外访问本服务的绝对地址，不含末尾斜杠。生成文件的下载链接会拼在它后面。
+	PublicBaseURL string `yaml:"public_base_url"`
 	// CORSOrigins 浏览器 Origin 白名单。空或含 * 时允许所有来源；填写具体 Origin 则仅放行这些源。
 	CORSOrigins []string `yaml:"cors_origins"`
 }
@@ -278,6 +280,9 @@ type OCRConfig struct {
 // StorageConfig 本地附件与抽取文本落盘。
 type StorageConfig struct {
 	AttachmentsDir string `yaml:"attachments_dir"` // 默认 attachments；按 YYYY/MM/DD 分子目录
+	ExportsDir     string `yaml:"exports_dir"`     // 生成文件目录，默认 exports
+	// ExportTTLHours 生成文件保留小时数。0 表示不过期。
+	ExportTTLHours int `yaml:"export_ttl_hours"`
 }
 
 // ExtractConfig 文档抽取后端：local 本机 OCR；kimi/qwen 云端 Files。
@@ -398,6 +403,8 @@ func defaultConfig() *Config {
 		},
 		Storage: StorageConfig{
 			AttachmentsDir: "attachments",
+			ExportsDir:     "exports",
+			ExportTTLHours: 168,
 		},
 		Extract: ExtractConfig{
 			Backend:        "local",
@@ -426,6 +433,9 @@ func defaultConfig() *Config {
 }
 
 func (c *Config) applyEnv() {
+	if v := os.Getenv("SERVER_PUBLIC_BASE_URL"); v != "" {
+		c.Server.PublicBaseURL = v
+	}
 	if v := os.Getenv("DATABASE_ENABLED"); v != "" {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "0", "false", "no", "off":
@@ -583,6 +593,7 @@ func (c *Config) normalize() {
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":18090"
 	}
+	c.Server.PublicBaseURL = strings.TrimRight(strings.TrimSpace(c.Server.PublicBaseURL), "/")
 	if c.Metrics.Path == "" {
 		c.Metrics.Path = "/metrics"
 	}
@@ -689,6 +700,12 @@ func (c *Config) normalize() {
 	}
 	if strings.TrimSpace(c.Storage.AttachmentsDir) == "" {
 		c.Storage.AttachmentsDir = "attachments"
+	}
+	if strings.TrimSpace(c.Storage.ExportsDir) == "" {
+		c.Storage.ExportsDir = "exports"
+	}
+	if c.Storage.ExportTTLHours < 0 {
+		c.Storage.ExportTTLHours = 168
 	}
 	switch strings.ToLower(strings.TrimSpace(c.Extract.Backend)) {
 	case "moonshot":

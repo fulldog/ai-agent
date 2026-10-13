@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/webapp/go-app/ai-agent/internal/ai/eino"
 	"github.com/webapp/go-app/ai-agent/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/dingtalk"
 	"github.com/webapp/go-app/ai-agent/internal/service/embed"
 	"github.com/webapp/go-app/ai-agent/internal/service/fileextract"
+	"github.com/webapp/go-app/ai-agent/internal/service/filegen"
 	"github.com/webapp/go-app/ai-agent/internal/service/intent"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
@@ -37,6 +39,7 @@ type App struct {
 	Eino        *eino.Runtime
 	Extract     *extract.Extractor
 	FileExtract *fileextract.Service
+	Exports     *filegen.Store
 	DingTalk    *dingtalk.Bot
 	DBConn      *dbconn.Client
 }
@@ -63,9 +66,17 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		}
 		bizDB = opened
 	}
-	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB)
+	ttl := time.Duration(0)
+	if cfg.Storage.ExportTTLHours > 0 {
+		ttl = time.Duration(cfg.Storage.ExportTTLHours) * time.Hour
+	}
+	files, err := filegen.Open(cfg.Storage.ExportsDir, cfg.Server.PublicBaseURL, ttl)
+	if err != nil {
+		return nil, fmt.Errorf("open exports: %w", err)
+	}
+	chatSvc := chat.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB, files)
 	intentSvc := intent.New(cfg, rt.Pool, db, llmLog)
-	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB)
+	agentSvc := agent.New(db, cfg, rt.Pool, ragSvc, llmLog, bizDB, files)
 	extractor := extract.New(extract.OCRConfig{
 		Enabled:           cfg.OCR.Enabled,
 		TesseractPath:     cfg.OCR.TesseractPath,
@@ -99,6 +110,7 @@ func New(cfg *config.Config, db *gorm.DB, log, accessLog, llmLog *zap.Logger) (*
 		Eino:        rt,
 		Extract:     extractor,
 		FileExtract: fileExtractSvc,
+		Exports:     files,
 		DingTalk:    dtBot,
 		DBConn:      bizDB,
 	}, nil

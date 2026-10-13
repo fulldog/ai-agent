@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
+	"github.com/webapp/go-app/ai-agent/internal/service/filegen"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 )
 
@@ -31,6 +32,7 @@ func NewRegistry(list ...Tool) *Registry {
 func builtin(c *dbconn.Client) []Tool {
 	list := []Tool{
 		KnowledgeSearch{},
+		GenerateFile{},
 	}
 	if c != nil {
 		list = append(list, DBConn{Client: c})
@@ -69,6 +71,20 @@ func Default() *Registry {
 // WithDBConn 内置工具并注册 dbconn。
 func WithDBConn(c *dbconn.Client) *Registry {
 	return NewRegistry(builtin(c)...)
+}
+
+// SetFileStore 把文件生成目录接到 generate_file。store 为空时保持未就绪。
+func (r *Registry) SetFileStore(store *filegen.Store) {
+	if r == nil || store == nil {
+		return
+	}
+	name := GenerateFile{}.Name()
+	if _, ok := r.byName[name]; !ok {
+		r.byName[name] = GenerateFile{Store: store}
+		r.order = append(r.order, name)
+		return
+	}
+	r.byName[name] = GenerateFile{Store: store}
 }
 
 type Info struct {

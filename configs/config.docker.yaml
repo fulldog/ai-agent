@@ -108,6 +108,8 @@ ocr:
 
 storage:
   attachments_dir: attachments
+  exports_dir: exports
+  export_ttl_hours: 168
 
 extract:
   timeout_seconds: 180

@@ -36,6 +36,31 @@ tags:
     description: 请求日志查询
 
 paths:
+  /api/v1/exports/{id}:
+    get:
+      tags: [System]
+      summary: 下载生成的 Excel
+      description: 无需 API Key。编号为生成文件时返回的 UUID，过期或不存在返回 404。
+      operationId: downloadExport
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Excel 文件
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /health:
     get:
       tags: [System]
@@ -1556,7 +1581,7 @@ components:
           description: 本次选择的工具名；若配置了 agent.default_tools 则取并集，两者都为空时不挂工具
           items:
             type: string
-            enum: [knowledge_search, dbconn]
+            enum: [knowledge_search, dbconn, generate_file]
         rag:
           $ref: "#/components/schemas/AgentRAGOptions"
 

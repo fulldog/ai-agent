@@ -6,6 +6,7 @@ bin/
 #dist/
 logs/
 attachments/
+exports/
 data/
 .idea/
 .vscode/

@@ -184,7 +184,10 @@ agent:
 | 名称 | 说明 | 依赖 Env / 请求 |
 |------|------|-----------------|
 | `knowledge_search` | 在知识库（RAG）中检索相关文本片段 | `rag.corpus_id` 可选；未传则检索全部语料；命中受 `rag.max_distance` 过滤 |
+| `generate_file` | 把已整理的列和行生成 Excel，返回下载链接 | 文件落在 `storage.exports_dir`；链接前缀为 `server.public_base_url` |
 | `dbconn` | schema 读本地数据字典 `docs/srm_dictionary.json`（表、字段、主键、关联键）；query 执行只读 SELECT | 配置 `dbconn.dsn`；未配置则不注册 |
+
+`generate_file` 在用户要求导出、下载或生成表格时使用。模型应先查数并整理成列和行，再把结果交给该工具。工具写好 `.xlsx` 后返回下载链接，回复里必须带上这个链接。下载地址是 `GET /api/v1/exports/{id}`，不要求 API Key，编号为不可猜测的 UUID。`server.public_base_url` 为空时只返回站内路径。文件默认保留 `storage.export_ttl_hours`（默认 168）小时，设为 0 则不过期。单次最多 40 列、5000 行。
 
 `dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 读本地数据字典（不查 `information_schema`），最后 `action=query` 跑 SELECT。`schema` 仅包含表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。字典路径为 `dbconn.dictionary`，默认 `docs/srm_dictionary.json`。更新字典：`PUT /api/v1/dbconn/dictionary`。接口会重新连接业务库，读取 `Srm` 前缀表，重建 `docs/srm_dictionary.json` 并立刻替换进程内副本。仅允许单条只读 SELECT；请使用只读账号。
 

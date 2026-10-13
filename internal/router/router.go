@@ -33,6 +33,9 @@ func Setup(application *app.App) *gin.Engine {
 	// ---------- 公开路由（无需 X-API-Key）----------
 	healthH := &handler.HealthHandler{DB: application.DB, DBEnabled: cfg.Database.IsEnabled()}
 	r.GET("/health", healthH.Health) // 健康检查，含 DB 连通性
+	// 生成文件下载。编号不可猜测，故不走 API Key，方便钉钉里直接打开。
+	exportH := &handler.ExportHandler{Files: application.Exports}
+	r.GET("/api/v1/exports/:id", exportH.Download)
 
 	// Prometheus 抓取端点；protect=true 时需 admin API Key
 	if cfg.Metrics.Enabled {

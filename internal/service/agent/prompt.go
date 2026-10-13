@@ -15,6 +15,7 @@ const (
 	// toolsReadyPrompt 有工具 Spec 时追加：防止模型跟语料说「去工具函数管理开启」。
 	toolsReadyPrompt  = "下方「当前可用工具」已由服务端挂载到本次请求，可直接 function call，无需用户去任何「工具函数管理」或后台开关。禁止回答「未启用工具/请先开启工具」之类推诿；知识摘录仅供参考，与工具可用性无关。"
 	dbconnAgentPrompt = "涉及供应商、付款、订单、业务表或系统数据时：先按知识摘录中的流程与前置条件执行（缺信息先追问，不要直接查库）。需要核实数据时必须调用工具，不要凭猜测下结论。摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释；最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里。语料未命中或无法对应到表时，说明缺什么，不要编造表名或数据。"
+	fileAgentPrompt   = "用户要求导出、下载或生成 Excel/表格文件时：先查询并整理成用户能看懂的列和行，再调用 generate_file。拿到下载链接后，回复里必须带上该链接，不要只说文件已生成。"
 	ragOnlyHint       = "【说明】下列知识摘录是本次必须遵循的流程与口径。若与「当前可用工具」冲突，以工具调用为准，不要根据摘录要求用户去开启工具。"
 )
 
@@ -28,10 +29,14 @@ func agentSystemPrompt(specs []llm.ToolSpec) string {
 	}
 	names := make([]string, 0, len(specs))
 	hasDB := false
+	hasFile := false
 	for _, spec := range specs {
 		names = append(names, spec.Function.Name)
-		if spec.Function.Name == "dbconn" {
+		switch spec.Function.Name {
+		case "dbconn":
 			hasDB = true
+		case "generate_file":
+			hasFile = true
 		}
 	}
 	var b strings.Builder
@@ -44,6 +49,10 @@ func agentSystemPrompt(specs []llm.ToolSpec) string {
 	if hasDB {
 		b.WriteString("\n\n")
 		b.WriteString(dbconnAgentPrompt)
+	}
+	if hasFile {
+		b.WriteString("\n\n")
+		b.WriteString(fileAgentPrompt)
 	}
 	return b.String()
 }

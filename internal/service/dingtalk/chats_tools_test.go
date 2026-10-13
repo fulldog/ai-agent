@@ -14,7 +14,7 @@ func TestSetChatToolsRoundTrip(t *testing.T) {
 	b := &Bot{
 		db:    db,
 		log:   zap.NewNop(),
-		agent: agent.New(db, nil, nil, nil, zap.NewNop(), nil),
+		agent: agent.New(db, nil, nil, nil, zap.NewNop(), nil, nil),
 	}
 	row := model.DingTalkChat{ConversationID: "cid-tools", Title: "工具群", ConversationType: "2"}
 	if err := db.Create(&row).Error; err != nil {
@@ -45,7 +45,7 @@ func TestSetChatToolsRejectsUnknown(t *testing.T) {
 	b := &Bot{
 		db:    db,
 		log:   zap.NewNop(),
-		agent: agent.New(db, nil, nil, nil, zap.NewNop(), nil),
+		agent: agent.New(db, nil, nil, nil, zap.NewNop(), nil, nil),
 	}
 	row := model.DingTalkChat{ConversationID: "cid-bad-tool", ConversationType: "2"}
 	if err := db.Create(&row).Error; err != nil {

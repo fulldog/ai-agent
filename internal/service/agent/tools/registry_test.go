@@ -6,7 +6,7 @@ func TestRegistryListOrder(t *testing.T) {
 	t.Parallel()
 	r := Default()
 	got := r.List()
-	if len(got) != 1 || got[0].Name != "knowledge_search" {
+	if len(got) != 2 || got[0].Name != "knowledge_search" || got[1].Name != "generate_file" {
 		t.Fatalf("default list: %+v", got)
 	}
 	specs := r.Specs([]string{"missing", "knowledge_search"})

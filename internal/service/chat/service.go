@@ -14,6 +14,7 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
+	"github.com/webapp/go-app/ai-agent/internal/service/filegen"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/llmog"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
@@ -30,7 +31,7 @@ type Service struct {
 	llmLog   *zap.Logger // 完整 prompt/回复 → logs/llm-*.log
 }
 
-func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger, bizDB *dbconn.Client) *Service {
+func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, llmLog *zap.Logger, bizDB *dbconn.Client, files *filegen.Store) *Service {
 	if llmLog == nil {
 		llmLog = zap.NewNop()
 	}
@@ -38,6 +39,7 @@ func New(db *gorm.DB, cfg *config.Config, pool *llm.Pool, ragSvc *rag.Service, l
 	if bizDB != nil {
 		reg = tools.WithDBConn(bizDB)
 	}
+	reg.SetFileStore(files)
 	return &Service{db: db, cfg: cfg, pool: pool, rag: ragSvc, registry: reg, llmLog: llmLog}
 }
 

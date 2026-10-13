@@ -6,6 +6,9 @@
 server:
   addr: ":18090"
   mode: debug # debug | release
+  # 生成文件的下载链接前缀。钉钉里要点开时，填用户能访问的绝对地址，如 http://10.0.10.42:18090
+  # 也可用环境变量 SERVER_PUBLIC_BASE_URL
+  public_base_url: ""
   # CORS：留空或 ["*"] 允许所有来源；填写具体 Origin 则仅放行这些源
   cors_origins: []
 
@@ -134,6 +137,8 @@ ocr:
 # 附件落盘：原始文件 + 抽取文本（按年月日分目录）
 storage:
   attachments_dir: attachments
+  exports_dir: exports
+  export_ttl_hours: 168 # 生成文件保留小时数；0 表示不过期
 
 # 文档抽取（可选）：超时等；是否云端上传由请求的 provider 决定（qwen/kimi 云端，deepseek 本机）
 extract:
