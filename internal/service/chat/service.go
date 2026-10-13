@@ -338,6 +338,7 @@ type CompleteInput struct {
 	TopK          int
 	EnableSearch  bool   // 无语料命中且用户强制联网时，通义 enable_search
 	PrefixPrompt  string // 钉钉群前置提示，放在系统提示最前
+	Tools         []string
 	RequestID     string
 	LogLLMRequest func(provider, model string, messages []llm.Message)
 }
@@ -507,7 +508,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		}
 	}
 	style := s.replyStyle()
-	if tp := toolSystemPrompt(s.toolSpecs()); tp != "" {
+	if tp := toolSystemPrompt(s.toolSpecs(in.Tools)); tp != "" {
 		style += "\n\n" + tp
 	}
 	system := mergeSystem(style, conv.SystemPrompt, ragContext(hits))

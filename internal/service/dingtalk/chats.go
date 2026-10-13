@@ -1,6 +1,7 @@
 package dingtalk
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,6 +23,7 @@ type ChatItem struct {
 	LastSeenAt       time.Time     `json:"last_seen_at"`
 	UpdatedAt        time.Time     `json:"updated_at"`
 	PrefixPrompt     string        `json:"prefix_prompt"`
+	Tools            []string      `json:"tools"`
 	CorpusIDs        []uuid.UUID   `json:"corpus_ids"`
 	Corpora          []CorpusBrief `json:"corpora"`
 }
@@ -347,6 +349,107 @@ func (b *Bot) chatPrefix(conversationID string) string {
 // ErrPrefixTooLong 群前置提示词超过 4000 字。
 var ErrPrefixTooLong = errors.New("prefix prompt too long")
 
+// ErrUnknownTool 群工具名不在已注册工具中。
+var ErrUnknownTool = errors.New("unknown tool")
+
+// SetChatTools 保存该群额外工具。空数组表示清除。执行时与 agent.default_tools 取并集。
+func (b *Bot) SetChatTools(id uuid.UUID, names []string) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	cleaned, err := b.normalizeChatTools(names)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := encodeTools(cleaned)
+	if err != nil {
+		return nil, err
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if err := b.db.Model(&chat).Update("tools", raw).Error; err != nil {
+		return nil, err
+	}
+	chat.Tools = raw
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
+func (b *Bot) normalizeChatTools(names []string) ([]string, error) {
+	if b == nil || b.agent == nil {
+		return nil, fmt.Errorf("agent not configured")
+	}
+	allowed := make(map[string]struct{}, 8)
+	for _, t := range b.agent.ListTools() {
+		allowed[t.Name] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(names))
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		if _, ok := allowed[n]; !ok {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownTool, n)
+		}
+		seen[n] = struct{}{}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+func (b *Bot) chatTools(conversationID string) []string {
+	if b == nil || b.db == nil {
+		return nil
+	}
+	cid := strings.TrimSpace(conversationID)
+	if cid == "" {
+		return nil
+	}
+	var row model.DingTalkChat
+	err := b.db.Select("tools").Where("conversation_id = ?", cid).First(&row).Error
+	if err != nil {
+		return nil
+	}
+	return decodeTools(row.Tools)
+}
+
+func encodeTools(names []string) (string, error) {
+	if len(names) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(names)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func decodeTools(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []string{}
+	}
+	var names []string
+	if err := json.Unmarshal([]byte(raw), &names); err != nil {
+		return []string{}
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // wrapPrefixPrompt 把群规则放在系统提示最前，并允许缺信息时直接追问。
 func wrapPrefixPrompt(prompt string) string {
 	p := strings.TrimSpace(prompt)
@@ -372,6 +475,7 @@ func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 		LastSeenAt:       row.LastSeenAt,
 		UpdatedAt:        row.UpdatedAt,
 		PrefixPrompt:     row.PrefixPrompt,
+		Tools:            decodeTools(row.Tools),
 		CorpusIDs:        ids,
 		Corpora:          briefs,
 	}

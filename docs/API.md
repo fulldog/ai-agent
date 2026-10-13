@@ -531,6 +531,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
       "is_group": true,
       "last_seen_at": "2026-09-24T06:00:00Z",
       "prefix_prompt": "",
+      "tools": [],
       "corpus_ids": ["uuid"],
       "corpora": [{ "id": "uuid", "name": "供应商付款" }]
     }
@@ -557,6 +558,16 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 ```json
 {
   "prefix_prompt": "查询供应商系统时，必须同时具备供应商名称和标签才能确定唯一一条数据。如果用户只提供了名称、没有标签，先提示用户补充标签，不要查库。"
+}
+```
+
+### PUT `/api/v1/dingtalk/chats/:id/tools`
+
+保存该群额外工具。空数组清除。未注册的工具名 → `400`；档案不存在 → `404`。回复时与 `agent.default_tools` 取并集，默认工具不能通过这个接口去掉。`reply_mode: chat` 时还会并入 `chat.tools`。
+
+```json
+{
+  "tools": ["calculator"]
 }
 ```
 

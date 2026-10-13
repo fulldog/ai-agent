@@ -15,11 +15,11 @@ func TestToolSpecsAlwaysIncludesDefaultTools(t *testing.T) {
 	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 
-	if got := s.toolSpecs(); len(got) < 1 || got[0].Function.Name != "knowledge_search" {
+	if got := s.toolSpecs(nil); len(got) < 1 || got[0].Function.Name != "knowledge_search" {
 		t.Fatalf("default on: %+v", got)
 	}
 	s.cfg.Chat.ToolsEnabled = &off
-	got := s.toolSpecs()
+	got := s.toolSpecs(nil)
 	if len(got) < 1 || got[0].Function.Name != "knowledge_search" {
 		t.Fatalf("tools_enabled=false still keeps default_tools: %+v", got)
 	}
@@ -27,10 +27,10 @@ func TestToolSpecsAlwaysIncludesDefaultTools(t *testing.T) {
 
 func TestToolSpecsMergesChatTools(t *testing.T) {
 	t.Parallel()
-	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	s.cfg.Chat.Tools = []string{"not_registered", "calculator"}
-	got := s.toolSpecs()
+	got := s.toolSpecs(nil)
 	names := make([]string, 0, len(got))
 	for _, sp := range got {
 		names = append(names, sp.Function.Name)
@@ -49,6 +49,22 @@ func TestToolSpecsMergesChatTools(t *testing.T) {
 	}
 	if !foundCalc {
 		t.Fatalf("missing calculator: %+v", names)
+	}
+}
+
+func TestToolSpecsMergesExtraTools(t *testing.T) {
+	t.Parallel()
+	off := false
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
+	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
+	s.cfg.Chat.ToolsEnabled = &off
+	got := s.toolSpecs([]string{"calculator", "knowledge_search", "missing"})
+	names := make([]string, 0, len(got))
+	for _, sp := range got {
+		names = append(names, sp.Function.Name)
+	}
+	if len(names) != 2 || names[0] != "knowledge_search" || names[1] != "calculator" {
+		t.Fatalf("union: %+v", names)
 	}
 }
 

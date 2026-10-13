@@ -1097,6 +1097,45 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/dingtalk/chats/{id}/tools:
+    put:
+      tags: [DingTalk]
+      summary: 设置钉钉会话额外工具
+      description: 保存后下一条该群消息生效。空数组清除额外工具。执行时与 agent.default_tools 取并集；chat 模式再并入 chat.tools。未知工具名返回 400。
+      operationId: setDingTalkChatTools
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tools:
+                  type: array
+                  items:
+                    type: string
+            example:
+              tools:
+                - calculator
+      responses:
+        "200":
+          description: 更新后的档案
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkChat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/rag/search:
     post:
       tags: [RAG]
@@ -1683,6 +1722,11 @@ components:
         prefix_prompt:
           type: string
           description: 群前置提示词，回复时注入系统提示最前
+        tools:
+          type: array
+          description: 群额外工具；执行时与 agent.default_tools 取并集
+          items:
+            type: string
         corpus_ids:
           type: array
           items:

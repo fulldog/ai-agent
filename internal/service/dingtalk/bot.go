@@ -511,6 +511,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		TopK:           b.ragTop,
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
+		Tools:          b.chatTools(data.ConversationID),
 		RequestID:      tr.requestID,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
 			turns := llmTurnLogs(messages, b.previewMax)
@@ -585,6 +586,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		RAGHits:        hits,
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
+		Tools:          b.chatTools(data.ConversationID),
 		RequestID:      tr.requestID,
 		Stream:         true,
 	}, func(ev agent.Event) error {
@@ -703,6 +705,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		RAGHits:      []rag.Hit{},
 		EnableSearch: enableSearch,
 		PrefixPrompt: b.chatPrefix(data.ConversationID),
+		Tools:        b.chatTools(data.ConversationID),
 		RequestID:    tr.requestID,
 		Stream:       true,
 	}, func(ev agent.Event) error {
