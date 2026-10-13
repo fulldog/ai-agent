@@ -71,8 +71,10 @@ type RunInput struct {
 	RAGHits        []rag.Hit
 	EnableSearch   bool
 	PrefixPrompt   string
-	RequestID      string
-	Stream         bool
+	// SkipRAG 为 true 时不预检索，knowledge_search 也不查库。
+	SkipRAG   bool
+	RequestID string
+	Stream    bool
 }
 
 type RunResult struct {
@@ -309,6 +311,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		TopK:        in.TopK,
 		DefaultTopK: s.cfg.RAG.TopK,
 		RAGQuery:    in.Input,
+		RAGDisabled: in.SkipRAG,
 		RAG:         s.rag,
 	}
 	promptTokens, completionTokens := 0, 0
@@ -338,7 +341,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
 		}
 		// 群前置提示要求缺信息先追问时，首轮允许直接回复，不强制 function call。
-		allowClarify := strings.TrimSpace(in.PrefixPrompt) != ""
+		allowClarify := strings.TrimSpace(in.PrefixPrompt) != "" || in.SkipRAG
 		// 在至少成功走过一轮工具前，每步都强制 function call（防止网关丢掉 required 后空口推诿）。
 		if len(toolSpecs) > 0 && !usedTool && !allowClarify {
 			chatReq.ToolChoice = "required"
@@ -619,7 +622,7 @@ func (s *Service) retryAfterEvasion(
 	}
 	toolEnv := &tools.Env{
 		CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
-		DefaultTopK: defaultTopK, RAGQuery: in.Input, RAG: s.rag,
+		DefaultTopK: defaultTopK, RAGQuery: in.Input, RAGDisabled: in.SkipRAG, RAG: s.rag,
 	}
 	for _, tc := range resp.ToolCalls {
 		if emit != nil {
@@ -691,7 +694,10 @@ func (s *Service) retryAfterEvasion(
 }
 
 func (s *Service) retrieveHits(ctx context.Context, in *RunInput) {
-	if s == nil || in == nil || in.RAGHits != nil || s.rag == nil {
+	if s == nil || in == nil || in.RAGHits != nil || s.rag == nil || in.SkipRAG {
+		if in != nil && in.SkipRAG && in.RAGHits == nil {
+			in.RAGHits = []rag.Hit{}
+		}
 		return
 	}
 	topK := in.TopK

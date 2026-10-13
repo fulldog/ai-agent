@@ -43,6 +43,9 @@ func (KnowledgeSearch) Exec(ctx context.Context, args json.RawMessage, env *Env)
 	if query == "" {
 		return "", fmt.Errorf("query 不能为空")
 	}
+	if env != nil && env.RAGDisabled {
+		return "当前会话未绑定语料库，不进行知识库检索。", nil
+	}
 	if env == nil || env.RAG == nil {
 		return "", fmt.Errorf("知识库服务未就绪")
 	}

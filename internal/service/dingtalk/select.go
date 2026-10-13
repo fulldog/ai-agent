@@ -62,6 +62,11 @@ func isCorpusMiss(hits []rag.Hit, forceOnline bool) bool {
 	return len(hits) == 0 && !forceOnline
 }
 
+// unboundDirectChat 单聊且该会话没有绑定语料库。这种会话不检索知识库，直接请求大模型并打开联网。
+func unboundDirectChat(conversationType string, bound int) bool {
+	return !isGroup(conversationType) && bound == 0
+}
+
 // continueWithHistory 已有会话消息时，本轮语料未命中也继续作答（追问、补标签等）。
 func continueWithHistory(hits []rag.Hit, forceOnline, hasHistory bool) bool {
 	return hasHistory && isCorpusMiss(hits, forceOnline)

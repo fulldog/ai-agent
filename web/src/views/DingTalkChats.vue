@@ -69,7 +69,7 @@
               <el-option
                 v-for="t in toolCatalog"
                 :key="t.name"
-                :label="t.default ? `${t.name}（默认）` : t.name"
+                :label="t.default ? `${t.name}（始终启用）` : t.name"
                 :value="t.name"
                 :disabled="!!t.default"
               />
@@ -170,10 +170,11 @@ function defaultToolNames(): string[] {
 }
 
 function shownTools(row: DingTalkChat): string[] {
+  const defaults = new Set(defaultToolNames());
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const n of [...defaultToolNames(), ...(row.tools || [])]) {
-    if (!n || seen.has(n)) continue;
+  for (const n of row.tools || []) {
+    if (!n || defaults.has(n) || seen.has(n)) continue;
     seen.add(n);
     out.push(n);
   }

@@ -400,15 +400,24 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	b.upsertRequestLog(tr)
 
 	// ---- 2. 本轮 RAG；无命中且未要求联网且无历史 → 直接结束（web 模式除外）----
+	// 未绑定语料库的单聊不检索，直接请求大模型并打开联网。
 	forceOnline := wantsOnlineSearch(query)
 	ragQuery := stripOnlineRequest(query)
 	if ragQuery == "" {
 		ragQuery = query
 	}
 	tr.forceOnline = forceOnline
-	// RAG 只检索本轮用户输入；历史消息仅在下一阶段作为 LLM 上下文。
 	tr.ragQuery = ragQuery
-	corpusID, hits, searchIDs := b.retrieve(ctx, ragQuery, data.ConversationID)
+	skipRAG := unboundDirectChat(data.ConversationType, len(b.boundCorpora(data.ConversationID)))
+	var corpusID *uuid.UUID
+	var hits []rag.Hit
+	var searchIDs []uuid.UUID
+	if skipRAG {
+		hits = []rag.Hit{}
+	} else {
+		// RAG 只检索本轮用户输入；历史消息仅在下一阶段作为 LLM 上下文。
+		corpusID, hits, searchIDs = b.retrieve(ctx, ragQuery, data.ConversationID)
+	}
 	tr.corpusID = corpusID
 	tr.hitCount = len(hits)
 	tr.hitScores = hitScores(hits)
@@ -417,6 +426,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	b.recordStep(tr, stepRAG, eventRAG, map[string]any{
 		"query":        ragQuery,
 		"force_online": forceOnline,
+		"skip_rag":     skipRAG,
 		"hits":         len(hits),
 		"scores":       tr.hitScores,
 		"corpus_id":    uuidString(corpusID),
@@ -426,6 +436,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	},
 		zap.String("query", ragQuery),
 		zap.Bool("force_online", forceOnline),
+		zap.Bool("skip_rag", skipRAG),
 		zap.Int("hits", len(hits)),
 		zap.Float64s("scores", tr.hitScores),
 		zap.String("corpus_id", uuidString(corpusID)),
@@ -433,7 +444,7 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		zap.Bool("bound", len(searchIDs) > 0),
 		zap.Any("hits_detail", hitsDetail),
 	)
-	if corpusID != nil && (conv.CorpusID == nil || *conv.CorpusID != *corpusID) {
+	if !skipRAG && corpusID != nil && (conv.CorpusID == nil || *conv.CorpusID != *corpusID) {
 		if updated, uerr := b.chat.FindOrCreateByChannel(chat.CreateConversationInput{
 			UID: uid, Title: title, CorpusID: corpusID,
 			Channel: channelDingTalk, ChannelSessionID: data.ConversationID,
@@ -443,15 +454,15 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 			conv.CorpusID = corpusID
 		}
 	}
-	if corpusID == nil && conv.CorpusID != nil {
+	if !skipRAG && corpusID == nil && conv.CorpusID != nil {
 		corpusID = conv.CorpusID
 	}
 	hasHistory, herr := b.chat.HasMessages(conv.ID)
 	if herr != nil {
 		b.log.Warn("lookup dingtalk history", zap.Error(herr), zap.String("request_id", tr.requestID))
 	}
-	// chat/agent：无 RAG、未要求联网、无历史 → 结束。web 交给工具循环自行检索。
-	if !b.useWebAgent() && isCorpusMiss(hits, forceOnline) && !hasHistory {
+	// chat/agent：无 RAG、未要求联网、无历史 → 结束。web 交给工具循环自行检索。未绑定语料库的单聊不走这条早退。
+	if !skipRAG && !b.useWebAgent() && isCorpusMiss(hits, forceOnline) && !hasHistory {
 		tr.outcome = "corpus_miss"
 		tr.reply = corpusMissReply
 		_ = b.failReply(ctx, data, corpusMissReply, tr)
@@ -460,19 +471,19 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	if hits == nil {
 		hits = []rag.Hit{}
 	}
-	enableSearch := len(hits) == 0 && forceOnline
+	enableSearch := skipRAG || (len(hits) == 0 && forceOnline)
 	tr.enableSearch = enableSearch
 
 	// ---- 3. 带上 RAG 结果 + 会话历史，请求 LLM / 工具 ----
 	if b.useWebAgent() {
-		b.completeViaWebAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, forceOnline)
+		b.completeViaWebAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, enableSearch, skipRAG)
 		return
 	}
 	if b.useAgent() {
-		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch)
+		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch, skipRAG)
 		return
 	}
-	b.completeViaChat(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch)
+	b.completeViaChat(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch, skipRAG)
 }
 
 func (b *Bot) useAgent() bool {
@@ -494,7 +505,7 @@ func sessionTitle(data *botCallback) string {
 	return title
 }
 
-func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
+func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -512,6 +523,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		Tools:          b.chatTools(data.ConversationID),
+		SkipRAG:        skipRAG,
 		RequestID:      tr.requestID,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
 			turns := llmTurnLogs(messages, b.previewMax)
@@ -569,7 +581,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 	_ = streamer.finish(text, false)
 }
 
-func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch bool) {
+func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -587,6 +599,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		Tools:          b.chatTools(data.ConversationID),
+		SkipRAG:        skipRAG,
 		RequestID:      tr.requestID,
 		Stream:         true,
 	}, func(ev agent.Event) error {
@@ -681,13 +694,12 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 // - 带 ConversationID：多轮追问（如补标签）可用历史
 // - RAGHits 传空切片：跳过 system 预注入（避免摘录+旧结论让模型跳过工具）；检索范围仍经 CorpusIDs 交给工具
 // - 现有 completeViaAgent（钉钉预检索注入）保持不变
-func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, forceOnline bool) {
+func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, enableSearch, skipRAG bool) {
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "web_agent"
 	cid := conv.ID
-	enableSearch := forceOnline
 	tr.enableSearch = enableSearch
 	toolTrace := make([]map[string]any, 0, 8)
 	topK := b.ragTop
@@ -706,6 +718,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		EnableSearch: enableSearch,
 		PrefixPrompt: b.chatPrefix(data.ConversationID),
 		Tools:        b.chatTools(data.ConversationID),
+		SkipRAG:      skipRAG,
 		RequestID:    tr.requestID,
 		Stream:       true,
 	}, func(ev agent.Event) error {

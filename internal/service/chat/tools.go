@@ -48,12 +48,16 @@ func (s *Service) maxToolSteps() int {
 
 func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env {
 	corpusID := in.CorpusID
-	if corpusID == nil && conv != nil {
+	if !in.SkipRAG && corpusID == nil && conv != nil {
 		corpusID = conv.CorpusID
 	}
+	var corpusIDs []uuid.UUID
+	if !in.SkipRAG {
+		corpusIDs = in.CorpusIDs
+	}
 	env := &tools.Env{
-		CorpusID: corpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
-		RAGQuery: in.Message, RAG: s.rag,
+		CorpusID: corpusID, CorpusIDs: corpusIDs, TopK: in.TopK,
+		RAGQuery: in.Message, RAGDisabled: in.SkipRAG, RAG: s.rag,
 	}
 	if s.cfg != nil {
 		env.DefaultTopK = s.cfg.RAG.TopK
@@ -73,7 +77,7 @@ func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callConte
 	promptTokens, completionTokens := 0, 0
 	var last *llm.ChatResponse
 	usedTool := false
-	allowClarify := strings.TrimSpace(in.PrefixPrompt) != ""
+	allowClarify := strings.TrimSpace(in.PrefixPrompt) != "" || in.SkipRAG
 
 	for round := 0; round < rounds; round++ {
 		req := chatRequest(in, call.provider, call.model, msgs)

@@ -36,6 +36,19 @@ func TestBestCorpusID(t *testing.T) {
 	}
 }
 
+func TestUnboundDirectChat(t *testing.T) {
+	t.Parallel()
+	if !unboundDirectChat("1", 0) {
+		t.Fatal("direct chat without a corpus should skip rag")
+	}
+	if unboundDirectChat("1", 2) {
+		t.Fatal("bound direct chat should still retrieve")
+	}
+	if unboundDirectChat("2", 0) {
+		t.Fatal("unbound group should still retrieve")
+	}
+}
+
 func TestFilterRelevant(t *testing.T) {
 	t.Parallel()
 	hits := []rag.Hit{

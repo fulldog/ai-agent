@@ -331,14 +331,16 @@ type CompleteInput struct {
 	MaxTokens      int
 	RAGEnabled     bool
 	// RAGExplicit 为 true 时尊重 RAGEnabled；为 false 时用 chat.rag_enabled 默认（缺省开启）。
-	RAGExplicit   bool
-	CorpusID      *uuid.UUID
-	CorpusIDs     []uuid.UUID
-	RAGHits       []rag.Hit
-	TopK          int
-	EnableSearch  bool   // 无语料命中且用户强制联网时，通义 enable_search
-	PrefixPrompt  string // 钉钉群前置提示，放在系统提示最前
-	Tools         []string
+	RAGExplicit  bool
+	CorpusID     *uuid.UUID
+	CorpusIDs    []uuid.UUID
+	RAGHits      []rag.Hit
+	TopK         int
+	EnableSearch bool   // 无语料命中且用户强制联网时，通义 enable_search
+	PrefixPrompt string // 钉钉群前置提示，放在系统提示最前
+	Tools        []string
+	// SkipRAG 为 true 时不检索、不把会话上残留的语料库交给 knowledge_search。
+	SkipRAG       bool
 	RequestID     string
 	LogLLMRequest func(provider, model string, messages []llm.Message)
 }
@@ -488,7 +490,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		corpusID = conv.CorpusID
 	}
 	hits := in.RAGHits
-	if s.wantRAG(in) && len(hits) == 0 && s.rag != nil {
+	if !in.SkipRAG && s.wantRAG(in) && len(hits) == 0 && s.rag != nil {
 		topK := in.TopK
 		if topK <= 0 {
 			topK = s.cfg.RAG.TopK

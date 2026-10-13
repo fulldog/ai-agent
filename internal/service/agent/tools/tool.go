@@ -24,5 +24,7 @@ type Env struct {
 	DefaultTopK int
 	// RAGQuery 固定为本轮用户输入；非空时 knowledge_search 不采用模型改写的查询词。
 	RAGQuery string
-	RAG      *rag.Service
+	// RAGDisabled 为 true 时不检索知识库（未绑定语料库的钉钉单聊）。
+	RAGDisabled bool
+	RAG         *rag.Service
 }
