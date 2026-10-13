@@ -62,16 +62,15 @@
               filterable
               collapse-tags
               collapse-tags-tooltip
-              placeholder="仅默认工具"
+              placeholder="选择工具"
               style="width: 100%"
               @change="onToolsChange(row, $event)"
             >
               <el-option
                 v-for="t in toolCatalog"
                 :key="t.name"
-                :label="t.default ? `${t.name}（始终启用）` : t.name"
+                :label="t.name"
                 :value="t.name"
-                :disabled="!!t.default"
               />
             </el-select>
           </template>
@@ -165,28 +164,15 @@ function formatTime(v: string): string {
   return Number.isNaN(d.getTime()) ? v : d.toLocaleString("zh-CN", { hour12: false });
 }
 
-function defaultToolNames(): string[] {
-  return toolCatalog.value.filter((t) => t.default).map((t) => t.name);
-}
-
 function shownTools(row: DingTalkChat): string[] {
-  const defaults = new Set(defaultToolNames());
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const n of row.tools || []) {
-    if (!n || defaults.has(n) || seen.has(n)) continue;
-    seen.add(n);
-    out.push(n);
-  }
-  return out;
+  return row.tools || [];
 }
 
-function extraTools(selected: string[]): string[] {
-  const defaults = new Set(defaultToolNames());
+function selectedTools(selected: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const n of selected) {
-    if (!n || defaults.has(n) || seen.has(n)) continue;
+    if (!n || seen.has(n)) continue;
     seen.add(n);
     out.push(n);
   }
@@ -257,7 +243,7 @@ function onToolsChange(row: DingTalkChat, value: string[] | string) {
 }
 
 async function saveTools(row: DingTalkChat, selected: string[]) {
-  const tools = extraTools(selected);
+  const tools = selectedTools(selected);
   const prev = row.tools || [];
   if (tools.length === prev.length && tools.every((n, i) => n === prev[i])) return;
   try {

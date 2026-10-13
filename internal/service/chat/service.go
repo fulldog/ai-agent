@@ -339,6 +339,8 @@ type CompleteInput struct {
 	EnableSearch bool   // 无语料命中且用户强制联网时，通义 enable_search
 	PrefixPrompt string // 钉钉群前置提示，放在系统提示最前
 	Tools        []string
+	// ToolsOnly 为 true 时只使用 Tools，不并入 agent.default_tools / chat.tools。
+	ToolsOnly bool
 	// SkipRAG 为 true 时不检索、不把会话上残留的语料库交给 knowledge_search。
 	SkipRAG       bool
 	RequestID     string
@@ -510,7 +512,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		}
 	}
 	style := s.replyStyle()
-	if tp := toolSystemPrompt(s.toolSpecs(in.Tools)); tp != "" {
+	if tp := toolSystemPrompt(s.toolSpecs(in.Tools, in.ToolsOnly)); tp != "" {
 		style += "\n\n" + tp
 	}
 	system := mergeSystem(style, conv.SystemPrompt, ragContext(hits))

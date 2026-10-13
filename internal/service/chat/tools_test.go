@@ -15,11 +15,11 @@ func TestToolSpecsAlwaysIncludesDefaultTools(t *testing.T) {
 	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 
-	if got := s.toolSpecs(nil); len(got) < 1 || got[0].Function.Name != "knowledge_search" {
+	if got := s.toolSpecs(nil, false); len(got) < 1 || got[0].Function.Name != "knowledge_search" {
 		t.Fatalf("default on: %+v", got)
 	}
 	s.cfg.Chat.ToolsEnabled = &off
-	got := s.toolSpecs(nil)
+	got := s.toolSpecs(nil, false)
 	if len(got) < 1 || got[0].Function.Name != "knowledge_search" {
 		t.Fatalf("tools_enabled=false still keeps default_tools: %+v", got)
 	}
@@ -30,7 +30,7 @@ func TestToolSpecsMergesChatTools(t *testing.T) {
 	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	s.cfg.Chat.Tools = []string{"not_registered", "calculator"}
-	got := s.toolSpecs(nil)
+	got := s.toolSpecs(nil, false)
 	names := make([]string, 0, len(got))
 	for _, sp := range got {
 		names = append(names, sp.Function.Name)
@@ -58,13 +58,27 @@ func TestToolSpecsMergesExtraTools(t *testing.T) {
 	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
 	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
 	s.cfg.Chat.ToolsEnabled = &off
-	got := s.toolSpecs([]string{"calculator", "knowledge_search", "missing"})
+	got := s.toolSpecs([]string{"calculator", "knowledge_search", "missing"}, false)
 	names := make([]string, 0, len(got))
 	for _, sp := range got {
 		names = append(names, sp.Function.Name)
 	}
 	if len(names) != 2 || names[0] != "knowledge_search" || names[1] != "calculator" {
 		t.Fatalf("union: %+v", names)
+	}
+}
+
+func TestToolSpecsOnlyUsesGivenNames(t *testing.T) {
+	t.Parallel()
+	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}
+	s.cfg.Agent.DefaultTools = []string{"knowledge_search"}
+	s.cfg.Chat.Tools = []string{"knowledge_search"}
+	got := s.toolSpecs([]string{"calculator"}, true)
+	if len(got) != 1 || got[0].Function.Name != "calculator" {
+		t.Fatalf("only: %+v", got)
+	}
+	if got := s.toolSpecs(nil, true); len(got) != 0 {
+		t.Fatalf("empty selection should mount nothing: %+v", got)
 	}
 }
 

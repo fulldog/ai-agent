@@ -563,7 +563,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 
 ### PUT `/api/v1/dingtalk/chats/:id/tools`
 
-保存该群额外工具。空数组清除。未注册的工具名 → `400`；档案不存在 → `404`。回复时与 `agent.default_tools` 取并集，默认工具不能通过这个接口去掉。`reply_mode: chat` 时还会并入 `chat.tools`。
+保存该群要使用的工具，空数组表示不挂任何工具。未注册的工具名 → `400`；档案不存在 → `404`。回复时只使用这里保存的名单，不并入 `agent.default_tools` 或 `chat.tools`。
 
 ```json
 {

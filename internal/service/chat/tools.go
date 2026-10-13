@@ -24,11 +24,16 @@ type callContext struct {
 	model    string
 }
 
-// toolSpecs 普通对话要发给模型的工具。始终包含 agent.default_tools；
-// chat.tools_enabled 为 true 时再并入 chat.tools；extra 为本次追加（如钉钉群勾选）。
-// 无可用注册工具时返回 nil。
-func (s *Service) toolSpecs(extra []string) []llm.ToolSpec {
-	if s == nil || s.registry == nil || s.cfg == nil {
+// toolSpecs 普通对话要发给模型的工具。only 为 false 时始终包含 agent.default_tools，
+// 并在 chat.tools_enabled 时并入 chat.tools，再追加 extra。only 为 true 时只用 extra。
+func (s *Service) toolSpecs(extra []string, only bool) []llm.ToolSpec {
+	if s == nil || s.registry == nil {
+		return nil
+	}
+	if only {
+		return s.registry.Specs(extra)
+	}
+	if s.cfg == nil {
 		return nil
 	}
 	var configured []string
@@ -68,7 +73,7 @@ func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env
 // toolLoop 执行「LLM → 工具 → LLM」循环，直到模型不再请求工具或用完工具轮数。
 // onDelta 非 nil 时走流式。返回最后一轮响应，token 为各轮累计值。
 func (s *Service) toolLoop(ctx context.Context, in CompleteInput, call callContext, msgs []llm.Message, onDelta func(string) error) (*llm.ChatResponse, error) {
-	specs := s.toolSpecs(in.Tools)
+	specs := s.toolSpecs(in.Tools, in.ToolsOnly)
 	rounds := 1
 	if len(specs) > 0 {
 		rounds = s.maxToolSteps() + 1 // 最后一轮不带工具，强制模型给出回答

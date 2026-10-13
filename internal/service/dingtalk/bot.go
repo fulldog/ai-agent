@@ -523,6 +523,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		Tools:          b.chatTools(data.ConversationID),
+		ToolsOnly:      true,
 		SkipRAG:        skipRAG,
 		RequestID:      tr.requestID,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
@@ -599,6 +600,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		EnableSearch:   enableSearch,
 		PrefixPrompt:   b.chatPrefix(data.ConversationID),
 		Tools:          b.chatTools(data.ConversationID),
+		ToolsOnly:      true,
 		SkipRAG:        skipRAG,
 		RequestID:      tr.requestID,
 		Stream:         true,
@@ -718,6 +720,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		EnableSearch: enableSearch,
 		PrefixPrompt: b.chatPrefix(data.ConversationID),
 		Tools:        b.chatTools(data.ConversationID),
+		ToolsOnly:    true,
 		SkipRAG:      skipRAG,
 		RequestID:    tr.requestID,
 		Stream:       true,

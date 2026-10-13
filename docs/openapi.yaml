@@ -1101,7 +1101,7 @@ paths:
     put:
       tags: [DingTalk]
       summary: 设置钉钉会话额外工具
-      description: 保存后下一条该群消息生效。空数组清除额外工具。执行时与 agent.default_tools 取并集；chat 模式再并入 chat.tools。未知工具名返回 400。
+      description: 保存后下一条该群消息生效。空数组表示不挂工具。执行时只使用该名单，不并入 agent.default_tools。未知工具名返回 400。
       operationId: setDingTalkChatTools
       security:
         - ApiKeyAuth: []
@@ -1724,7 +1724,7 @@ components:
           description: 群前置提示词，回复时注入系统提示最前
         tools:
           type: array
-          description: 群额外工具；执行时与 agent.default_tools 取并集
+          description: 该群勾选的工具；执行时只使用这份名单
           items:
             type: string
         corpus_ids:

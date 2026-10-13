@@ -72,7 +72,9 @@ type RunInput struct {
 	EnableSearch   bool
 	PrefixPrompt   string
 	// SkipRAG 为 true 时不预检索，knowledge_search 也不查库。
-	SkipRAG   bool
+	SkipRAG bool
+	// ToolsOnly 为 true 时只用 Tools，不并入 agent.default_tools。空列表表示本轮不挂工具。
+	ToolsOnly bool
 	RequestID string
 	Stream    bool
 }
@@ -244,12 +246,17 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	if err != nil {
 		return nil, err
 	}
-	// 所有入口强制带上 agent.default_tools；请求体 tools 仅作追加，不可剔除默认集。
+	// 控制台等入口强制带上 agent.default_tools。钉钉群 ToolsOnly 时只使用该群勾选的工具。
 	var defaults []string
 	if s.cfg != nil {
 		defaults = s.cfg.Agent.DefaultTools
 	}
-	toolNames := tools.MergeNames(defaults, in.Tools)
+	var toolNames []string
+	if in.ToolsOnly {
+		toolNames = append([]string(nil), in.Tools...)
+	} else {
+		toolNames = tools.MergeNames(defaults, in.Tools)
+	}
 
 	var history []model.Message
 	if in.ConversationID != nil {
@@ -273,7 +280,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 	}
 
 	toolSpecs := s.registry.Specs(toolNames)
-	if len(toolSpecs) == 0 {
+	if len(toolSpecs) == 0 && !in.ToolsOnly {
 		s.llmLog.Warn("agent run has no tool specs",
 			zap.Strings("requested", toolNames),
 			zap.String("request_id", in.RequestID),
