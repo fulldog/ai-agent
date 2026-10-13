@@ -1555,7 +1555,7 @@ components:
           default: 8
         tools:
           type: array
-          description: 在 agent.default_tools 之上追加的工具名（不可剔除默认集）
+          description: 本次选择的工具名；若配置了 agent.default_tools 则取并集，两者都为空时不挂工具
           items:
             type: string
             enum: [knowledge_search, current_time, calculator, dbconn]

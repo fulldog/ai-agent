@@ -102,7 +102,7 @@ let abortCtl: AbortController | null = null;
 
 const hero: HeroItem[] = [
   { icon: MagicStick, title: "工具循环", desc: "模型自行决定调用哪个工具、调用几轮", tone: "blue" },
-  { icon: Tools, title: "内置工具", desc: "从后端拉取已注册工具，默认勾选 default_tools", tone: "green" },
+  { icon: Tools, title: "内置工具", desc: "从后端拉取全部已注册工具，由用户自行选择", tone: "green" },
   { icon: Connection, title: "流式事件", desc: "SSE 推送 tool_call / tool_result / delta", tone: "purple" },
   { icon: View, title: "运行回溯", desc: "完成后到「Agent 历史」查看每次运行的步骤", tone: "orange" },
 ];
@@ -180,8 +180,7 @@ onMounted(async () => {
   try {
     const data = await requestJSON<{ items: AgentTool[] }>("/api/v1/agent/tools");
     catalog.value = data.items || [];
-    const selected = catalog.value.filter((t) => t.default).map((t) => t.name);
-    tools.value = selected.length ? selected : catalog.value.map((t) => t.name);
+    tools.value = [];
   } catch (e) {
     catalog.value = [];
     tools.value = [];

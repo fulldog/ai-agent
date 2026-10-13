@@ -218,11 +218,6 @@ func (c ChatConfig) IsRAGEnabled() bool {
 	return true
 }
 
-// DefaultAgentTools 全局默认工具集（含 RAG 检索与业务库查询）。
-func DefaultAgentTools() []string {
-	return []string{"knowledge_search", "current_time", "calculator", "dbconn"}
-}
-
 // DBConnConfig 独立 MySQL 业务库（Agent dbconn 工具）。勿填 ai-agent 自身的 PostgreSQL DSN。
 type DBConnConfig struct {
 	Enabled        *bool           `yaml:"enabled"`
@@ -324,7 +319,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(raw, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	//cfg.applyEnv()
+	cfg.applyEnv()
 	cfg.normalize()
 	return cfg, nil
 }
@@ -375,8 +370,7 @@ func defaultConfig() *Config {
 			MaxDistance:  0.55,
 		},
 		Agent: AgentConfig{
-			MaxSteps:     8,
-			DefaultTools: DefaultAgentTools(),
+			MaxSteps: 8,
 		},
 		Chat: ChatConfig{
 			MaxToolSteps: 4,
@@ -628,12 +622,6 @@ func (c *Config) normalize() {
 	}
 	if c.Chat.MaxToolSteps <= 0 {
 		c.Chat.MaxToolSteps = 4
-	}
-	if len(c.Agent.DefaultTools) == 0 {
-		c.Agent.DefaultTools = DefaultAgentTools()
-	}
-	if len(c.Chat.Tools) == 0 {
-		c.Chat.Tools = append([]string(nil), c.Agent.DefaultTools...)
 	}
 	c.DBConn.Driver = strings.ToLower(strings.TrimSpace(c.DBConn.Driver))
 	if c.DBConn.Driver == "" {

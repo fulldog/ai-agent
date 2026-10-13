@@ -86,3 +86,20 @@ func TestListToolsDefaultFlag(t *testing.T) {
 		t.Fatalf("calculator should not be default: %+v", got)
 	}
 }
+
+func TestListToolsHasNoImplicitDefaults(t *testing.T) {
+	t.Parallel()
+	s := &Service{
+		cfg:      &config.Config{},
+		registry: tools.Default(),
+	}
+	got := s.ListTools()
+	if len(got) != 3 {
+		t.Fatalf("registered tools: %+v", got)
+	}
+	for _, info := range got {
+		if info.Default {
+			t.Fatalf("tool %q should require explicit default_tools config", info.Name)
+		}
+	}
+}

@@ -97,7 +97,7 @@ func TestMaxHistoryFromFileAndNormalize(t *testing.T) {
 	}
 }
 
-func TestDefaultToolsAndRAGEnabled(t *testing.T) {
+func TestToolsDefaultEmptyAndRAGEnabled(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bare.yaml")
 	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://x\n"), 0o644); err != nil {
@@ -107,14 +107,8 @@ func TestDefaultToolsAndRAGEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := DefaultAgentTools()
-	if len(cfg.Agent.DefaultTools) != len(want) {
-		t.Fatalf("default tools: %#v", cfg.Agent.DefaultTools)
-	}
-	for i, n := range want {
-		if cfg.Agent.DefaultTools[i] != n || cfg.Chat.Tools[i] != n {
-			t.Fatalf("tools[%d]=%q chat=%q want %q", i, cfg.Agent.DefaultTools[i], cfg.Chat.Tools[i], n)
-		}
+	if len(cfg.Agent.DefaultTools) != 0 || len(cfg.Chat.Tools) != 0 {
+		t.Fatalf("tools should require explicit selection: agent=%#v chat=%#v", cfg.Agent.DefaultTools, cfg.Chat.Tools)
 	}
 	if !cfg.Chat.IsRAGEnabled() {
 		t.Fatal("rag should default on")

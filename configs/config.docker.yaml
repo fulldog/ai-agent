@@ -65,11 +65,7 @@ rag:
 
 agent:
   max_steps: 8
-  default_tools:
-    - knowledge_search
-    - current_time
-    - calculator
-    - dbconn
+  default_tools: []
 
 chat:
   tools_enabled: true

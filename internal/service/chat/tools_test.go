@@ -25,6 +25,14 @@ func TestToolSpecsAlwaysIncludesDefaultTools(t *testing.T) {
 	}
 }
 
+func TestToolSpecsHasNoImplicitTools(t *testing.T) {
+	t.Parallel()
+	s := &Service{cfg: &config.Config{}, registry: tools.Default()}
+	if got := s.toolSpecs(nil, false); len(got) != 0 {
+		t.Fatalf("tools require explicit config or request selection: %+v", got)
+	}
+}
+
 func TestToolSpecsMergesChatTools(t *testing.T) {
 	t.Parallel()
 	s := &Service{cfg: &config.Config{}, registry: tools.NewRegistry(tools.KnowledgeSearch{}, tools.Calculator{})}

@@ -77,7 +77,6 @@ type Env struct {
    在 `registry.go` 的 `Default()` 中加入该工具实例；需要额外依赖时用 `WithDBConn` 这类构造函数按条件注册。
 3. **默认启用（可选）**  
    - `configs/config.example.yaml` → `agent.default_tools`  
-   - `internal/config/config.go` 中 `Agent.DefaultTools` 默认值（如需与 example 一致）  
    - 本地 `configs/config.yaml`（勿提交密钥）
 4. **文档与契约**  
    - 更新本文「内置工具」表  
@@ -90,7 +89,7 @@ type Env struct {
    `POST /api/v1/agent/runs`，请求体 `"tools": ["your_tool"]`，确认出现 `tool_call` / `tool_result`。
 
 未在 `Default()` 注册的工具，即使写了代码也不会出现在 Specs 中，也**不会**出现在 `GET /api/v1/agent/tools`。  
-已注册但未列入 `default_tools` / 请求 `tools` 的工具，**不会**暴露给当次运行的模型；控制台勾选框只列出已注册项，`default=true` 对应 `default_tools`。
+已注册但未列入 `default_tools` / 请求 `tools` 的工具，**不会**暴露给当次运行的模型；控制台勾选框列出全部已注册项，初始不勾选。`default=true` 仅表示服务端配置显式列入了 `default_tools`。
 
 ---
 
@@ -168,11 +167,7 @@ func Default() *Registry {
 ```yaml
 agent:
   max_steps: 8
-  default_tools:
-    - knowledge_search
-    - current_time
-    - calculator
-    - dbconn   # 需要默认开启且已配置 dbconn.dsn 时再加
+  default_tools: [] # 可选；空表示不自动挂工具
 ```
 
 请求覆盖：
@@ -201,7 +196,7 @@ agent:
 
 另有一份 **MCP Server** 实现（stdio），工具名同为 `calculator`，逻辑共用 `tools.Calc`：见 [MCP.md](./MCP.md)。
 
-需要 RAG 时请求示例（`tools` 仅追加；`agent.default_tools` 仍会强制挂载）：
+需要 RAG 时请求示例（`tools` 为本次选择；若显式配置了 `agent.default_tools` 则取并集）：
 
 ```json
 {
@@ -217,23 +212,23 @@ agent:
 
 | 来源 | 字段 | 说明 |
 |------|------|------|
-| 配置文件 | `agent.default_tools` | **所有入口强制挂载**的默认工具集（请求 `tools` / `chat.tools` 只能追加，不能剔除） |
+| 配置文件 | `agent.default_tools` | 可选的全局默认工具集；省略或空数组表示无默认工具 |
 | 配置文件 | `agent.max_steps` | 工具循环最大步数 |
-| 配置文件 | `chat.tools_enabled` | 为 false 时仍挂载 `default_tools`，仅不再并入 `chat.tools`；缺省 true |
+| 配置文件 | `chat.tools_enabled` | 为 false 时不并入 `chat.tools`；显式配置的 `default_tools` 仍保留；缺省 true |
 | 配置文件 | `chat.rag_enabled` | 普通对话是否默认 RAG，缺省 true；`CHAT_RAG_ENABLED` 可覆盖；无 corpus_id 时搜全部语料 |
 | 配置文件 | `chat.tools` | 普通对话额外工具，与 `agent.default_tools` 合并 |
 | 配置文件 | `chat.max_tool_steps` | 普通对话内最多工具轮数，缺省 4 |
 | 配置文件 | `dingtalk.reply_mode` | 启动默认值。`chat` 钉钉走对话 Completions；`agent` 钉钉预检索后走 `Agent.Run`；`web` 与控制台 Agent 页同一套 `Agent.Run`（不预注入 hits） |
 | 环境变量 | `DINGTALK_REPLY_MODE` | 同上，仍只作为启动默认值 |
 | 控制台 | 概览「钉钉回复模式」 | `PUT /api/v1/dingtalk/reply-mode` 写入 `app_settings`，优先于配置文件，下一条消息生效 |
-| 请求体 | `tools` | 在默认列表上追加工具名（仍保留 `default_tools`） |
+| 请求体 | `tools` | 本次选择的工具名；与显式配置的 `default_tools` 取并集 |
 | 请求体 | `rag.corpus_id` / `rag.top_k` | 预检索与 `knowledge_search` 的默认范围 |
 
 ### 普通对话中的工具
 
-`/api/v1/chat/completions`（及其 stream 版本、钉钉 `reply_mode: chat`）与 Agent 共用同一份 `Registry`：始终把 `agent.default_tools` 的 Spec 发给模型；`chat.tools` 仅追加。模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
+`/api/v1/chat/completions`（及其 stream 版本）与 Agent 共用同一份 `Registry`：使用显式配置的 `agent.default_tools` 与 `chat.tools` 并集；都为空时不挂工具。模型返回 `tool_calls` 时执行并回灌结果，最多 `chat.max_tool_steps` 轮，最后一轮不带工具以强制作答。与 Agent 的差别是不落 `agent_runs` / `agent_steps`，工具调用只记在 llm 日志里；对话请求体也没有 `tools` 字段，工具集由配置决定。
 
-钉钉 `reply_mode: agent` / `web` 与 HTTP Agent 一样：`Agent.Run` 强制合并 `agent.default_tools`（请求体 `tools` 只能追加）。
+钉钉三种 `reply_mode` 都只使用该群在控制台保存的工具名单，不并入 `agent.default_tools` / `chat.tools`；空名单直接请求模型。
 
 HTTP 接口详见 [API.md](./API.md) § Agent；契约见 [openapi.yaml](./openapi.yaml)。
 
