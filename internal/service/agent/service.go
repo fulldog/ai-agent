@@ -173,6 +173,14 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		RAGDisabled: in.SkipRAG,
 		RAG:         s.rag,
 	}
+	if in.ConversationID != nil {
+		conversationID := *in.ConversationID
+		toolEnv.SaveSQL = func(sqlText string) {
+			if err := SaveExecutedSQL(s.db, conversationID, sqlText); err != nil {
+				s.llmLog.Error("save executed sql", zap.Error(err), zap.String("request_id", in.RequestID))
+			}
+		}
+	}
 	promptTokens, completionTokens := 0, 0
 	stepIndex := 0
 	final := ""
@@ -319,7 +327,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			zap.String("request_id", in.RequestID),
 			zap.String("preview", final),
 		)
-		retryFinal, retryOK := s.retryAfterEvasion(ctx, client, providerName, modelName, enableSearch, toolSpecs, msgs, in, run, &stepIndex, &promptTokens, &completionTokens, emit)
+		retryFinal, retryOK := s.retryAfterEvasion(ctx, client, providerName, modelName, enableSearch, toolSpecs, msgs, in, run, &stepIndex, &promptTokens, &completionTokens, toolEnv, emit)
 		if retryOK {
 			final = retryFinal
 		} else {

@@ -46,6 +46,7 @@ func (s *Service) retryAfterEvasion(
 	in RunInput,
 	run *model.AgentRun,
 	stepIndex, promptTokens, completionTokens *int,
+	toolEnv *tools.Env,
 	emit func(Event) error,
 ) (string, bool) {
 	if s == nil || client == nil || len(toolSpecs) == 0 {
@@ -117,13 +118,15 @@ func (s *Service) retryAfterEvasion(
 		return resp.Content, resp.Content != ""
 	}
 	retryMsgs = append(retryMsgs, llm.Message{Role: "assistant", Content: resp.Content, ToolCalls: resp.ToolCalls})
-	defaultTopK := 5
-	if s.cfg != nil {
-		defaultTopK = s.cfg.RAG.TopK
-	}
-	toolEnv := &tools.Env{
-		CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
-		DefaultTopK: defaultTopK, RAGQuery: in.Input, RAGDisabled: in.SkipRAG, RAG: s.rag,
+	if toolEnv == nil {
+		defaultTopK := 5
+		if s.cfg != nil {
+			defaultTopK = s.cfg.RAG.TopK
+		}
+		toolEnv = &tools.Env{
+			CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
+			DefaultTopK: defaultTopK, RAGQuery: in.Input, RAGDisabled: in.SkipRAG, RAG: s.rag,
+		}
 	}
 	for _, tc := range resp.ToolCalls {
 		if emit != nil {

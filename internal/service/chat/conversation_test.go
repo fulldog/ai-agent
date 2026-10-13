@@ -2,6 +2,7 @@ package chat
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,6 +108,33 @@ func TestLatestByChannelOrdersByCreatedAt(t *testing.T) {
 	})
 	if err != nil || got.ID != newer.ID {
 		t.Fatalf("want newest live %s, got %#v %v", newer.ID, got, err)
+	}
+}
+
+func TestListRecentMessagesSkipsExecutedSQL(t *testing.T) {
+	s := &Service{db: testChatDB(t)}
+	conv, err := s.CreateConversation(CreateConversationInput{UID: "staff-1", Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []model.Message{
+		{ConversationID: conv.ID, Role: "user", Content: "导出供应商"},
+		{ConversationID: conv.ID, Role: "tool", Content: "执行 SQL：\n\n```sql\nSELECT 1\n```"},
+		{ConversationID: conv.ID, Role: "assistant", Content: "已生成"},
+	}
+	if err := s.db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	history, err := s.listRecentMessages(conv.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || history[0].Role != "user" || history[1].Role != "assistant" {
+		t.Fatalf("%+v", history)
+	}
+	visible, err := s.ListMessages(conv.ID, "staff-1", 50)
+	if err != nil || len(visible) != 3 || visible[1].Role != "tool" || !strings.Contains(visible[1].Content, "SELECT 1") {
+		t.Fatalf("history %+v %v", visible, err)
 	}
 }
 

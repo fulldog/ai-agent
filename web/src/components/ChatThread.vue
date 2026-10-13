@@ -32,6 +32,8 @@ function roleLabel(role: string): string {
       return "助手";
     case "system":
       return "系统";
+    case "tool":
+      return "查询";
     default:
       return role;
   }
@@ -65,6 +67,9 @@ function metaText(m: Message): string {
 }
 .row.right {
   justify-content: flex-end;
+}
+.bubble.tool {
+  max-width: min(92%, 840px);
 }
 .bubble {
   max-width: min(72%, 640px);

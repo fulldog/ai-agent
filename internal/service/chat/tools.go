@@ -67,6 +67,14 @@ func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env
 	if s.cfg != nil {
 		env.DefaultTopK = s.cfg.RAG.TopK
 	}
+	if conv != nil && conv.ID != uuid.Nil {
+		conversationID := conv.ID
+		env.SaveSQL = func(sqlText string) {
+			if err := agent.SaveExecutedSQL(s.db, conversationID, sqlText); err != nil && s.llmLog != nil {
+				s.llmLog.Error("save executed sql", zap.Error(err), zap.String("request_id", in.RequestID))
+			}
+		}
+	}
 	return env
 }
 
@@ -226,5 +234,5 @@ func toolSystemPrompt(specs []llm.ToolSpec) string {
 const (
 	baseToolPrompt   = "需要准确信息时调用工具，并依据工具结果作答；不需要时直接回答，不要为了用工具而用工具。本次请求若已附带 tools，说明工具已启用，禁止回答「未启用工具/请到工具函数管理开启」。"
 	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：先按已注入的知识摘录执行（缺前置信息先追问，不要直接查库）。摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。"
-	fileToolPrompt   = "用户要求导出、下载或生成 Excel/表格文件时：先整理成列和行，再调用 generate_file。回复中必须附上工具返回的下载链接。"
+	fileToolPrompt   = "用户要求导出、下载或生成 Excel/表格文件时：数据来自本次 dbconn query 的，调用 generate_file 只传 filename 和 from_query=true，不要把查询结果再写进参数；中文列名写在 SELECT 别名里。不是查询结果的小表才传 columns 和 rows。回复中必须附上工具返回的下载链接。"
 )

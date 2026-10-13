@@ -10,6 +10,8 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 )
 
+const queryExportHint = "导出这份结果时调用 generate_file，只传 filename 和 from_query=true。不要复制上面的 columns 和 rows；需要中文列名请写在 SELECT 别名里。"
+
 // DBConn 查询独立 MySQL 业务库的数据字典或只读 SELECT。
 type DBConn struct {
 	Client *dbconn.Client
@@ -22,7 +24,7 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL。schema 从本地数据字典检索表和字段（不查 information_schema；仅 Srm 前缀，区分大小写，如 Srm_VendorInfo）；query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段、主键和关联键，再写 SQL。不要编造表名。",
+			Description: "查询独立业务 MySQL。schema 从本地数据字典检索表和字段（不查 information_schema；仅 Srm 前缀，区分大小写，如 Srm_VendorInfo）；query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段、主键和关联键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -73,7 +75,25 @@ func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (strin
 		if strings.TrimSpace(p.SQL) == "" {
 			return "", fmt.Errorf("sql 不能为空")
 		}
-		return t.Client.Query(ctx, p.SQL)
+		text, table, err := t.Client.QueryTable(ctx, p.SQL)
+		if env != nil {
+			env.RecordExecutedSQL(table.SQL)
+		}
+		if err != nil {
+			return "", err
+		}
+		if env != nil {
+			env.SetQueryTable(QueryTable{
+				Columns:   table.Columns,
+				Rows:      table.Rows,
+				Truncated: table.Truncated,
+			})
+		}
+		text += "\n" + queryExportHint
+		if table.Truncated {
+			text += "本次查询已达到行数上限，导出文件会包含本次返回的全部行。"
+		}
+		return text, nil
 	case "":
 		return "", fmt.Errorf("action 不能为空")
 	default:

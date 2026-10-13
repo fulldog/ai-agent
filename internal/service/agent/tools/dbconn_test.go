@@ -10,6 +10,20 @@ import (
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 )
 
+func TestRecordExecutedSQL(t *testing.T) {
+	t.Parallel()
+	var got string
+	env := &tools.Env{SaveSQL: func(sql string) { got = sql }}
+	env.RecordExecutedSQL("  SELECT VendorId FROM Srm_VendorInfo  ")
+	if got != "SELECT VendorId FROM Srm_VendorInfo" {
+		t.Fatalf("got %q", got)
+	}
+	env.RecordExecutedSQL("   ")
+	if got != "SELECT VendorId FROM Srm_VendorInfo" {
+		t.Fatalf("blank sql replaced history: %q", got)
+	}
+}
+
 func TestDBConnNilClient(t *testing.T) {
 	t.Parallel()
 	tool := tools.DBConn{}

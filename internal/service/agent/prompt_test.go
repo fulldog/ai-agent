@@ -27,6 +27,13 @@ func TestAgentSystemPrompt(t *testing.T) {
 	if !strings.Contains(got, "dbconn") || !strings.Contains(got, "knowledge_search") || !strings.Contains(got, toolsReadyPrompt) {
 		t.Fatalf("dbconn prompt: %q", got)
 	}
+	got = agentSystemPrompt([]llm.ToolSpec{
+		{Function: llm.ToolSpecFunc{Name: "dbconn"}},
+		{Function: llm.ToolSpecFunc{Name: "generate_file"}},
+	})
+	if !strings.Contains(got, "from_query") {
+		t.Fatalf("file prompt: %q", got)
+	}
 	if !strings.Contains(got, "工具函数管理") {
 		t.Fatal("should explicitly forbid 工具函数管理 phrasing")
 	}
@@ -50,6 +57,7 @@ func TestMergeAgentSystemAndInitialMessages(t *testing.T) {
 	}
 	hist := []model.Message{
 		{Role: "user", Content: "hi"},
+		{Role: "tool", Content: "执行 SQL：\n\n```sql\nSELECT 1\n```"},
 		{Role: "assistant", Content: "hello"},
 		{Role: "system", Content: "skip"},
 	}

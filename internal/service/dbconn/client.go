@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,6 +34,7 @@ type Client struct {
 	dictPath string
 	maxRows  int
 	timeout  time.Duration
+	log      *zap.Logger
 }
 
 func Open(cfg config.DBConnConfig, log *zap.Logger) (*Client, error) {
@@ -101,7 +103,11 @@ func Open(cfg config.DBConnConfig, log *zap.Logger) (*Client, error) {
 	db.SetConnMaxLifetime(lifetime)
 	db.SetConnMaxIdleTime(2 * time.Minute)
 
-	c := &Client{db: db, tunnel: tunnel, dict: dict, dictPath: dictPath, maxRows: cfg.MaxRows, timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}
+	c := &Client{
+		db: db, tunnel: tunnel, dict: dict, dictPath: dictPath,
+		maxRows: cfg.MaxRows, timeout: time.Duration(cfg.TimeoutSeconds) * time.Second,
+		log: log.With(zap.String("component", "dbconn")),
+	}
 	if c.maxRows <= 0 {
 		c.maxRows = 50
 	}
@@ -155,14 +161,31 @@ func (c *Client) beginRead(ctx context.Context) (*sql.Tx, error) {
 	return tx, nil
 }
 
+// Table 一次 SELECT 读到的表。Rows 与 Columns 顺序一致，单元格已转成文本。
+type Table struct {
+	SQL       string
+	Columns   []string
+	Rows      [][]string
+	Truncated bool
+}
+
 func (c *Client) Query(ctx context.Context, sqlText string) (string, error) {
+	text, _, err := c.QueryTable(ctx, sqlText)
+	return text, err
+}
+
+// QueryTable 执行只读 SELECT，同时返回给模型看的 JSON 和完整表。
+// JSON 与表是同一次读取的同一批行，表不会比 JSON 少行。
+func (c *Client) QueryTable(ctx context.Context, sqlText string) (string, Table, error) {
 	if c == nil || c.db == nil {
-		return "", fmt.Errorf("业务库未配置")
+		return "", Table{}, fmt.Errorf("业务库未配置")
 	}
 	clean, err := ValidateSelect(sqlText)
 	if err != nil {
-		return "", err
+		return "", Table{}, err
 	}
+	var table Table
+	start := time.Now()
 	run := func(ctx context.Context) (string, error) {
 		tx, err := c.beginRead(ctx)
 		if err != nil {
@@ -174,9 +197,37 @@ func (c *Client) Query(ctx context.Context, sqlText string) (string, error) {
 			return "", fmt.Errorf("查询失败: %w", err)
 		}
 		defer rows.Close()
-		return encodeRows(rows, c.maxRows)
+		text, next, err := encodeRows(rows, c.maxRows)
+		if err != nil {
+			return "", err
+		}
+		table = next
+		return text, nil
 	}
-	return c.do(ctx, run)
+	text, err := c.do(ctx, run)
+	c.logQuery(clean, len(table.Rows), table.Truncated, time.Since(start), err)
+	if err != nil {
+		return "", Table{SQL: clean}, err
+	}
+	table.SQL = clean
+	return text, table, nil
+}
+
+func (c *Client) logQuery(sqlText string, rows int, truncated bool, elapsed time.Duration, err error) {
+	if c == nil || c.log == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("sql", sqlText),
+		zap.Int("rows", rows),
+		zap.Bool("truncated", truncated),
+		zap.Duration("elapsed", elapsed),
+	}
+	if err != nil {
+		c.log.Error("dbconn query", append(fields, zap.Error(err))...)
+		return
+	}
+	c.log.Info("dbconn query", fields...)
 }
 
 func (c *Client) do(ctx context.Context, fn func(context.Context) (string, error)) (string, error) {
@@ -212,10 +263,10 @@ func isTransient(err error) bool {
 	return false
 }
 
-func encodeRows(rows *sql.Rows, maxRows int) (string, error) {
+func encodeRows(rows *sql.Rows, maxRows int) (string, Table, error) {
 	cols, err := rows.Columns()
 	if err != nil {
-		return "", err
+		return "", Table{}, err
 	}
 	type result struct {
 		Columns   []string         `json:"columns"`
@@ -223,9 +274,11 @@ func encodeRows(rows *sql.Rows, maxRows int) (string, error) {
 		Truncated bool             `json:"truncated"`
 	}
 	out := result{Columns: cols, Rows: make([]map[string]any, 0)}
+	table := Table{Columns: append([]string(nil), cols...), Rows: make([][]string, 0)}
 	for rows.Next() {
 		if maxRows > 0 && len(out.Rows) >= maxRows {
 			out.Truncated = true
+			table.Truncated = true
 			break
 		}
 		raw := make([]any, len(cols))
@@ -234,22 +287,52 @@ func encodeRows(rows *sql.Rows, maxRows int) (string, error) {
 			ptrs[i] = &raw[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return "", err
+			return "", Table{}, err
 		}
 		rec := make(map[string]any, len(cols))
+		line := make([]string, len(cols))
 		for i, name := range cols {
-			rec[name] = normalizeValue(raw[i])
+			val := normalizeValue(raw[i])
+			rec[name] = val
+			line[i] = cellText(val)
 		}
 		out.Rows = append(out.Rows, rec)
+		table.Rows = append(table.Rows, line)
 	}
 	if err := rows.Err(); err != nil {
-		return "", err
+		return "", Table{}, err
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
-		return "", err
+		return "", Table{}, err
 	}
-	return string(b), nil
+	return string(b), table, nil
+}
+
+func cellText(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case bool:
+		if x {
+			return "是"
+		}
+		return "否"
+	case int:
+		return strconv.Itoa(x)
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case uint64:
+		return strconv.FormatUint(x, 10)
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(x), 'f', -1, 32)
+	default:
+		return fmt.Sprint(x)
+	}
 }
 
 func normalizeValue(v any) any {

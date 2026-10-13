@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
@@ -27,4 +28,51 @@ type Env struct {
 	// RAGDisabled 为 true 时不检索知识库（未绑定语料库的钉钉单聊）。
 	RAGDisabled bool
 	RAG         *rag.Service
+	// query 是本次运行里最近一次 dbconn query 的完整结果，供 generate_file 直接导出。
+	query *QueryTable
+	// SaveSQL 在 dbconn 执行语句后调用，用于写入会话历史。为空则不记。
+	SaveSQL func(sql string)
+}
+
+// RecordExecutedSQL 记下刚执行的语句。sql 为空时忽略。
+func (e *Env) RecordExecutedSQL(sqlText string) {
+	if e == nil || e.SaveSQL == nil {
+		return
+	}
+	sqlText = strings.TrimSpace(sqlText)
+	if sqlText == "" {
+		return
+	}
+	e.SaveSQL(sqlText)
+}
+
+// QueryTable 一次查询读到的表。Rows 与 Columns 对齐。
+type QueryTable struct {
+	Columns   []string
+	Rows      [][]string
+	Truncated bool
+}
+
+// SetQueryTable 记下最近一次查询。后续 generate_file 用 from_query 导出时读这份副本。
+func (e *Env) SetQueryTable(t QueryTable) {
+	if e == nil {
+		return
+	}
+	cp := QueryTable{
+		Columns:   append([]string(nil), t.Columns...),
+		Rows:      make([][]string, len(t.Rows)),
+		Truncated: t.Truncated,
+	}
+	for i, row := range t.Rows {
+		cp.Rows[i] = append([]string(nil), row...)
+	}
+	e.query = &cp
+}
+
+// QueryTable 返回最近一次查询。没有查询时 ok 为 false。
+func (e *Env) QueryTable() (QueryTable, bool) {
+	if e == nil || e.query == nil {
+		return QueryTable{}, false
+	}
+	return *e.query, true
 }

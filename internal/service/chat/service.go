@@ -311,7 +311,7 @@ func (s *Service) listRecentMessages(conversationID uuid.UUID, limit int) ([]mod
 		limit = 10
 	}
 	var rows []model.Message
-	err := s.db.Where("conversation_id = ?", conversationID).
+	err := s.db.Where("conversation_id = ? AND role <> ?", conversationID, "tool").
 		Order("created_at desc").
 		Limit(limit).
 		Find(&rows).Error
@@ -529,7 +529,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}
 	for _, m := range history {
-		if m.Role == "system" {
+		if m.Role == "system" || m.Role == "tool" {
 			continue
 		}
 		llmMsgs = append(llmMsgs, llm.Message{Role: m.Role, Content: m.Content})
