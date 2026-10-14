@@ -86,9 +86,10 @@
         <el-table-column label="上下文条数" width="130">
           <template #default="{ row }">
             <el-input
-              :model-value="historyLimitText(row)"
+              :model-value="historyDraft(row)"
               maxlength="3"
               placeholder="0"
+              @input="onHistoryInput(row, $event)"
               @change="saveHistoryLimit(row, $event)"
             />
           </template>
@@ -192,6 +193,7 @@ const promptOpen = ref(false);
 const promptSaving = ref(false);
 const promptDraft = ref("");
 const promptRow = ref<DingTalkChat | null>(null);
+const historyDrafts = ref<Record<string, string>>({});
 
 const promptTitle = computed(() => {
   const name = promptRow.value?.title || "会话";
@@ -315,8 +317,26 @@ async function loadDictionaryGroups(items: Corpus[]): Promise<DictionaryGroup[]>
   return groups.filter((g) => g.documents.length > 0);
 }
 
-function historyLimitText(row: DingTalkChat): string {
+function savedHistoryText(row: DingTalkChat): string {
   return row.history_limit > 0 ? String(row.history_limit) : "";
+}
+
+function historyDraft(row: DingTalkChat): string {
+  if (Object.prototype.hasOwnProperty.call(historyDrafts.value, row.id)) {
+    return historyDrafts.value[row.id];
+  }
+  return savedHistoryText(row);
+}
+
+function onHistoryInput(row: DingTalkChat, value: string) {
+  historyDrafts.value = { ...historyDrafts.value, [row.id]: value };
+}
+
+function clearHistoryDraft(id: string) {
+  if (!Object.prototype.hasOwnProperty.call(historyDrafts.value, id)) return;
+  const next = { ...historyDrafts.value };
+  delete next[id];
+  historyDrafts.value = next;
 }
 
 async function saveHistoryLimit(row: DingTalkChat, value: string | number) {
@@ -325,21 +345,26 @@ async function saveHistoryLimit(row: DingTalkChat, value: string | number) {
   if (raw !== "") {
     if (!/^\d+$/.test(raw)) {
       ElMessage.error("上下文条数请填非负整数");
-      await load();
+      clearHistoryDraft(row.id);
       return;
     }
     n = Number(raw);
   }
-  if (n === (row.history_limit || 0)) return;
+  if (n === (row.history_limit || 0)) {
+    clearHistoryDraft(row.id);
+    return;
+  }
   try {
     const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/history-limit`, {
       method: "PUT",
       body: JSON.stringify({ history_limit: n }),
     });
+    clearHistoryDraft(row.id);
     applyChat(updated);
     ElMessage.success("已保存，下一条消息生效");
   } catch (e) {
     ElMessage.error(formatAPIError(e));
+    clearHistoryDraft(row.id);
     await load();
   }
 }
