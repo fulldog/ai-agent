@@ -8,10 +8,10 @@ import (
 
 const tableNamePrefix = "Srm"
 
-// Schema 检索表或字段。corpus 非空时只在这篇语料里查找；否则从业务库实时读取 information_schema。
+// Schema 读取表结构。corpus 非空时返回这篇数据字典全文；否则从业务库实时读取 information_schema。
 func (c *Client) Schema(ctx context.Context, keyword, table, corpus string) (string, error) {
 	if strings.TrimSpace(corpus) != "" {
-		return lookupCorpus(corpus, keyword, table)
+		return lookupCorpus(corpus)
 	}
 	if strings.TrimSpace(table) != "" {
 		if _, err := requireSrmTable(table); err != nil {

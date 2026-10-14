@@ -24,22 +24,22 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL。schema 读取当前会话配置的数据字典语料；未配置时从业务库实时读取 information_schema。仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段和主键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
+			Description: "查询独立业务 MySQL。会话配置了数据字典时，schema 返回这篇语料的全文，keyword 和 table 不截取。未配置时从业务库实时读取 information_schema，可用 keyword 或 table 过滤，仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段和主键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"action": map[string]any{
 						"type":        "string",
 						"enum":        []string{"schema", "query"},
-						"description": "schema=查表/列注释；query=执行只读 SELECT",
+						"description": "schema=读取数据字典全文，未配置字典时查表结构；query=执行只读 SELECT",
 					},
 					"keyword": map[string]any{
 						"type":        "string",
-						"description": "action=schema 且未指定 table 时，按表名、表注释、字段名或字段注释过滤",
+						"description": "未配置数据字典时，action=schema 且未指定 table，按表名、表注释、字段名或字段注释过滤。已配置数据字典时忽略",
 					},
 					"table": map[string]any{
 						"type":        "string",
-						"description": "action=schema 时指定表名以查看列注释，仅允许 Srm 前缀且区分大小写，如 Srm_VendorInfo",
+						"description": "未配置数据字典时，action=schema 指定表名查看列注释，仅允许 Srm 前缀且区分大小写，如 Srm_VendorInfo。已配置数据字典时忽略",
 					},
 					"sql": map[string]any{
 						"type":        "string",
