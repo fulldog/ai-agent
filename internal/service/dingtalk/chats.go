@@ -523,7 +523,7 @@ func wrapPrefixPrompt(prompt string) string {
 	if p == "" {
 		return ""
 	}
-	return "【本群规则，优先于后续工具调用约定】\n" + p + "\n若本群规则要求先向用户补充信息，本轮只回复追问，不要调用工具，也不要查库。"
+	return "【本群规则，优先于后续工具调用约定】\n" + p + "\n本群规则写明不要查库的情形，本轮只回复追问，不要调用工具。规则要求先查库再决定是否追问时，必须先调用工具。"
 }
 
 func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
