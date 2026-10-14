@@ -166,13 +166,13 @@ async function open(row: Conversation) {
 }
 
 async function remove(row: Conversation) {
-  await ElMessageBox.confirm(`删除会话「${row.title || row.id}」？`, "确认", { type: "warning" });
   try {
+    await ElMessageBox.confirm(`删除会话「${row.title || row.id}」？`, "确认", { type: "warning" });
     await requestJSON(`/api/v1/conversations/${row.id}`, { method: "DELETE" });
     ElMessage.success("已删除");
     await load();
   } catch (e) {
-    if ((e as Error).message?.includes("cancel")) return;
+    if (e === "cancel" || e === "close") return;
     ElMessage.error(formatAPIError(e));
   }
 }

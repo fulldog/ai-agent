@@ -232,10 +232,18 @@ async function renameCorpus(row: Corpus) {
 }
 
 async function delCorpus(id: string) {
-  await ElMessageBox.confirm("删除语料库及其文档？", "确认", { type: "warning" });
-  await requestJSON(`/api/v1/corpora/${id}`, { method: "DELETE" });
-  current.value = null;
-  await loadCorpora();
+  const row = corpora.value.find((c) => c.id === id);
+  const name = row?.name?.trim() || "该语料库";
+  try {
+    await ElMessageBox.confirm(`删除语料库「${name}」及其文档？`, "确认", { type: "warning" });
+    await requestJSON(`/api/v1/corpora/${id}`, { method: "DELETE" });
+    if (current.value?.id === id) current.value = null;
+    ElMessage.success("已删除");
+    await loadCorpora();
+  } catch (e) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(formatAPIError(e));
+  }
 }
 
 function onFileChange(_f: UploadFile, list: UploadUserFile[]) {
@@ -452,8 +460,17 @@ async function viewDoc(row: Doc) {
 
 async function delDoc(docId: string) {
   if (!current.value) return;
-  await requestJSON(`/api/v1/corpora/${current.value.id}/documents/${docId}`, { method: "DELETE" });
-  await loadDocs(current.value.id);
+  const doc = docs.value.find((d) => d.id === docId);
+  const name = doc?.title?.trim() || doc?.source?.trim() || "该文档";
+  try {
+    await ElMessageBox.confirm(`删除文档「${name}」？`, "确认", { type: "warning" });
+    await requestJSON(`/api/v1/corpora/${current.value.id}/documents/${docId}`, { method: "DELETE" });
+    ElMessage.success("已删除");
+    await loadDocs(current.value.id);
+  } catch (e) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(formatAPIError(e));
+  }
 }
 
 async function reindex() {

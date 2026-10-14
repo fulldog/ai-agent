@@ -187,8 +187,8 @@ async function createConv() {
 }
 
 async function removeConv(id: string) {
-  await ElMessageBox.confirm("删除该会话？", "确认", { type: "warning" });
   try {
+    await ElMessageBox.confirm("删除该会话？", "确认", { type: "warning" });
     await requestJSON(`/api/v1/conversations/${id}`, { method: "DELETE" });
     if (currentId.value === id) {
       currentId.value = "";
@@ -196,7 +196,7 @@ async function removeConv(id: string) {
     }
     await loadConvs();
   } catch (e) {
-    if ((e as Error).message?.includes("cancel")) return;
+    if (e === "cancel" || e === "close") return;
     ElMessage.error(formatAPIError(e));
   }
 }

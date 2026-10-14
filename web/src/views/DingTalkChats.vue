@@ -3,7 +3,16 @@
     <PageHero :items="hero" />
 
     <div class="toolbar">
-      <el-form inline @submit.prevent>
+        <el-form inline @submit.prevent="search">
+        <el-form-item label="名称">
+          <el-input
+            v-model="nameInput"
+            clearable
+            placeholder="按名称模糊查询"
+            style="width: 200px"
+            @keyup.enter="search"
+          />
+        </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="kind" style="width: 140px">
             <el-option label="全部" value="all" />
@@ -12,7 +21,8 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="loading" @click="load">刷新</el-button>
+          <el-button type="primary" @click="search">查询</el-button>
+          <el-button :loading="loading" @click="load">刷新</el-button>
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
@@ -21,7 +31,7 @@
     </div>
 
     <div class="table-card">
-      <el-table :data="filtered" v-loading="loading" stripe empty-text="暂无钉钉会话，请先在群里 @ 机器人">
+      <el-table :data="filtered" v-loading="loading" stripe :empty-text="emptyText">
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag v-if="row.is_group" size="small" type="warning" effect="light">群聊</el-tag>
@@ -108,9 +118,7 @@
     </div>
 
     <el-dialog v-model="promptOpen" :title="promptTitle" width="560px" destroy-on-close>
-      <p class="prompt-hint">
-        这段文字会放在该群系统提示最前面。问某一家供应商时，先按名称查库：只有一家就用该标签继续完成本轮查询，有多家再让用户选标签。统计、名单、流程类问题可以直接查。
-      </p>
+      <p class="prompt-hint">这段文字会放在该群系统提示最前面。留空表示不附加群规则。</p>
       <el-input
         v-model="promptDraft"
         type="textarea"
@@ -120,7 +128,6 @@
         placeholder="留空表示不附加群规则"
       />
       <template #footer>
-        <el-button @click="promptDraft = supplierPrefix">填入供应商规则</el-button>
         <el-button @click="promptOpen = false">取消</el-button>
         <el-button type="primary" :loading="promptSaving" @click="savePrompt">保存</el-button>
       </template>
@@ -163,28 +170,10 @@ const hero: HeroItem[] = [
   { icon: Link, title: "未绑定", desc: "未绑定任何库时仍检索全部语料库", tone: "orange" },
 ];
 
-const supplierPrefix = `问某一家具体供应商时，按下面做，不要先追问标签：
-- 用户只给了名称：本轮必须先查库，不要先追问。按名称查出同名供应商实际有哪些标签。只有一家时，立刻把这一家的标签当作本轮已确定的标签，不要停下来让用户确认，也不要只回复查到了哪一家；用该名称和该标签继续完成本轮用户要求的后续查询和回答。有多家时，只列出库里实际存在的标签，请用户选想看哪一家；选定之前不要回答多家的业务数据。
-- 名称和标签都已经明确：查这一家的当前有效数据。过滤条件必须同时带上该名称和对应标签。回答时说明用的是哪个名称、哪个标签。
-- 只给了标签、没有名称：本轮只追问供应商名称，不要查库，不要猜测。
-- 标签不在允许列表中：本轮只追问，列出允许的标签请用户重选，不要查库，不要猜测。
-
-统计、名单、流程、规则、按标签汇总等不针对某一家的问题，直接按问题查询，不要为了补标签而追问。
-
-凡是查数据，都不要沿用上下文里已有的查询结果，必须重新调用工具查询。历史里已经确认的供应商名称和标签可以沿用，不必重复追问。
-
-同一名称在不同标签下是不同记录，不能把多个标签的数据混在一次回答里。
-
-标签只允许以下取值。对用户说中文名称，查库时用数字：
-- 1 广告线
-- 2 本地生活
-- 4 数娱线
-- 6 电商线
-- 8 中后台
-- 10 创节业务`;
-
 const loading = ref(false);
 const kind = ref<"all" | "group" | "direct">("all");
+const nameInput = ref("");
+const nameQuery = ref("");
 const rows = ref<DingTalkChat[]>([]);
 const corpora = ref<Corpus[]>([]);
 const dictionaryGroups = ref<DictionaryGroup[]>([]);
@@ -200,10 +189,21 @@ const promptTitle = computed(() => {
 });
 
 const filtered = computed(() => {
-  if (kind.value === "group") return rows.value.filter((r) => r.is_group);
-  if (kind.value === "direct") return rows.value.filter((r) => !r.is_group);
-  return rows.value;
+  let list = rows.value;
+  if (kind.value === "group") list = list.filter((r) => r.is_group);
+  else if (kind.value === "direct") list = list.filter((r) => !r.is_group);
+  const kw = nameQuery.value.trim().toLowerCase();
+  if (!kw) return list;
+  return list.filter((r) => (r.title || "").toLowerCase().includes(kw));
 });
+
+const emptyText = computed(() =>
+  nameQuery.value.trim() ? "没有匹配的会话" : "暂无钉钉会话，请先在群里 @ 机器人",
+);
+
+function search() {
+  nameQuery.value = nameInput.value.trim();
+}
 
 const dictionaryTree = computed<DictionaryTreeNode[]>(() =>
   dictionaryGroups.value.map((g) => ({
