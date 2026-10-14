@@ -233,6 +233,6 @@ func toolSystemPrompt(specs []llm.ToolSpec) string {
 
 const (
 	baseToolPrompt   = "需要准确信息时调用工具，并依据工具结果作答；不需要时直接回答，不要为了用工具而用工具。本次请求若已附带 tools，说明工具已启用，禁止回答「未启用工具/请到工具函数管理开启」。"
-	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：要核实数据必须调用 dbconn，不要沿用历史查询结果，也不要凭猜测作答。缺标签时先按名称查库，根据本次查询结果再决定是否追问。知识摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。回复用户时不要出现表名、字段名或「字段=数字」；枚举只写中文含义，例如「中后台」「启用」。"
+	dbconnToolPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：要核实数据必须调用 dbconn，不要沿用历史查询结果，也不要凭猜测作答。缺标签时先按名称查库，根据本次查询结果再决定是否追问。知识摘录未覆盖时再用 knowledge_search 查口径；再用 dbconn 的 schema 对照表与列注释选定表和列，最后组织只读 SELECT 并调用 dbconn 的 query 执行。不要只把 SQL 写在回复里而不调用工具；无法对应到表时说明缺什么，不要编造表名或数据。"
 	fileToolPrompt   = "用户要求导出、下载或生成 Excel/表格文件时：数据来自本次 dbconn query 的，调用 generate_file 只传 filename 和 from_query=true，不要把查询结果再写进参数；中文列名写在 SELECT 别名里。不是查询结果的小表才传 columns 和 rows。回复中必须附上工具返回的下载链接。"
 )

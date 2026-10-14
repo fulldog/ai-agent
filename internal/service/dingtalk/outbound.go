@@ -137,7 +137,7 @@ func (b *Bot) upsertOutboundAssistant(tr *msgTrace, text, requestID string) bool
 
 func (b *Bot) sanitizeOutbound(text string) string {
 	if !agent.IsToolEvasionReply(text) {
-		return agent.MaskSchemaLeak(text)
+		return text
 	}
 	if b != nil && b.log != nil {
 		b.log.Warn("blocked tool-evasion outbound reply",

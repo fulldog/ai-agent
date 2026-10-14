@@ -143,10 +143,6 @@ func TestSanitizeOutboundBlocksEvasion(t *testing.T) {
 	if got := b.sanitizeOutbound("乐推可以付款"); got != "乐推可以付款" {
 		t.Fatalf("normal reply: %q", got)
 	}
-	got = b.sanitizeOutbound("Srm_VendorInfo：IsEnable = 1 → 启用")
-	if strings.Contains(got, "Srm_") || strings.Contains(got, "IsEnable") || !strings.Contains(got, "启用") {
-		t.Fatalf("schema leak: %q", got)
-	}
 }
 
 func TestAppendSourceNote(t *testing.T) {
