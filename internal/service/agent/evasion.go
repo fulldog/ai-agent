@@ -126,6 +126,7 @@ func (s *Service) retryAfterEvasion(
 		toolEnv = &tools.Env{
 			CorpusID: in.CorpusID, CorpusIDs: in.CorpusIDs, TopK: in.TopK,
 			DefaultTopK: defaultTopK, RAGQuery: in.Input, RAGDisabled: in.SkipRAG, RAG: s.rag,
+			Dictionary: in.Dictionary,
 		}
 	}
 	for _, tc := range resp.ToolCalls {

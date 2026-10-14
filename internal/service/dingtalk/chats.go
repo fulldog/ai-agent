@@ -15,18 +15,22 @@ import (
 
 // ChatItem 控制台钉钉会话列表项。
 type ChatItem struct {
-	ID               uuid.UUID     `json:"id"`
-	ConversationID   string        `json:"conversation_id"`
-	Title            string        `json:"title"`
-	ConversationType string        `json:"conversation_type"`
-	IsGroup          bool          `json:"is_group"`
-	LastSeenAt       time.Time     `json:"last_seen_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	PrefixPrompt     string        `json:"prefix_prompt"`
-	Tools            []string      `json:"tools"`
-	CorpusIDs        []uuid.UUID   `json:"corpus_ids"`
-	Corpora          []CorpusBrief `json:"corpora"`
+	ID                   uuid.UUID     `json:"id"`
+	ConversationID       string        `json:"conversation_id"`
+	Title                string        `json:"title"`
+	ConversationType     string        `json:"conversation_type"`
+	IsGroup              bool          `json:"is_group"`
+	LastSeenAt           time.Time     `json:"last_seen_at"`
+	UpdatedAt            time.Time     `json:"updated_at"`
+	PrefixPrompt         string        `json:"prefix_prompt"`
+	Tools                []string      `json:"tools"`
+	DictionaryDocumentID string        `json:"dictionary_document_id"`
+	CorpusIDs            []uuid.UUID   `json:"corpus_ids"`
+	Corpora              []CorpusBrief `json:"corpora"`
 }
+
+// ErrDocumentNotFound 数据字典所选语料文档不存在。
+var ErrDocumentNotFound = errors.New("document not found")
 
 // CorpusBrief 绑定语料库摘要。
 type CorpusBrief struct {
@@ -309,6 +313,37 @@ func (b *Bot) SetChatCorpora(id uuid.UUID, corpusIDs []uuid.UUID) (*ChatItem, er
 	return &item, nil
 }
 
+// SetChatDictionary 保存该群/单聊的数据字典。documentID 为空表示清除。
+func (b *Bot) SetChatDictionary(id uuid.UUID, documentID *uuid.UUID) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if documentID != nil {
+		var doc model.Document
+		err := b.db.Select("id").First(&doc, "id = ?", *documentID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: %s", ErrDocumentNotFound, documentID)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	stored := any(gorm.Expr("NULL"))
+	if documentID != nil {
+		stored = *documentID
+	}
+	if err := b.db.Model(&chat).Update("dictionary_document_id", stored).Error; err != nil {
+		return nil, err
+	}
+	chat.DictionaryDocumentID = documentID
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
 // SetChatPrefix 保存该群/单聊的前置提示词。空字符串表示清除。
 func (b *Bot) SetChatPrefix(id uuid.UUID, prompt string) (*ChatItem, error) {
 	if b == nil || b.db == nil {
@@ -328,6 +363,38 @@ func (b *Bot) SetChatPrefix(id uuid.UUID, prompt string) (*ChatItem, error) {
 	chat.PrefixPrompt = prompt
 	item := toChatItem(chat, b.corporaForChat(id))
 	return &item, nil
+}
+
+func (b *Bot) chatDictionary(conversationID string) string {
+	if b == nil || b.db == nil {
+		return ""
+	}
+	cid := strings.TrimSpace(conversationID)
+	if cid == "" {
+		return ""
+	}
+	var row model.DingTalkChat
+	if err := b.db.Where("conversation_id = ?", cid).First(&row).Error; err != nil {
+		return ""
+	}
+	if row.DictionaryDocumentID == nil || *row.DictionaryDocumentID == uuid.Nil {
+		return ""
+	}
+	var doc model.Document
+	if err := b.db.First(&doc, "id = ?", *row.DictionaryDocumentID).Error; err != nil {
+		return ""
+	}
+	if strings.TrimSpace(doc.Content) != "" {
+		return doc.Content
+	}
+	if b.corpus == nil {
+		return ""
+	}
+	text, err := b.corpus.DocumentContent(&doc)
+	if err != nil {
+		return ""
+	}
+	return text
 }
 
 func (b *Bot) chatPrefix(conversationID string) string {
@@ -467,16 +534,24 @@ func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 		briefs = append(briefs, CorpusBrief{ID: c.ID, Name: c.Name})
 	}
 	return ChatItem{
-		ID:               row.ID,
-		ConversationID:   row.ConversationID,
-		Title:            row.Title,
-		ConversationType: row.ConversationType,
-		IsGroup:          isGroup(row.ConversationType),
-		LastSeenAt:       row.LastSeenAt,
-		UpdatedAt:        row.UpdatedAt,
-		PrefixPrompt:     row.PrefixPrompt,
-		Tools:            decodeTools(row.Tools),
-		CorpusIDs:        ids,
-		Corpora:          briefs,
+		ID:                   row.ID,
+		ConversationID:       row.ConversationID,
+		Title:                row.Title,
+		ConversationType:     row.ConversationType,
+		IsGroup:              isGroup(row.ConversationType),
+		LastSeenAt:           row.LastSeenAt,
+		UpdatedAt:            row.UpdatedAt,
+		PrefixPrompt:         row.PrefixPrompt,
+		Tools:                decodeTools(row.Tools),
+		DictionaryDocumentID: dictionaryDocumentID(row.DictionaryDocumentID),
+		CorpusIDs:            ids,
+		Corpora:              briefs,
 	}
+}
+
+func dictionaryDocumentID(id *uuid.UUID) string {
+	if id == nil || *id == uuid.Nil {
+		return ""
+	}
+	return id.String()
 }

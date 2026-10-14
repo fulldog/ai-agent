@@ -101,6 +101,44 @@ func (h *DingTalkHandler) SetChatCorpora(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *DingTalkHandler) SetChatDictionary(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var req struct {
+		DocumentID string `json:"document_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	docID, err := parseOptionalUUID(req.DocumentID)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid document_id")
+		return
+	}
+	item, err := h.Bot.SetChatDictionary(id, docID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "dingtalk chat not found")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrDocumentNotFound) {
+			writeError(c, http.StatusBadRequest, "bad_request", "document not found")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func (h *DingTalkHandler) SetChatPrefix(c *gin.Context) {
 	if h == nil || h.Bot == nil {
 		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
@@ -165,6 +203,21 @@ func (h *DingTalkHandler) SetChatTools(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func parseOptionalUUID(raw string) (*uuid.UUID, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil || id == uuid.Nil {
+		if err == nil {
+			return nil, errors.New("invalid id")
+		}
+		return nil, err
+	}
+	return &id, nil
 }
 
 func parseCorpusIDs(raw []string) ([]uuid.UUID, error) {

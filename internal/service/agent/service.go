@@ -69,6 +69,8 @@ type RunInput struct {
 	RAGHits        []rag.Hit
 	EnableSearch   bool
 	PrefixPrompt   string
+	// Dictionary 当前钉钉会话配置的数据字典语料原文。空则 dbconn schema 实时读库。
+	Dictionary string
 	// SkipRAG 为 true 时不预检索，knowledge_search 也不查库。
 	SkipRAG bool
 	// ToolsOnly 为 true 时只用 Tools，不并入 agent.default_tools。空列表表示本轮不挂工具。
@@ -172,6 +174,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		RAGQuery:    in.Input,
 		RAGDisabled: in.SkipRAG,
 		RAG:         s.rag,
+		Dictionary:  in.Dictionary,
 	}
 	if in.ConversationID != nil {
 		conversationID := *in.ConversationID

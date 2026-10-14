@@ -30,6 +30,32 @@
         </el-table-column>
         <el-table-column prop="title" label="名称" min-width="160" show-overflow-tooltip />
         <el-table-column prop="conversation_id" label="群 ID" min-width="220" show-overflow-tooltip />
+        <el-table-column label="数据字典" min-width="280">
+          <template #default="{ row }">
+            <el-tree-select
+              v-model="row.dictionary_document_id"
+              :data="dictionaryTree"
+              filterable
+              clearable
+              check-strictly
+              :render-after-expand="false"
+              placeholder="选择一篇语料"
+              no-data-text="暂无语料文档"
+              no-match-text="没有匹配的语料"
+              popper-class="dict-tree-popper"
+              style="width: 100%"
+              @change="saveDictionary(row)"
+            >
+              <template #default="{ node, data }">
+                <span
+                  class="dict-tree-label"
+                  :class="{ 'is-group': !data.title }"
+                  @click="onDictionaryLabelClick($event, node, data)"
+                >{{ data.title || data.label }}</span>
+              </template>
+            </el-tree-select>
+          </template>
+        </el-table-column>
         <el-table-column label="绑定语料库" min-width="280">
           <template #default="{ row }">
             <el-select
@@ -108,7 +134,28 @@ import { ElMessage } from "element-plus";
 import { ChatDotRound, Collection, Link } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
-import type { AgentTool, Corpus, DingTalkChat } from "@/api/types";
+import type { AgentTool, Corpus, DingTalkChat, Document } from "@/api/types";
+
+interface DictionaryGroup {
+  id: string;
+  name: string;
+  documents: { id: string; title: string }[];
+}
+
+interface DictionaryTreeNode {
+  value: string;
+  label: string;
+  title?: string;
+  disabled?: boolean;
+  children?: DictionaryTreeNode[];
+}
+
+interface DictionaryTreeState {
+  isLeaf: boolean;
+  expanded: boolean;
+  expand: () => void;
+  collapse: () => void;
+}
 
 const hero: HeroItem[] = [
   { icon: ChatDotRound, title: "钉钉会话", desc: "按群 ID 记录名称，与发言人会话分开", tone: "blue" },
@@ -140,6 +187,7 @@ const loading = ref(false);
 const kind = ref<"all" | "group" | "direct">("all");
 const rows = ref<DingTalkChat[]>([]);
 const corpora = ref<Corpus[]>([]);
+const dictionaryGroups = ref<DictionaryGroup[]>([]);
 const toolCatalog = ref<AgentTool[]>([]);
 const promptOpen = ref(false);
 const promptSaving = ref(false);
@@ -156,6 +204,32 @@ const filtered = computed(() => {
   if (kind.value === "direct") return rows.value.filter((r) => !r.is_group);
   return rows.value;
 });
+
+const dictionaryTree = computed<DictionaryTreeNode[]>(() =>
+  dictionaryGroups.value.map((g) => ({
+    value: `group:${g.id}`,
+    label: g.name,
+    disabled: true,
+    children: g.documents.map((d) => ({
+      value: d.id,
+      label: `${g.name} / ${d.title}`,
+      title: d.title,
+    })),
+  })),
+);
+
+function onDictionaryLabelClick(event: MouseEvent, node: DictionaryTreeState, data: DictionaryTreeNode) {
+  if (data.title) return;
+  event.stopPropagation();
+  const open = (event.currentTarget as HTMLElement).closest(".el-tree-node")?.getAttribute("aria-expanded") === "true";
+  if (open) {
+    if (!node.expanded) node.expand();
+    node.collapse();
+    return;
+  }
+  if (node.expanded) node.collapse();
+  node.expand();
+}
 
 function noop() {}
 
@@ -187,6 +261,7 @@ function applyChat(updated: DingTalkChat) {
     ...updated,
     corpus_ids: updated.corpus_ids || [],
     tools: updated.tools || [],
+    dictionary_document_id: updated.dictionary_document_id || "",
   };
 }
 
@@ -202,14 +277,32 @@ async function load() {
       ...r,
       corpus_ids: r.corpus_ids || [],
       tools: r.tools || [],
+      dictionary_document_id: r.dictionary_document_id || "",
     }));
     corpora.value = corpusRes.items || [];
     toolCatalog.value = toolRes.items || [];
+    dictionaryGroups.value = await loadDictionaryGroups(corpora.value);
   } catch (e) {
     ElMessage.error(formatAPIError(e));
   } finally {
     loading.value = false;
   }
+}
+
+async function loadDictionaryGroups(items: Corpus[]): Promise<DictionaryGroup[]> {
+  const groups = await Promise.all(
+    items.map(async (c) => {
+      const res = await requestJSON<{ items: Document[] }>(`/api/v1/corpora/${c.id}/documents`);
+      const documents = (res.items || [])
+        .map((d) => ({
+          id: d.id,
+          title: d.title?.trim() || d.source?.trim() || "未命名文档",
+        }))
+        .filter((d) => d.id);
+      return { id: c.id, name: c.name, documents };
+    }),
+  );
+  return groups.filter((g) => g.documents.length > 0);
 }
 
 function openPrompt(row: DingTalkChat) {
@@ -259,6 +352,21 @@ async function saveTools(row: DingTalkChat, selected: string[]) {
   }
 }
 
+async function saveDictionary(row: DingTalkChat) {
+  const documentID = row.dictionary_document_id || "";
+  row.dictionary_document_id = documentID;
+  try {
+    const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/dictionary`, {
+      method: "PUT",
+      body: JSON.stringify({ document_id: documentID }),
+    });
+    applyChat(updated);
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+    await load();
+  }
+}
+
 async function save(row: DingTalkChat) {
   try {
     const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/corpora`, {
@@ -283,5 +391,33 @@ onMounted(() => {
   margin: 0 0 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.6;
+}
+</style>
+
+<style>
+.dict-tree-popper .el-tree-node__content {
+  height: 34px;
+}
+.dict-tree-popper .el-select-dropdown__item {
+  position: relative;
+  flex: 1;
+  height: 34px;
+  line-height: 34px;
+  padding: 0;
+}
+.dict-tree-popper .el-select-dropdown__item.is-disabled {
+  color: var(--el-text-color-primary);
+  cursor: pointer;
+}
+.dict-tree-popper .dict-tree-label {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+.dict-tree-popper .dict-tree-label.is-group {
+  font-weight: 600;
 }
 </style>

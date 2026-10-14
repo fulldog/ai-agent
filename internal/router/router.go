@@ -57,7 +57,6 @@ func Setup(application *app.App) *gin.Engine {
 	ragH := &handler.RAGHandler{RAG: application.RAG}
 	logsH := &handler.LogsHandler{DB: application.DB}
 	modelsH := &handler.ModelsHandler{Pool: application.LLMPool}
-	dictH := &handler.DictionaryHandler{DBConn: application.DBConn}
 
 	needDB := middleware.RequireDB(application.DB)
 
@@ -67,8 +66,6 @@ func Setup(application *app.App) *gin.Engine {
 	v1.Use(middleware.UserID())
 	{
 		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
-		// 替换本地数据字典并热更新内存；不依赖 PostgreSQL
-		v1.PUT("/dbconn/dictionary", middleware.AdminAPIKey(cfg), dictH.Update)
 
 		// 无库可用：文件分析、意图分析
 		v1.POST("/chat/analyze", chatH.Analyze)
@@ -110,6 +107,7 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.GET("/dingtalk/reply-mode", dingH.GetReplyMode)
 			dbGroup.PUT("/dingtalk/reply-mode", dingH.SetReplyMode)
 			dbGroup.GET("/dingtalk/chats", dingH.ListChats)
+			dbGroup.PUT("/dingtalk/chats/:id/dictionary", dingH.SetChatDictionary)
 			dbGroup.PUT("/dingtalk/chats/:id/corpora", dingH.SetChatCorpora)
 			dbGroup.PUT("/dingtalk/chats/:id/prefix", dingH.SetChatPrefix)
 			dbGroup.PUT("/dingtalk/chats/:id/tools", dingH.SetChatTools)

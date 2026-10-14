@@ -1,10 +1,8 @@
 package dbconn
 
 import (
-	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -20,8 +18,7 @@ func loadFixture(t *testing.T) *Dictionary {
 
 func TestDictionaryExactTable(t *testing.T) {
 	t.Parallel()
-	c := &Client{dict: loadFixture(t)}
-	out, err := c.Schema(context.Background(), "", "Srm_VendorInfo")
+	out, err := loadFixture(t).lookup("", "Srm_VendorInfo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +34,7 @@ func TestDictionaryExactTable(t *testing.T) {
 
 func TestDictionaryQualifiedName(t *testing.T) {
 	t.Parallel()
-	c := &Client{dict: loadFixture(t)}
-	out, err := c.Schema(context.Background(), "", "crm.Srm_VendorInfo")
+	out, err := loadFixture(t).lookup("", "crm.Srm_VendorInfo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +45,7 @@ func TestDictionaryQualifiedName(t *testing.T) {
 
 func TestDictionaryKeywordHitsColumnComment(t *testing.T) {
 	t.Parallel()
-	c := &Client{dict: loadFixture(t)}
-	out, err := c.Schema(context.Background(), "开户行", "")
+	out, err := loadFixture(t).lookup("开户行", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +59,7 @@ func TestDictionaryKeywordHitsColumnComment(t *testing.T) {
 
 func TestDictionaryCatalog(t *testing.T) {
 	t.Parallel()
-	c := &Client{dict: loadFixture(t)}
-	out, err := c.Schema(context.Background(), "", "")
+	out, err := loadFixture(t).lookup("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,16 +73,16 @@ func TestDictionaryCatalog(t *testing.T) {
 
 func TestDictionaryRejectsBadTable(t *testing.T) {
 	t.Parallel()
-	c := &Client{dict: loadFixture(t)}
-	_, err := c.Schema(context.Background(), "", "vendor")
+	d := loadFixture(t)
+	_, err := d.lookup("", "vendor")
 	if err == nil || !strings.Contains(err.Error(), "前缀") {
 		t.Fatalf("prefix: %v", err)
 	}
-	_, err = c.Schema(context.Background(), "", "srm_vendorinfo")
+	_, err = d.lookup("", "srm_vendorinfo")
 	if err == nil || !strings.Contains(err.Error(), "前缀") {
 		t.Fatalf("case: %v", err)
 	}
-	_, err = c.Schema(context.Background(), "", "Srm_Missing")
+	_, err = d.lookup("", "Srm_Missing")
 	if err == nil || !strings.Contains(err.Error(), "未找到表") {
 		t.Fatalf("missing: %v", err)
 	}
@@ -117,42 +111,6 @@ func TestDictionaryKeywordTruncates(t *testing.T) {
 	}
 }
 
-func TestUpdateDictionaryReplacesFileAndMemory(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "srm_dictionary.json")
-	old, err := parseDictionary([]byte(`{"conventions":["旧约定"],"tables":[{"name":"Srm_Old","comment":"旧表","columns":[{"name":"Id","type":"int","nullable":false}]}]}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := &Client{dictPath: path, dict: old}
-	if _, err := c.Schema(context.Background(), "", "Srm_Old"); err != nil {
-		t.Fatal(err)
-	}
-	next := []byte(`{"conventions":["新约定"],"tables":[{"name":"Srm_New","comment":"新表","columns":[{"name":"Name","type":"varchar(32)","nullable":true,"comment":"名称"}]}]}`)
-	tables, cols, err := c.UpdateDictionary(next)
-	if err != nil || tables != 1 || cols != 1 {
-		t.Fatalf("tables=%d cols=%d err=%v", tables, cols, err)
-	}
-	out, err := c.Schema(context.Background(), "", "Srm_New")
-	if err != nil || !strings.Contains(out, "新表") || !strings.Contains(out, "名称") {
-		t.Fatalf("schema after update: %v\n%s", err, out)
-	}
-	if _, err := c.Schema(context.Background(), "", "Srm_Old"); err == nil || !strings.Contains(err.Error(), "未找到表") {
-		t.Fatalf("old table: %v", err)
-	}
-	loaded, err := LoadDictionary(path)
-	if err != nil || loaded.byName["Srm_New"] == nil {
-		t.Fatalf("file reload: %v", err)
-	}
-	if _, _, err := c.UpdateDictionary([]byte(`{`)); err == nil {
-		t.Fatal("invalid json should fail")
-	}
-	if _, err := c.Schema(context.Background(), "", "Srm_New"); err != nil {
-		t.Fatalf("invalid update must keep previous dictionary: %v", err)
-	}
-}
-
 func TestLoadDictionaryErrors(t *testing.T) {
 	t.Parallel()
 	if _, err := LoadDictionary(filepath.Join(t.TempDir(), "missing.json")); err == nil {
@@ -165,29 +123,5 @@ func TestLoadDictionaryErrors(t *testing.T) {
 	}
 	if _, err := LoadDictionary(path); err == nil || !strings.Contains(err.Error(), "解析数据字典") {
 		t.Fatalf("bad json: %v", err)
-	}
-}
-
-func TestProductionDictionary(t *testing.T) {
-	t.Parallel()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("caller")
-	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "docs", "srm_dictionary.json")
-	d, err := LoadDictionary(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := &Client{dict: d}
-	out, err := c.Schema(context.Background(), "", "Srm_VendorInfo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out, "10 创节业务") {
-		t.Fatalf("VendorLabel comment missing:\n%s", out)
-	}
-	if len(d.Tables) != 33 {
-		t.Fatalf("tables=%d", len(d.Tables))
 	}
 }

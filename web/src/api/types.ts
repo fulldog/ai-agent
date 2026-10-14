@@ -90,6 +90,7 @@ export interface DingTalkChat {
   updated_at: string;
   prefix_prompt: string;
   tools: string[];
+  dictionary_document_id: string;
   corpus_ids: string[];
   corpora: { id: string; name: string }[];
 }

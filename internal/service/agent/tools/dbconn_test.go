@@ -64,6 +64,19 @@ func TestDBConnArgs(t *testing.T) {
 	}
 }
 
+func TestDBConnSchemaUsesConfiguredCorpus(t *testing.T) {
+	t.Parallel()
+	tool := tools.DBConn{Client: &dbconn.Client{}}
+	env := &tools.Env{Dictionary: "# 字典\n\n## Srm_VendorInfo\n\n供应商名称\n"}
+	out, err := tool.Exec(context.Background(), json.RawMessage(`{"action":"schema","table":"Srm_VendorInfo"}`), env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "供应商名称") {
+		t.Fatalf("got:\n%s", out)
+	}
+}
+
 func TestRegistryDBConn(t *testing.T) {
 	t.Parallel()
 	if n := len(tools.Default().Specs([]string{"dbconn", "knowledge_search"})); n != 1 {

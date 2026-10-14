@@ -1,6 +1,6 @@
 # CRM 库 Srm 前缀数据字典
 
-阅读版，内容与 [`srm_dictionary.json`](srm_dictionary.json) 相同。`dbconn` 的 schema 读 JSON，不读本文件。
+阅读版结构说明。会话把一篇语料配成数据字典后，`dbconn` 的 schema 读那篇语料；未配置时实时读取业务库 schema。
 
 - 规模：33 张表，512 个字段
 - 物理外键：无。表间关联以字段名和 `relations` 为准

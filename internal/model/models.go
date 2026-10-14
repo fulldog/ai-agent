@@ -272,15 +272,16 @@ func (f *FileExtraction) BeforeCreate(tx *gorm.DB) error {
 
 // DingTalkChat 钉钉群/单聊档案（按 conversationId 去重，与按用户隔离的 conversations 不同）。
 type DingTalkChat struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey;comment:钉钉会话档案ID" json:"id"`
-	ConversationID   string    `gorm:"type:text;not null;uniqueIndex;comment:钉钉 conversationId" json:"conversation_id"`
-	Title            string    `gorm:"type:text;comment:群名称(conversationTitle)" json:"title"`
-	ConversationType string    `gorm:"type:text;not null;default:'';comment:会话类型:1单聊2群聊" json:"conversation_type"`
-	PrefixPrompt     string    `gorm:"type:text;not null;default:'';comment:群前置提示词，回复前注入系统提示" json:"prefix_prompt"`
-	Tools            string    `gorm:"type:text;not null;default:'';comment:群额外工具，JSON字符串数组，执行时与默认工具取并集" json:"-"`
-	LastSeenAt       time.Time `gorm:"index;comment:最近一次收到消息时间" json:"last_seen_at"`
-	CreatedAt        time.Time `gorm:"comment:创建时间" json:"created_at"`
-	UpdatedAt        time.Time `gorm:"comment:更新时间" json:"updated_at"`
+	ID                   uuid.UUID  `gorm:"type:uuid;primaryKey;comment:钉钉会话档案ID" json:"id"`
+	ConversationID       string     `gorm:"type:text;not null;uniqueIndex;comment:钉钉 conversationId" json:"conversation_id"`
+	Title                string     `gorm:"type:text;comment:群名称(conversationTitle)" json:"title"`
+	ConversationType     string     `gorm:"type:text;not null;default:'';comment:会话类型:1单聊2群聊" json:"conversation_type"`
+	PrefixPrompt         string     `gorm:"type:text;not null;default:'';comment:群前置提示词，回复前注入系统提示" json:"prefix_prompt"`
+	Tools                string     `gorm:"type:text;not null;default:'';comment:群额外工具，JSON字符串数组，执行时与默认工具取并集" json:"-"`
+	DictionaryDocumentID *uuid.UUID `gorm:"type:uuid;index;comment:数据字典文档ID，单选一篇语料" json:"dictionary_document_id,omitempty"`
+	LastSeenAt           time.Time  `gorm:"index;comment:最近一次收到消息时间" json:"last_seen_at"`
+	CreatedAt            time.Time  `gorm:"comment:创建时间" json:"created_at"`
+	UpdatedAt            time.Time  `gorm:"comment:更新时间" json:"updated_at"`
 }
 
 func (DingTalkChat) TableName() string { return "dingtalk_chats" }

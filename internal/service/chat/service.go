@@ -340,7 +340,9 @@ type CompleteInput struct {
 	TopK         int
 	EnableSearch bool   // 无语料命中且用户强制联网时，通义 enable_search
 	PrefixPrompt string // 钉钉群前置提示，放在系统提示最前
-	Tools        []string
+	// Dictionary 当前钉钉会话配置的数据字典语料原文。空则 dbconn schema 实时读库。
+	Dictionary string
+	Tools      []string
 	// ToolsOnly 为 true 时只使用 Tools，不并入 agent.default_tools / chat.tools。
 	ToolsOnly bool
 	// SkipRAG 为 true 时不检索、不把会话上残留的语料库交给 knowledge_search。

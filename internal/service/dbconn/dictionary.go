@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
-// Dictionary 本地 Srm 数据字典。schema 只读这份结构，不查 information_schema。
+// Dictionary 是 schema 检索用的表结构。未配置语料时由实时 information_schema 填入。
 type Dictionary struct {
 	Conventions []string    `json:"conventions"`
 	Relations   []Relation  `json:"relations"`
@@ -80,92 +79,6 @@ func parseDictionary(raw []byte) (*Dictionary, error) {
 		return nil, fmt.Errorf("数据字典: %w", err)
 	}
 	return &d, nil
-}
-
-// NewDictionaryStore 只绑定字典文件路径，不连接 MySQL。
-func NewDictionaryStore(path string) *Client {
-	return &Client{dictPath: strings.TrimSpace(path)}
-}
-
-// ReloadDictionary 重新读取磁盘上的字典文件并替换内存副本。
-func (c *Client) ReloadDictionary() (tables, columns int, err error) {
-	if c == nil || strings.TrimSpace(c.dictPath) == "" {
-		return 0, 0, fmt.Errorf("业务库未配置")
-	}
-	d, err := LoadDictionary(c.dictPath)
-	if err != nil {
-		return 0, 0, err
-	}
-	c.mu.Lock()
-	c.dict = d
-	c.mu.Unlock()
-	return len(d.Tables), columnCount(d), nil
-}
-
-// UpdateDictionary 校验请求体，写入 dictPath，并替换内存中的字典。
-func (c *Client) UpdateDictionary(raw []byte) (tables, columns int, err error) {
-	if c == nil || strings.TrimSpace(c.dictPath) == "" {
-		return 0, 0, fmt.Errorf("业务库未配置")
-	}
-	d, err := parseDictionary(raw)
-	if err != nil {
-		return 0, 0, err
-	}
-	pretty, err := json.MarshalIndent(d, "", "  ")
-	if err != nil {
-		return 0, 0, fmt.Errorf("序列化数据字典: %w", err)
-	}
-	pretty = append(pretty, '\n')
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if err := writeDictionaryFile(c.dictPath, pretty); err != nil {
-		return 0, 0, err
-	}
-	c.dict = d
-	return len(d.Tables), columnCount(d), nil
-}
-
-func columnCount(d *Dictionary) int {
-	if d == nil {
-		return 0
-	}
-	n := 0
-	for i := range d.Tables {
-		n += len(d.Tables[i].Columns)
-	}
-	return n
-}
-
-func writeDictionaryFile(path string, raw []byte) error {
-	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, ".srm_dictionary-*.json")
-	if err != nil {
-		return fmt.Errorf("写入数据字典: %w", err)
-	}
-	tmp := f.Name()
-	_, werr := f.Write(raw)
-	cerr := f.Close()
-	if werr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("写入数据字典: %w", werr)
-	}
-	if cerr != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("写入数据字典: %w", cerr)
-	}
-	backup := path + ".bak"
-	_ = os.Remove(backup)
-	if err := os.Rename(path, backup); err != nil && !os.IsNotExist(err) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("写入数据字典: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Rename(backup, path)
-		_ = os.Remove(tmp)
-		return fmt.Errorf("写入数据字典: %w", err)
-	}
-	_ = os.Remove(backup)
-	return nil
 }
 
 func (d *Dictionary) index() error {

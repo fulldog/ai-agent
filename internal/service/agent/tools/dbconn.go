@@ -24,7 +24,7 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL。schema 从本地数据字典检索表和字段（不查 information_schema；仅 Srm 前缀，区分大小写，如 Srm_VendorInfo）；query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段、主键和关联键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
+			Description: "查询独立业务 MySQL。schema 读取当前会话配置的数据字典语料；未配置时从业务库实时读取 information_schema。仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段和主键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -53,7 +53,6 @@ func (DBConn) Spec() llm.ToolSpec {
 }
 
 func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (string, error) {
-	_ = env
 	if t.Client == nil {
 		return "", fmt.Errorf("业务库未配置")
 	}
@@ -70,7 +69,11 @@ func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (strin
 	}
 	switch strings.ToLower(strings.TrimSpace(p.Action)) {
 	case "schema":
-		return t.Client.Schema(ctx, p.Keyword, p.Table)
+		corpus := ""
+		if env != nil {
+			corpus = env.Dictionary
+		}
+		return t.Client.Schema(ctx, p.Keyword, p.Table, corpus)
 	case "query":
 		if strings.TrimSpace(p.SQL) == "" {
 			return "", fmt.Errorf("sql 不能为空")

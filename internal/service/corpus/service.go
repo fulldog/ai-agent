@@ -78,6 +78,12 @@ func (s *Service) Get(id uuid.UUID) (*model.Corpus, error) {
 
 func (s *Service) Delete(id uuid.UUID) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		docIDs := tx.Model(&model.Document{}).Select("id").Where("corpus_id = ?", id)
+		if err := tx.Model(&model.DingTalkChat{}).
+			Where("dictionary_document_id IN (?)", docIDs).
+			Update("dictionary_document_id", gorm.Expr("NULL")).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("corpus_id = ?", id).Delete(&model.Chunk{}).Error; err != nil {
 			return err
 		}
@@ -174,6 +180,11 @@ func (s *Service) DocumentContent(doc *model.Document) (string, error) {
 
 func (s *Service) DeleteDocument(corpusID, docID uuid.UUID) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.DingTalkChat{}).
+			Where("dictionary_document_id = ?", docID).
+			Update("dictionary_document_id", gorm.Expr("NULL")).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("document_id = ? AND corpus_id = ?", docID, corpusID).Delete(&model.Chunk{}).Error; err != nil {
 			return err
 		}

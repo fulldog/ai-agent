@@ -6,7 +6,6 @@
       <el-form inline @submit.prevent>
         <el-form-item>
           <el-button type="primary" :loading="models.loading || usageLoading" @click="reload">刷新</el-button>
-          <el-button :loading="dictUpdating" @click="updateDictionary">更新数据字典</el-button>
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
@@ -133,7 +132,6 @@ const models = useModelsStore();
 const usage = ref<TokenUsage | null>(null);
 const usageLoading = ref(false);
 const usageError = ref("");
-const dictUpdating = ref(false);
 const replyMode = ref("chat");
 const replyModeOptions = ref<ReplyModeOption[]>([
   { value: "chat", label: "对话（CompleteStream）", hint: "钉钉消息走对话 Completions，预检索结果注入 system。" },
@@ -242,20 +240,6 @@ async function onReplyModeChange(mode: string) {
 
 async function reload() {
   await Promise.all([models.refresh(), loadUsage(), loadReplyMode()]);
-}
-
-async function updateDictionary() {
-  dictUpdating.value = true;
-  try {
-    const res = await requestJSON<{ tables: number; columns: number }>("/api/v1/dbconn/dictionary", {
-      method: "PUT",
-    });
-    ElMessage.success(`数据字典已更新：${res.tables} 张表，${res.columns} 个字段`);
-  } catch (e) {
-    ElMessage.error(formatAPIError(e));
-  } finally {
-    dictUpdating.value = false;
-  }
 }
 
 onMounted(() => {

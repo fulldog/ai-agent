@@ -63,6 +63,7 @@ func (s *Service) toolEnv(in CompleteInput, conv *model.Conversation) *tools.Env
 	env := &tools.Env{
 		CorpusID: corpusID, CorpusIDs: corpusIDs, TopK: in.TopK,
 		RAGQuery: in.Message, RAGDisabled: in.SkipRAG, RAG: s.rag,
+		Dictionary: in.Dictionary,
 	}
 	if s.cfg != nil {
 		env.DefaultTopK = s.cfg.RAG.TopK

@@ -32,6 +32,8 @@ type Env struct {
 	query *QueryTable
 	// SaveSQL 在 dbconn 执行语句后调用，用于写入会话历史。为空则不记。
 	SaveSQL func(sql string)
+	// Dictionary 是当前会话配置的数据字典语料原文。空则 schema 实时读库。
+	Dictionary string
 }
 
 // RecordExecutedSQL 记下刚执行的语句。sql 为空时忽略。
