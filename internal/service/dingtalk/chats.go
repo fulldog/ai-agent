@@ -24,6 +24,7 @@ type ChatItem struct {
 	LastSeenAt           time.Time     `json:"last_seen_at"`
 	UpdatedAt            time.Time     `json:"updated_at"`
 	PrefixPrompt         string        `json:"prefix_prompt"`
+	HistoryLimit         int           `json:"history_limit"`
 	Tools                []string      `json:"tools"`
 	DictionaryDocumentID string        `json:"dictionary_document_id"`
 	CorpusIDs            []uuid.UUID   `json:"corpus_ids"`
@@ -366,6 +367,42 @@ func (b *Bot) SetChatPrefix(id uuid.UUID, prompt string) (*ChatItem, error) {
 	return &item, nil
 }
 
+// SetChatHistoryLimit 保存该群带入大模型的历史消息条数。0 表示不带历史。
+func (b *Bot) SetChatHistoryLimit(id uuid.UUID, n int) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	if n < 0 || n > MaxHistoryLimit {
+		return nil, ErrHistoryLimit
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if err := b.db.Model(&chat).Update("history_limit", n).Error; err != nil {
+		return nil, err
+	}
+	chat.HistoryLimit = n
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
+// chatHistoryLimit 返回该钉钉会话的上下文条数。未配置时为 0，不回退到 llm.max_history。
+func (b *Bot) chatHistoryLimit(conversationID string) *int {
+	n := 0
+	if b != nil && b.db != nil {
+		cid := strings.TrimSpace(conversationID)
+		if cid != "" {
+			var row model.DingTalkChat
+			err := b.db.Select("history_limit").Where("conversation_id = ?", cid).First(&row).Error
+			if err == nil && row.HistoryLimit > 0 {
+				n = row.HistoryLimit
+			}
+		}
+	}
+	return &n
+}
+
 func (b *Bot) chatDictionary(conversationID string) string {
 	if b == nil || b.db == nil {
 		return ""
@@ -423,6 +460,12 @@ func (b *Bot) rawChatPrefix(conversationID string) string {
 
 // ErrPrefixTooLong 群前置提示词超过 4000 字。
 var ErrPrefixTooLong = errors.New("prefix prompt too long")
+
+// ErrHistoryLimit 上下文条数不在 0 到 200。
+var ErrHistoryLimit = errors.New("history limit out of range")
+
+// MaxHistoryLimit 单个钉钉会话允许带入的历史消息条数上限。
+const MaxHistoryLimit = 200
 
 // ErrUnknownTool 群工具名不在已注册工具中。
 var ErrUnknownTool = errors.New("unknown tool")
@@ -552,6 +595,7 @@ func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 		LastSeenAt:           row.LastSeenAt,
 		UpdatedAt:            row.UpdatedAt,
 		PrefixPrompt:         row.PrefixPrompt,
+		HistoryLimit:         row.HistoryLimit,
 		Tools:                decodeTools(row.Tools),
 		DictionaryDocumentID: dictionaryDocumentID(row.DictionaryDocumentID),
 		CorpusIDs:            ids,

@@ -531,6 +531,7 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
       "is_group": true,
       "last_seen_at": "2026-09-24T06:00:00Z",
       "prefix_prompt": "",
+      "history_limit": 0,
       "tools": [],
       "corpus_ids": ["uuid"],
       "corpora": [{ "id": "uuid", "name": "供应商付款" }]
@@ -558,6 +559,16 @@ multipart 附件缓存见 [EXTRACT.md](./EXTRACT.md)、[DB_SCHEMA.md](./DB_SCHEM
 ```json
 {
   "prefix_prompt": "查询供应商系统时，必须同时具备供应商名称和标签才能确定唯一一条数据。如果用户只提供了名称、没有标签，先提示用户补充标签，不要查库。"
+}
+```
+
+### PUT `/api/v1/dingtalk/chats/:id/history-limit`
+
+保存该群/单聊带入大模型的历史消息条数。`0` 或不传按 `0` 处理，表示不带历史。钉钉回复不使用配置文件里的 `llm.max_history`。超过 200 或负数 → `400`；档案不存在 → `404`。保存后下一条消息生效。
+
+```json
+{
+  "history_limit": 8
 }
 ```
 

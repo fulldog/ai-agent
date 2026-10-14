@@ -26,7 +26,7 @@
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
-        共 {{ filtered.length }} 个会话。每个群可单独设置前置提示词，保存后下一条消息生效。
+        共 {{ filtered.length }} 个会话。每个群可单独设置前置提示词和上下文条数，保存后下一条消息生效。
       </div>
     </div>
 
@@ -81,6 +81,16 @@
             >
               <el-option v-for="c in corpora" :key="c.id" :label="c.name" :value="c.id" />
             </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="上下文条数" width="130">
+          <template #default="{ row }">
+            <el-input
+              :model-value="historyLimitText(row)"
+              maxlength="3"
+              placeholder="0"
+              @change="saveHistoryLimit(row, $event)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="前置提示词" width="120">
@@ -303,6 +313,35 @@ async function loadDictionaryGroups(items: Corpus[]): Promise<DictionaryGroup[]>
     }),
   );
   return groups.filter((g) => g.documents.length > 0);
+}
+
+function historyLimitText(row: DingTalkChat): string {
+  return row.history_limit > 0 ? String(row.history_limit) : "";
+}
+
+async function saveHistoryLimit(row: DingTalkChat, value: string | number) {
+  const raw = String(value ?? "").trim();
+  let n = 0;
+  if (raw !== "") {
+    if (!/^\d+$/.test(raw)) {
+      ElMessage.error("上下文条数请填非负整数");
+      await load();
+      return;
+    }
+    n = Number(raw);
+  }
+  if (n === (row.history_limit || 0)) return;
+  try {
+    const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/history-limit`, {
+      method: "PUT",
+      body: JSON.stringify({ history_limit: n }),
+    });
+    applyChat(updated);
+    ElMessage.success("已保存，下一条消息生效");
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+    await load();
+  }
 }
 
 function openPrompt(row: DingTalkChat) {

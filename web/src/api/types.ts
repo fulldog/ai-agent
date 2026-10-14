@@ -89,6 +89,7 @@ export interface DingTalkChat {
   last_seen_at: string;
   updated_at: string;
   prefix_prompt: string;
+  history_limit: number;
   tools: string[];
   dictionary_document_id: string;
   corpus_ids: string[];

@@ -18,6 +18,7 @@ const streamMinInterval = 300 * time.Millisecond
 
 func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
+	historyLimit := b.chatHistoryLimit(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -35,6 +36,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		EnableSearch:     enableSearch,
 		PrefixPrompt:     prefix,
 		PrefixSkipsQuery: skipQuery,
+		HistoryLimit:     historyLimit,
 		Dictionary:       b.chatDictionary(data.ConversationID),
 		Tools:            b.chatTools(data.ConversationID),
 		ToolsOnly:        true,
@@ -98,6 +100,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 
 func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
+	historyLimit := b.chatHistoryLimit(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -115,6 +118,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		EnableSearch:     enableSearch,
 		PrefixPrompt:     prefix,
 		PrefixSkipsQuery: skipQuery,
+		HistoryLimit:     historyLimit,
 		Dictionary:       b.chatDictionary(data.ConversationID),
 		Tools:            b.chatTools(data.ConversationID),
 		ToolsOnly:        true,
@@ -215,6 +219,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 // - 现有 completeViaAgent（钉钉预检索注入）保持不变
 func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
+	historyLimit := b.chatHistoryLimit(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -238,6 +243,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		EnableSearch:     enableSearch,
 		PrefixPrompt:     prefix,
 		PrefixSkipsQuery: skipQuery,
+		HistoryLimit:     historyLimit,
 		Dictionary:       b.chatDictionary(data.ConversationID),
 		Tools:            b.chatTools(data.ConversationID),
 		ToolsOnly:        true,

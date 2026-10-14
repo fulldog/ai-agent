@@ -1120,6 +1120,44 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/dingtalk/chats/{id}/history-limit:
+    put:
+      tags: [DingTalk]
+      summary: 设置钉钉会话上下文条数
+      description: 保存后下一条该群消息生效。0 表示调用大模型时不带历史消息。钉钉回复不使用 llm.max_history。
+      operationId: setDingTalkChatHistoryLimit
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/UUIDPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                history_limit:
+                  type: integer
+                  minimum: 0
+                  maximum: 200
+            example:
+              history_limit: 8
+      responses:
+        "200":
+          description: 更新后的档案
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DingTalkChat"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/dingtalk/chats/{id}/tools:
     put:
       tags: [DingTalk]
@@ -1745,6 +1783,11 @@ components:
         prefix_prompt:
           type: string
           description: 群前置提示词，回复时注入系统提示最前
+        history_limit:
+          type: integer
+          minimum: 0
+          maximum: 200
+          description: 钉钉回复带入的历史消息条数。0 表示不带历史，不使用 llm.max_history
         tools:
           type: array
           description: 该群勾选的工具；执行时只使用这份名单

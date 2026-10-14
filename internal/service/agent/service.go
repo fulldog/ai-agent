@@ -75,6 +75,8 @@ type RunInput struct {
 	Dictionary string
 	// SkipRAG 为 true 时不预检索，knowledge_search 也不查库。
 	SkipRAG bool
+	// HistoryLimit 非 nil 时作为本轮历史条数；0 表示不带历史。nil 时用 llm.max_history。
+	HistoryLimit *int
 	// ToolsOnly 为 true 时只用 Tools，不并入 agent.default_tools。空列表表示本轮不挂工具。
 	ToolsOnly bool
 	RequestID string
@@ -132,11 +134,14 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 
 	var history []model.Message
 	if in.ConversationID != nil {
-		rows, herr := s.listRecentMessages(*in.ConversationID, s.maxHistory())
-		if herr != nil {
-			return nil, herr
+		limit, include := HistoryWindow(in.HistoryLimit, s.maxHistory())
+		if include {
+			rows, herr := s.listRecentMessages(*in.ConversationID, limit)
+			if herr != nil {
+				return nil, herr
+			}
+			history = rows
 		}
-		history = rows
 	}
 
 	run := &model.AgentRun{

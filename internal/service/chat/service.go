@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"github.com/webapp/go-app/ai-agent/internal/service/agent/tools"
 	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/filegen"
@@ -348,7 +349,9 @@ type CompleteInput struct {
 	// ToolsOnly 为 true 时只使用 Tools，不并入 agent.default_tools / chat.tools。
 	ToolsOnly bool
 	// SkipRAG 为 true 时不检索、不把会话上残留的语料库交给 knowledge_search。
-	SkipRAG       bool
+	SkipRAG bool
+	// HistoryLimit 非 nil 时作为本轮历史条数；0 表示不带历史。nil 时用 llm.max_history。
+	HistoryLimit  *int
 	RequestID     string
 	LogLLMRequest func(provider, model string, messages []llm.Message)
 }
@@ -488,9 +491,12 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	history, err := s.listRecentMessages(conv.ID, s.maxHistory())
-	if err != nil {
-		return nil, nil, nil, err
+	var history []model.Message
+	if limit, include := agent.HistoryWindow(in.HistoryLimit, s.maxHistory()); include {
+		history, err = s.listRecentMessages(conv.ID, limit)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	var llmMsgs []llm.Message
 	corpusID := in.CorpusID

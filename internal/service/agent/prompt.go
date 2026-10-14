@@ -107,6 +107,20 @@ func initialMessages(system string, history []model.Message, user string) []llm.
 	return msgs
 }
 
+// HistoryWindow 决定本轮带入几条历史。explicit 非 nil 时以它为准，0 表示不带；nil 时用 fallback。
+func HistoryWindow(explicit *int, fallback int) (limit int, include bool) {
+	if explicit != nil {
+		if *explicit <= 0 {
+			return 0, false
+		}
+		return *explicit, true
+	}
+	if fallback <= 0 {
+		fallback = 10
+	}
+	return fallback, true
+}
+
 func (s *Service) maxHistory() int {
 	if s != nil && s.cfg != nil && s.cfg.LLM.MaxHistory > 0 {
 		return s.cfg.LLM.MaxHistory

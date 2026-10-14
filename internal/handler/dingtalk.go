@@ -172,6 +172,39 @@ func (h *DingTalkHandler) SetChatPrefix(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *DingTalkHandler) SetChatHistoryLimit(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var req struct {
+		HistoryLimit int `json:"history_limit"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	item, err := h.Bot.SetChatHistoryLimit(id, req.HistoryLimit)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "dingtalk chat not found")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrHistoryLimit) {
+			writeError(c, http.StatusBadRequest, "bad_request", "上下文条数须为 0 到 200 的整数")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func (h *DingTalkHandler) SetChatTools(c *gin.Context) {
 	if h == nil || h.Bot == nil {
 		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")

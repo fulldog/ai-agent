@@ -73,6 +73,33 @@ func TestMergeAgentSystemAndInitialMessages(t *testing.T) {
 	}
 }
 
+func TestHistoryWindow(t *testing.T) {
+	t.Parallel()
+	eight := 8
+	zero := 0
+	cases := []struct {
+		name     string
+		explicit *int
+		fallback int
+		limit    int
+		include  bool
+	}{
+		{name: "config fallback", fallback: 6, limit: 6, include: true},
+		{name: "explicit count", explicit: &eight, fallback: 6, limit: 8, include: true},
+		{name: "zero skips history", explicit: &zero, fallback: 6, limit: 0, include: false},
+		{name: "nil fallback default", fallback: 0, limit: 10, include: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			limit, include := HistoryWindow(tc.explicit, tc.fallback)
+			if limit != tc.limit || include != tc.include {
+				t.Fatalf("limit=%d include=%v", limit, include)
+			}
+		})
+	}
+}
+
 func TestPrefixSkipsQuery(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
