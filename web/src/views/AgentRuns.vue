@@ -89,10 +89,29 @@
             :timestamp="stepLabel(st)"
             :type="st.kind === 'tool_result' ? 'primary' : 'success'"
           >
-            <pre class="json-block">{{ stepText(st) }}</pre>
+            <template v-if="st.kind === 'llm'">
+              <p class="call-meta">{{ llmMeta(st) }}</p>
+              <p class="subhead">请求</p>
+              <pre class="json-block">{{ llmRequestText(st) }}</pre>
+              <p class="subhead">回复</p>
+              <pre class="json-block">{{ llmReplyText(st) }}</pre>
+            </template>
+            <pre v-else class="json-block">{{ stepText(st) }}</pre>
           </el-timeline-item>
         </el-timeline>
         <p v-else class="muted">暂无步骤</p>
+
+        <template v-if="extraLLMCalls.length">
+          <p class="section-title">未写入步骤的模型调用</p>
+          <p class="muted">失败或规避重试产生的额外请求，没有对应的执行步骤。</p>
+          <article v-for="call in extraLLMCalls" :key="call.id" class="extra-call">
+            <p class="call-meta">{{ callMeta(call) }}</p>
+            <p class="subhead">请求</p>
+            <pre class="json-block">{{ callRequestText(call) }}</pre>
+            <p class="subhead">回复</p>
+            <pre class="json-block">{{ callReplyText(call) }}</pre>
+          </article>
+        </template>
 
         <template v-if="current.output">
           <p class="section-title">最终输出</p>
@@ -111,14 +130,14 @@ import { requestJSON, formatAPIError } from "@/api/client";
 import { renderMarkdown } from "@/lib/markdown";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
-import type { AgentRun, AgentStep } from "@/api/types";
+import type { AgentLLMCall, AgentRun, AgentStep } from "@/api/types";
 
 const models = useModelsStore();
 
 const hero: HeroItem[] = [
   { icon: Search, title: "运行列表", desc: "admin_api_keys 可查看全部用户，普通密钥仅自己的运行", tone: "blue" },
   { icon: Timer, title: "按状态过滤", desc: "成功 / 失败 / 运行中", tone: "green" },
-  { icon: View, title: "查看步骤", desc: "点「查看」在抽屉中回放 tool_call / tool_result", tone: "purple" },
+  { icon: View, title: "查看步骤", desc: "点「查看」回放步骤，并从 llm 文本日志带出请求报文", tone: "purple" },
   { icon: MagicStick, title: "关联会话", desc: "绑过会话的旧记录，普通用户也能回溯", tone: "orange" },
 ];
 
@@ -133,6 +152,20 @@ const loading = ref(false);
 const drawer = ref(false);
 const current = ref<AgentRun | null>(null);
 const steps = ref<AgentStep[]>([]);
+const llmCalls = ref<AgentLLMCall[]>([]);
+
+const llmPairing = computed(() => {
+  const byStep = new Map<string, AgentLLMCall>();
+  let i = 0;
+  for (const st of steps.value) {
+    if (st.kind !== "llm" || i >= llmCalls.value.length) continue;
+    byStep.set(stepKey(st), llmCalls.value[i]);
+    i++;
+  }
+  return { byStep, extra: llmCalls.value.slice(i) };
+});
+
+const extraLLMCalls = computed(() => llmPairing.value.extra);
 
 const rows = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
@@ -163,6 +196,71 @@ function statusLabel(s: string): string {
   if (s === "failed") return "失败";
   if (s === "running") return "运行中";
   return s || "-";
+}
+
+function stepKey(st: AgentStep): string {
+  return st.id || String(st.step_index);
+}
+
+function pairedCall(st: AgentStep): AgentLLMCall | undefined {
+  return llmPairing.value.byStep.get(stepKey(st));
+}
+
+function callMeta(call: AgentLLMCall): string {
+  const bits = [
+    call.provider && call.model ? `${call.provider} / ${call.model}` : call.model || call.provider,
+    call.status,
+    call.latency_ms != null ? `${call.latency_ms} ms` : "",
+    `${call.prompt_tokens} / ${call.completion_tokens} tokens`,
+    call.finish_reason ? `finish=${call.finish_reason}` : "",
+    call.request_summary || "",
+  ].filter(Boolean);
+  return bits.join(" · ");
+}
+
+function llmMeta(st: AgentStep): string {
+  const call = pairedCall(st);
+  if (!call) return "没有关联的 llm_call_logs";
+  return callMeta(call);
+}
+
+function pretty(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return prettyMaybeJSON(v);
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+function callRequestText(call: AgentLLMCall): string {
+  if (!call.payload_found) {
+    return "文本日志里没有这条报文。logs/llm-*.log 可能已轮转，或这次调用发生在其他工作目录。";
+  }
+  if (call.messages == null) return "（空报文）";
+  return pretty(call.messages) || "（空报文）";
+}
+
+function callReplyText(call: AgentLLMCall, fallback = ""): string {
+  const parts: string[] = [];
+  const text = fallback || call.response || "";
+  if (text) parts.push(text);
+  if (call.tool_calls != null) parts.push(`tool_calls:\n${pretty(call.tool_calls)}`);
+  if (!parts.length && call.error_message) parts.push(call.error_message);
+  return parts.join("\n\n") || "-";
+}
+
+function llmReplyText(st: AgentStep): string {
+  const call = pairedCall(st);
+  if (!call) return st.output_text || "-";
+  return callReplyText(call, st.output_text || "");
+}
+
+function llmRequestText(st: AgentStep): string {
+  const call = pairedCall(st);
+  if (!call) return "这次 LLM 步骤没有对应的调用记录。";
+  return callRequestText(call);
 }
 
 function stepLabel(st: AgentStep): string {
@@ -229,11 +327,15 @@ function onPage(p: number) {
 async function open(row: AgentRun) {
   current.value = row;
   steps.value = [];
+  llmCalls.value = [];
   drawer.value = true;
   try {
-    const data = await requestJSON<{ run: AgentRun; steps: AgentStep[] }>(`/api/v1/agent/runs/${row.id}`);
+    const data = await requestJSON<{ run: AgentRun; steps: AgentStep[]; llm_calls?: AgentLLMCall[] }>(
+      `/api/v1/agent/runs/${row.id}`,
+    );
     current.value = data.run || row;
     steps.value = data.steps || [];
+    llmCalls.value = data.llm_calls || [];
   } catch (e) {
     ElMessage.error(formatAPIError(e));
   }
@@ -252,5 +354,17 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 600;
   margin: 18px 0 10px;
+}
+.subhead {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.call-meta {
+  margin: 0;
+  font-size: 12px;
+}
+.extra-call + .extra-call {
+  margin-top: 14px;
 }
 </style>

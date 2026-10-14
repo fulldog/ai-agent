@@ -185,6 +185,25 @@ export interface AgentStep {
   output_text?: string;
 }
 
+export interface AgentLLMCall {
+  id: string;
+  provider: string;
+  model: string;
+  stream: boolean;
+  status: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  latency_ms: number;
+  request_summary?: string;
+  error_message?: string;
+  created_at: string;
+  messages?: unknown;
+  response?: string;
+  tool_calls?: unknown;
+  finish_reason?: string;
+  payload_found: boolean;
+}
+
 export interface IntentItem {
   media_account_id: string;
   media_account_id_in: string;

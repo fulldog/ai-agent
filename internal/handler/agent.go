@@ -162,5 +162,10 @@ func (h *AgentHandler) Get(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"run": run, "steps": steps})
+	calls, err := h.Agent.LLMCallsForRun(id)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"run": run, "steps": steps, "llm_calls": calls})
 }
