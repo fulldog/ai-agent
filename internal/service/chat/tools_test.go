@@ -140,7 +140,7 @@ func TestToolSystemPrompt(t *testing.T) {
 	if !strings.Contains(got, baseToolPrompt) || !strings.Contains(got, dbconnToolPrompt) {
 		t.Fatalf("with dbconn: %q", got)
 	}
-	if !strings.Contains(got, "知识摘录") {
-		t.Fatal("dbconn prompt should follow corpus hits first")
+	if !strings.Contains(got, "必须调用 dbconn") || strings.Contains(got, "不要直接查库") {
+		t.Fatalf("dbconn prompt: %q", got)
 	}
 }

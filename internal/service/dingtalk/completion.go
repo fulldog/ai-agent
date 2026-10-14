@@ -17,27 +17,29 @@ import (
 const streamMinInterval = 300 * time.Millisecond
 
 func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
+	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
 	tr.outcome = "llm"
 	res, err := b.chat.CompleteStream(ctx, chat.CompleteInput{
-		ConversationID: conv.ID,
-		UID:            uid,
-		Message:        ragQuery,
-		RAGEnabled:     len(hits) > 0,
-		RAGExplicit:    true,
-		CorpusID:       corpusID,
-		CorpusIDs:      corpusIDs,
-		RAGHits:        hits,
-		TopK:           b.ragTop,
-		EnableSearch:   enableSearch,
-		PrefixPrompt:   b.chatPrefix(data.ConversationID),
-		Dictionary:     b.chatDictionary(data.ConversationID),
-		Tools:          b.chatTools(data.ConversationID),
-		ToolsOnly:      true,
-		SkipRAG:        skipRAG,
-		RequestID:      tr.requestID,
+		ConversationID:   conv.ID,
+		UID:              uid,
+		Message:          ragQuery,
+		RAGEnabled:       len(hits) > 0,
+		RAGExplicit:      true,
+		CorpusID:         corpusID,
+		CorpusIDs:        corpusIDs,
+		RAGHits:          hits,
+		TopK:             b.ragTop,
+		EnableSearch:     enableSearch,
+		PrefixPrompt:     prefix,
+		PrefixSkipsQuery: skipQuery,
+		Dictionary:       b.chatDictionary(data.ConversationID),
+		Tools:            b.chatTools(data.ConversationID),
+		ToolsOnly:        true,
+		SkipRAG:          skipRAG,
+		RequestID:        tr.requestID,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
 			turns := llmTurnLogs(messages, b.previewMax)
 			b.recordStep(tr, stepLLMRequest, eventLLMRequest, map[string]any{
@@ -95,6 +97,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 }
 
 func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
+	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -102,21 +105,22 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 	cid := conv.ID
 	toolTrace := make([]map[string]any, 0, 8)
 	res, err := b.agent.Run(ctx, agent.RunInput{
-		ConversationID: &cid,
-		UID:            uid,
-		Input:          ragQuery,
-		CorpusID:       corpusID,
-		CorpusIDs:      corpusIDs,
-		TopK:           b.ragTop,
-		RAGHits:        hits,
-		EnableSearch:   enableSearch,
-		PrefixPrompt:   b.chatPrefix(data.ConversationID),
-		Dictionary:     b.chatDictionary(data.ConversationID),
-		Tools:          b.chatTools(data.ConversationID),
-		ToolsOnly:      true,
-		SkipRAG:        skipRAG,
-		RequestID:      tr.requestID,
-		Stream:         true,
+		ConversationID:   &cid,
+		UID:              uid,
+		Input:            ragQuery,
+		CorpusID:         corpusID,
+		CorpusIDs:        corpusIDs,
+		TopK:             b.ragTop,
+		RAGHits:          hits,
+		EnableSearch:     enableSearch,
+		PrefixPrompt:     prefix,
+		PrefixSkipsQuery: skipQuery,
+		Dictionary:       b.chatDictionary(data.ConversationID),
+		Tools:            b.chatTools(data.ConversationID),
+		ToolsOnly:        true,
+		SkipRAG:          skipRAG,
+		RequestID:        tr.requestID,
+		Stream:           true,
 	}, func(ev agent.Event) error {
 		switch ev.Type {
 		case "delta":
@@ -210,6 +214,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 // - RAGHits 传空切片：跳过 system 预注入（避免摘录+旧结论让模型跳过工具）；检索范围仍经 CorpusIDs 交给工具
 // - 现有 completeViaAgent（钉钉预检索注入）保持不变
 func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, enableSearch, skipRAG bool) {
+	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -229,15 +234,16 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		CorpusIDs:      corpusIDs,
 		TopK:           topK,
 		// 非 nil 空切片：禁止 agent.retrieveHits 写入 system；工具侧仍用 CorpusIDs。
-		RAGHits:      []rag.Hit{},
-		EnableSearch: enableSearch,
-		PrefixPrompt: b.chatPrefix(data.ConversationID),
-		Dictionary:   b.chatDictionary(data.ConversationID),
-		Tools:        b.chatTools(data.ConversationID),
-		ToolsOnly:    true,
-		SkipRAG:      skipRAG,
-		RequestID:    tr.requestID,
-		Stream:       true,
+		RAGHits:          []rag.Hit{},
+		EnableSearch:     enableSearch,
+		PrefixPrompt:     prefix,
+		PrefixSkipsQuery: skipQuery,
+		Dictionary:       b.chatDictionary(data.ConversationID),
+		Tools:            b.chatTools(data.ConversationID),
+		ToolsOnly:        true,
+		SkipRAG:          skipRAG,
+		RequestID:        tr.requestID,
+		Stream:           true,
 	}, func(ev agent.Event) error {
 		switch ev.Type {
 		case "delta":

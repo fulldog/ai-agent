@@ -27,6 +27,9 @@ func TestAgentSystemPrompt(t *testing.T) {
 	if !strings.Contains(got, "dbconn") || !strings.Contains(got, "knowledge_search") || !strings.Contains(got, toolsReadyPrompt) {
 		t.Fatalf("dbconn prompt: %q", got)
 	}
+	if !strings.Contains(got, "必须调用 dbconn") || strings.Contains(got, "不要直接查库") {
+		t.Fatalf("dbconn prompt should require a lookup: %q", got)
+	}
 	got = agentSystemPrompt([]llm.ToolSpec{
 		{Function: llm.ToolSpecFunc{Name: "dbconn"}},
 		{Function: llm.ToolSpecFunc{Name: "generate_file"}},
@@ -67,6 +70,28 @@ func TestMergeAgentSystemAndInitialMessages(t *testing.T) {
 	}
 	if msgs[0].Role != "system" || msgs[1].Role != "user" || msgs[2].Role != "assistant" || msgs[3].Content != "now" {
 		t.Fatalf("%+v", msgs)
+	}
+}
+
+func TestPrefixSkipsQuery(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "empty", raw: "", want: false},
+		{name: "query first", raw: "供应商问题必须先调dbconn。没有标签时按名称查，多条再追问。", want: false},
+		{name: "skip query", raw: "只给名称时先提示补充标签，不要查库。", want: true},
+		{name: "wrapped boilerplate is not the raw signal", raw: "规则要求先查库时必须先调用工具。", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := PrefixSkipsQuery(tc.raw); got != tc.want {
+				t.Fatalf("PrefixSkipsQuery(%q)=%v", tc.raw, got)
+			}
+		})
 	}
 }
 

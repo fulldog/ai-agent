@@ -46,14 +46,23 @@ func TestSetChatPrefixRoundTrip(t *testing.T) {
 	if item.PrefixPrompt != prompt {
 		t.Fatalf("stored %q", item.PrefixPrompt)
 	}
-	got := b.chatPrefix("cid-srm")
-	if !strings.Contains(got, prompt) || !strings.Contains(got, "不要调用工具") {
-		t.Fatalf("injected %q", got)
+	got, skip := b.chatPrefix("cid-srm")
+	if !skip || !strings.Contains(got, prompt) || !strings.Contains(got, "必须先调用工具") {
+		t.Fatalf("injected skip=%v %q", skip, got)
+	}
+	const queryFirst = "供应商问题必须先调dbconn工具查询。没有标签时按名称查，多条再追问标签。"
+	if _, err := b.SetChatPrefix(row.ID, queryFirst); err != nil {
+		t.Fatal(err)
+	}
+	got, skip = b.chatPrefix("cid-srm")
+	if skip || !strings.Contains(got, queryFirst) || !strings.Contains(got, "必须先调用工具") {
+		t.Fatalf("query-first skip=%v %q", skip, got)
 	}
 	if _, err := b.SetChatPrefix(row.ID, "  "); err != nil {
 		t.Fatal(err)
 	}
-	if b.chatPrefix("cid-srm") != "" {
+	got, skip = b.chatPrefix("cid-srm")
+	if got != "" || skip {
 		t.Fatal("expected cleared prefix")
 	}
 }

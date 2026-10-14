@@ -340,6 +340,8 @@ type CompleteInput struct {
 	TopK         int
 	EnableSearch bool   // 无语料命中且用户强制联网时，通义 enable_search
 	PrefixPrompt string // 钉钉群前置提示，放在系统提示最前
+	// PrefixSkipsQuery 群前置提示词原文含「不要查库」时为 true，首轮不强制 function call。
+	PrefixSkipsQuery bool
 	// Dictionary 当前钉钉会话配置的数据字典语料原文。空则 dbconn schema 实时读库。
 	Dictionary string
 	Tools      []string

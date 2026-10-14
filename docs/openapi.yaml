@@ -1087,7 +1087,7 @@ paths:
     put:
       tags: [DingTalk]
       summary: 设置钉钉会话前置提示词
-      description: 保存后下一条该群消息生效。空字符串清除。回复时放在系统提示最前；非空时首轮允许直接追问，不强制调用工具。
+      description: 保存后下一条该群消息生效。空字符串清除。回复时放在系统提示最前。有工具时默认首轮强制调用工具；原文包含「不要查库」时才允许直接追问。
       operationId: setDingTalkChatPrefix
       security:
         - ApiKeyAuth: []

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/agent"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -397,7 +398,14 @@ func (b *Bot) chatDictionary(conversationID string) string {
 	return text
 }
 
-func (b *Bot) chatPrefix(conversationID string) string {
+// chatPrefix 返回注入系统提示的包装文案，以及原文是否要求跳过查库。
+// 第二个返回值只看库里的原文，不看包装句。
+func (b *Bot) chatPrefix(conversationID string) (string, bool) {
+	raw := b.rawChatPrefix(conversationID)
+	return wrapPrefixPrompt(raw), agent.PrefixSkipsQuery(raw)
+}
+
+func (b *Bot) rawChatPrefix(conversationID string) string {
 	if b == nil || b.db == nil {
 		return ""
 	}
@@ -410,7 +418,7 @@ func (b *Bot) chatPrefix(conversationID string) string {
 	if err != nil {
 		return ""
 	}
-	return wrapPrefixPrompt(row.PrefixPrompt)
+	return row.PrefixPrompt
 }
 
 // ErrPrefixTooLong 群前置提示词超过 4000 字。
@@ -517,13 +525,15 @@ func decodeTools(raw string) []string {
 	return out
 }
 
-// wrapPrefixPrompt 把群规则放在系统提示最前，并允许缺信息时直接追问。
+// wrapPrefixPrompt 把群规则放在系统提示最前。
+// 包装句说明：先查库的规则必须先调工具；只有原文写明不要查库时才只追问。
 func wrapPrefixPrompt(prompt string) string {
 	p := strings.TrimSpace(prompt)
 	if p == "" {
 		return ""
 	}
-	return "【本群规则，优先于后续工具调用约定】\n" + p + "\n本群规则写明不要查库的情形，本轮只回复追问，不要调用工具。规则要求先查库再决定是否追问时，必须先调用工具。"
+	return "【本群规则，优先于后续工具调用约定】\n" + p + "\n" +
+		"规则要求先查库时必须先调用工具，不要凭历史结果或猜测作答。需要用户补充信息时，放在工具返回之后。只有规则写明不要查库时，本轮才只回复追问、不调用工具。"
 }
 
 func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {

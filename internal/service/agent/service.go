@@ -69,6 +69,8 @@ type RunInput struct {
 	RAGHits        []rag.Hit
 	EnableSearch   bool
 	PrefixPrompt   string
+	// PrefixSkipsQuery 群前置提示词原文含「不要查库」时为 true，首轮不强制 function call。
+	PrefixSkipsQuery bool
 	// Dictionary 当前钉钉会话配置的数据字典语料原文。空则 dbconn schema 实时读库。
 	Dictionary string
 	// SkipRAG 为 true 时不预检索，knowledge_search 也不查库。
@@ -210,8 +212,8 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		chatReq := llm.ChatRequest{
 			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
 		}
-		// 群前置提示要求缺信息先追问时，首轮允许直接回复，不强制 function call。
-		allowClarify := strings.TrimSpace(in.PrefixPrompt) != "" || in.SkipRAG
+		// 原文写明不要查库，或本轮跳过检索时，允许直接回复，不强制 function call。
+		allowClarify := in.PrefixSkipsQuery || in.SkipRAG
 		// 在至少成功走过一轮工具前，每步都强制 function call（防止网关丢掉 required 后空口推诿）。
 		if len(toolSpecs) > 0 && !usedTool && !allowClarify {
 			chatReq.ToolChoice = "required"
