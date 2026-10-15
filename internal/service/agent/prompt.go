@@ -81,6 +81,7 @@ const dictionaryLead = "【数据字典】下面是本会话的表结构全文�
 
 // AppendDictionary 把会话配置的数据字典原文接到系统提示末尾，供写 SQL 前阅读。
 func AppendDictionary(system, dictionary string) string {
+	return system
 	dictionary = strings.TrimSpace(dictionary)
 	if dictionary == "" {
 		return system
