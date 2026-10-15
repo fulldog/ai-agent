@@ -189,7 +189,7 @@ agent:
 
 `generate_file` 在用户要求导出、下载或生成表格时使用。导出 `dbconn` 的 query 时只传 `filename` 和 `from_query=true`：工具写入本次查询返回的全部行，模型不要把列和行再抄进参数。中文列名写在 SELECT 别名里。不是查询结果的小表才传 `columns` 和 `rows`。工具写好 `.xlsx` 后返回下载链接，回复里必须带上这个链接。下载地址是 `GET /api/v1/exports/{id}`，不要求 API Key，编号为不可猜测的 UUID。`server.public_base_url` 为空时只返回站内路径。文件默认保留 `storage.export_ttl_hours`（默认 168）小时，设为 0 则不过期。单次最多 40 列、5000 行。查询本身仍受 `dbconn.max_rows` 限制，文件与这次 query 返回的行一致。
 
-`dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 查表结构，最后 `action=query` 跑 SELECT。会话配置了数据字典语料时，`schema` 返回这篇语料的全文，不按关键词或表名截取；没有配置时从业务库实时读取 `information_schema`，此时可用 keyword 或 table 过滤，且仅包含表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
+`dbconn` 由模型按语料提示与题意决定是否调用。运行开始会先检索语料并注入 system。需要查库时：先遵循摘录中的前置条件（缺字段先追问），摘录未覆盖再用 `knowledge_search`，再 `action=schema` 查表结构，最后 `action=query` 跑 SELECT。会话配置了数据字典语料时，该全文会在写 SQL 前放进系统提示的【数据字典】，模型按其中的表名和列名写 SELECT；`schema` 仍返回同一篇全文。没有配置时从业务库实时读取 `information_schema`，此时可用 keyword 或 table 过滤，且仅包含表名前缀为 `Srm` 的表（区分大小写，例如 `Srm_VendorInfo`）。仅允许单条只读 SELECT；请使用只读账号。
 
 `dbconn.ssh.enabled`（或 `BIZ_SSH_ENABLED`）为 SSH 开关：`true` 经隧道拨号，`false` 直连 MySQL。认证为**用户名 + 密码**（`ssh.user` / `ssh.password`，或 `BIZ_SSH_USER` / `BIZ_SSH_PASSWORD`）。TCP/SSH 保活，断线后指数退避重连；查询遇瞬时网络错误会先重连再重试一次。DSN 里的主机是跳板机对端的 MySQL 地址。
 

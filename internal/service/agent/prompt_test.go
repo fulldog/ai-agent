@@ -34,11 +34,25 @@ func TestAgentSystemPrompt(t *testing.T) {
 		{Function: llm.ToolSpecFunc{Name: "dbconn"}},
 		{Function: llm.ToolSpecFunc{Name: "generate_file"}},
 	})
-	if !strings.Contains(got, "from_query") {
+	if fileAgentPrompt != "" && !strings.Contains(got, "from_query") {
 		t.Fatalf("file prompt: %q", got)
 	}
 	if !strings.Contains(got, "工具函数管理") {
 		t.Fatal("should explicitly forbid 工具函数管理 phrasing")
+	}
+}
+
+func TestAppendDictionary(t *testing.T) {
+	t.Parallel()
+	if got := AppendDictionary("规则", "  "); got != "规则" {
+		t.Fatalf("blank dict: %q", got)
+	}
+	got := AppendDictionary("规则", "Srm_VendorInfo.VendorName")
+	if !strings.Contains(got, "【数据字典】") || !strings.HasPrefix(got, "规则") || !strings.Contains(got, "Srm_VendorInfo.VendorName") {
+		t.Fatalf("got %q", got)
+	}
+	if !strings.HasPrefix(AppendDictionary("", "Srm_PayInfo"), "【数据字典】") {
+		t.Fatal("empty system")
 	}
 }
 

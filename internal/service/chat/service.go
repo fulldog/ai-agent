@@ -535,6 +535,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 			system = prefix + "\n\n" + system
 		}
 	}
+	system = agent.AppendDictionary(system, in.Dictionary)
 	if system != "" {
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}

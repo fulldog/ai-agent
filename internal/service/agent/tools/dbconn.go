@@ -24,7 +24,7 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL。会话配置了数据字典时，schema 返回这篇语料的全文，keyword 和 table 不截取。未配置时从业务库实时读取 information_schema，可用 keyword 或 table 过滤，仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用；先 schema 对照表、字段和主键，再写 SQL。不要编造表名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
+			Description: "查询独立业务 MySQL。会话配置了数据字典时，全文已在系统提示的【数据字典】中，写 SQL 直接用其中的表名和列名，不必先 schema。未配置时 schema 从业务库实时读取 information_schema，可用 keyword 或 table 过滤，仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用。不要编造表名或列名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -43,7 +43,7 @@ func (DBConn) Spec() llm.ToolSpec {
 					},
 					"sql": map[string]any{
 						"type":        "string",
-						"description": "action=query 时的单条 SELECT / WITH ... SELECT",
+						"description": "action=query 时的单条 SELECT / WITH ... SELECT。表名和列名必须来自系统提示中的【数据字典】；没有该段时先 schema",
 					},
 				},
 				"required": []string{"action"},

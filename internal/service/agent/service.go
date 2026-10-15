@@ -171,6 +171,7 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 			system = prefix + "\n\n" + system
 		}
 	}
+	system = AppendDictionary(system, in.Dictionary)
 	msgs := initialMessages(system, history, in.Input)
 	enableSearch := in.EnableSearch && strings.EqualFold(providerName, "qwen")
 	toolEnv := &tools.Env{
