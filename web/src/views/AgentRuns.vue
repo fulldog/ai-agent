@@ -92,7 +92,7 @@
             <template v-if="st.kind === 'llm'">
               <p class="call-meta">{{ llmMeta(st) }}</p>
               <p class="subhead">请求</p>
-              <pre class="json-block">{{ llmRequestText(st) }}</pre>
+              <LlmMessageCards :call="pairedCall(st)" :input="current.input" :fallback="llmRequestText(st)" />
               <p class="subhead">回复</p>
               <pre class="json-block">{{ llmReplyText(st) }}</pre>
             </template>
@@ -107,7 +107,7 @@
           <article v-for="call in extraLLMCalls" :key="call.id" class="extra-call">
             <p class="call-meta">{{ callMeta(call) }}</p>
             <p class="subhead">请求</p>
-            <pre class="json-block">{{ callRequestText(call) }}</pre>
+            <LlmMessageCards :call="call" :input="current.input" :fallback="callRequestText(call)" />
             <p class="subhead">回复</p>
             <pre class="json-block">{{ callReplyText(call) }}</pre>
           </article>
@@ -129,6 +129,7 @@ import { MagicStick, Search, Timer, View } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import { renderMarkdown } from "@/lib/markdown";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
+import LlmMessageCards from "@/components/LlmMessageCards.vue";
 import { useModelsStore } from "@/stores/models";
 import type { AgentLLMCall, AgentRun, AgentStep } from "@/api/types";
 
