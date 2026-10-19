@@ -64,6 +64,25 @@ func TestDBConnArgs(t *testing.T) {
 	}
 }
 
+func TestDBConnQueryPrecheckUsesDictionary(t *testing.T) {
+	t.Parallel()
+	tool := tools.DBConn{Client: &dbconn.Client{}}
+	dict := "### Srm_VendorInfo\n\n- VendorName varchar(256) NN | 供应商名称\n"
+	env := &tools.Env{Dictionary: dict}
+	_, err := tool.Exec(context.Background(), json.RawMessage(`{"action":"query","sql":"SELECT VendorName FROM Srm_NoSuch"}`), env)
+	if err == nil || !strings.Contains(err.Error(), "数据字典预检") || strings.Contains(err.Error(), "未配置") {
+		t.Fatalf("bad table should fail before the database: %v", err)
+	}
+	_, err = tool.Exec(context.Background(), json.RawMessage(`{"action":"query","sql":"SELECT VendorName FROM Srm_VendorInfo"}`), env)
+	if err == nil || !strings.Contains(err.Error(), "未配置") || strings.Contains(err.Error(), "预检") {
+		t.Fatalf("known table should reach the database: %v", err)
+	}
+	_, err = tool.Exec(context.Background(), json.RawMessage(`{"action":"query","sql":"DELETE FROM Srm_VendorInfo"}`), env)
+	if err == nil || !strings.Contains(err.Error(), "仅允许") {
+		t.Fatalf("write: %v", err)
+	}
+}
+
 func TestDBConnSchemaUsesConfiguredCorpus(t *testing.T) {
 	t.Parallel()
 	tool := tools.DBConn{Client: &dbconn.Client{}}

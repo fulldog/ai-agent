@@ -24,7 +24,7 @@ func (DBConn) Spec() llm.ToolSpec {
 		Type: "function",
 		Function: llm.ToolSpecFunc{
 			Name:        "dbconn",
-			Description: "查询独立业务 MySQL。会话配置了数据字典时，全文已在系统提示的【数据字典】中，写 SQL 直接用其中的表名和列名，不必先 schema。未配置时 schema 从业务库实时读取 information_schema，可用 keyword 或 table 过滤，仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。query 执行只读 SELECT。仅在需要业务数据时调用。不要编造表名或列名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
+			Description: "查询独立业务 MySQL。query 执行只读 SELECT。会话绑定了数据字典时，执行前会按字典预检并修正表名和列名，不通过则返回原因、不会查库。需要字典全文用 action=schema。未配置字典时 schema 从业务库实时读取 information_schema，可用 keyword 或 table 过滤，仅 Srm 前缀且区分大小写，如 Srm_VendorInfo。仅在需要业务数据时调用。不要编造表名或列名。query 的完整结果会留给 generate_file，导出时不要把行再抄进参数。",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -43,7 +43,7 @@ func (DBConn) Spec() llm.ToolSpec {
 					},
 					"sql": map[string]any{
 						"type":        "string",
-						"description": "action=query 时的单条 SELECT / WITH ... SELECT。表名和列名必须来自系统提示中的【数据字典】；没有该段时先 schema",
+						"description": "action=query 时的单条 SELECT / WITH ... SELECT。绑定了数据字典时，执行前会按字典校正表名和列名；没有字典时先 schema",
 					},
 				},
 				"required": []string{"action"},
@@ -78,11 +78,18 @@ func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (strin
 		if strings.TrimSpace(p.SQL) == "" {
 			return "", fmt.Errorf("sql 不能为空")
 		}
-		text, table, err := t.Client.QueryTable(ctx, p.SQL)
+		sqlText, rewritten, err := prepareQuerySQL(p.SQL, env)
+		if err != nil {
+			return "", err
+		}
+		text, table, err := t.Client.QueryTable(ctx, sqlText)
 		if env != nil {
 			env.RecordExecutedSQL(table.SQL)
 		}
 		if err != nil {
+			if rewritten && table.SQL != "" {
+				return "", fmt.Errorf("已按数据字典修正为 %s 后执行失败: %w", table.SQL, err)
+			}
 			return "", err
 		}
 		if env != nil {
@@ -91,6 +98,9 @@ func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (strin
 				Rows:      table.Rows,
 				Truncated: table.Truncated,
 			})
+		}
+		if rewritten && table.SQL != "" {
+			text = "已按数据字典修正 SQL：\n" + table.SQL + "\n\n" + text
 		}
 		text += "\n" + queryExportHint
 		if table.Truncated {
@@ -102,4 +112,25 @@ func (t DBConn) Exec(ctx context.Context, args json.RawMessage, env *Env) (strin
 	default:
 		return "", fmt.Errorf("未知 action: %s", p.Action)
 	}
+}
+
+// prepareQuerySQL 在真正查库前，用会话绑定的数据字典校正表名和列名。
+// 没有字典、或字典里解析不出表时，原样返回。rewritten 表示字典改过标识符。
+func prepareQuerySQL(sqlText string, env *Env) (string, bool, error) {
+	if env == nil || strings.TrimSpace(env.Dictionary) == "" {
+		return sqlText, false, nil
+	}
+	fixed, err := dbconn.CheckSQL(sqlText, env.Dictionary)
+	if err != nil {
+		return "", false, err
+	}
+	// 字典没解析出表时 CheckSQL 原样返回，不能当成修正。
+	if fixed == sqlText {
+		return sqlText, false, nil
+	}
+	clean, err := dbconn.ValidateSelect(sqlText)
+	if err != nil {
+		return fixed, false, nil
+	}
+	return fixed, fixed != clean, nil
 }
