@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/webapp/go-app/ai-agent/internal/config"
 )
@@ -24,6 +25,10 @@ type Pool struct {
 	cfg      *config.Config
 	timeout  int
 	defaultP string
+
+	availMu     sync.Mutex
+	available   []ModelGroup
+	availableAt time.Time
 }
 
 func NewPool(cfg *config.Config) *Pool {

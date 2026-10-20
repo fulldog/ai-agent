@@ -33,6 +33,7 @@ type Bot struct {
 	log         *zap.Logger
 	access      *zap.Logger
 	db          *gorm.DB
+	llm         config.LLMConfig
 	chat        *chat.Service
 	agent       *agent.Service
 	rag         *rag.Service
@@ -75,6 +76,7 @@ func New(cfg *config.Config, chatSvc *chat.Service, agentSvc *agent.Service, rag
 		log:         log.With(zap.String("component", "dingtalk")),
 		access:      accessLog.With(zap.String("component", "dingtalk")),
 		db:          db,
+		llm:         cfg.LLM,
 		chat:        chatSvc,
 		agent:       agentSvc,
 		rag:         ragSvc,
@@ -458,7 +460,11 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 		b.log.Warn("lookup dingtalk history", zap.Error(herr), zap.String("request_id", tr.requestID))
 	}
 	// chat/agent：无 RAG、未要求联网、无历史 → 结束。web 交给工具循环自行检索。未绑定语料库的单聊不走这条早退。
-	if !skipRAG && !b.useWebAgent() && isCorpusMiss(hits, forceOnline) && !hasHistory {
+	convID := ""
+	if data != nil {
+		convID = data.ConversationID
+	}
+	if !skipRAG && !b.useWebAgentFor(convID) && isCorpusMiss(hits, forceOnline) && !hasHistory {
 		tr.outcome = "corpus_miss"
 		tr.reply = corpusMissReply
 		_ = b.failReply(ctx, data, corpusMissReply, tr)
@@ -471,11 +477,11 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	tr.enableSearch = enableSearch
 
 	// ---- 3. 带上 RAG 结果 + 会话历史，请求 LLM / 工具 ----
-	if b.useWebAgent() {
+	if b.useWebAgentFor(convID) {
 		b.completeViaWebAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, enableSearch, skipRAG)
 		return
 	}
-	if b.useAgent() {
+	if b.useAgentFor(convID) {
 		b.completeViaAgent(ctx, data, tr, conv, uid, ragQuery, corpusID, searchIDs, hits, enableSearch, skipRAG)
 		return
 	}
@@ -483,11 +489,19 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 }
 
 func (b *Bot) useAgent() bool {
-	return b != nil && b.ReplyMode() == config.DingTalkReplyAgent && b.agent != nil
+	return b.useAgentFor("")
 }
 
 func (b *Bot) useWebAgent() bool {
-	return b != nil && b.ReplyMode() == config.DingTalkReplyWeb && b.agent != nil
+	return b.useWebAgentFor("")
+}
+
+func (b *Bot) useAgentFor(conversationID string) bool {
+	return b != nil && b.chatReplyMode(conversationID) == config.DingTalkReplyAgent && b.agent != nil
+}
+
+func (b *Bot) useWebAgentFor(conversationID string) bool {
+	return b != nil && b.chatReplyMode(conversationID) == config.DingTalkReplyWeb && b.agent != nil
 }
 
 func sessionTitle(data *botCallback) string {

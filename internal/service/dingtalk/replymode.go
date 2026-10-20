@@ -3,11 +3,14 @@ package dingtalk
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -131,6 +134,53 @@ func (b *Bot) saveReplyMode(mode string) error {
 		return fmt.Errorf("save dingtalk reply mode: %w", err)
 	}
 	return nil
+}
+
+// SetChatReplyMode 保存该会话的回复模式。空字符串清除覆盖，之后跟随全局。
+func (b *Bot) SetChatReplyMode(id uuid.UUID, mode string) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	mode = strings.TrimSpace(mode)
+	if mode != "" {
+		parsed, ok := config.ParseDingTalkReplyMode(mode)
+		if !ok {
+			return nil, ErrInvalidReplyMode
+		}
+		mode = parsed
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if err := b.db.Model(&chat).Update("reply_mode", mode).Error; err != nil {
+		return nil, err
+	}
+	chat.ReplyMode = mode
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
+// chatReplyMode 返回该钉钉会话生效的回复模式。会话未设置或值非法时用全局模式。
+func (b *Bot) chatReplyMode(conversationID string) string {
+	if b == nil {
+		return config.DingTalkReplyChat
+	}
+	if b.db != nil {
+		cid := strings.TrimSpace(conversationID)
+		if cid != "" {
+			var row model.DingTalkChat
+			err := b.db.Select("reply_mode").Where("conversation_id = ?", cid).First(&row).Error
+			if err == nil {
+				if mode, ok := config.ParseDingTalkReplyMode(row.ReplyMode); ok {
+					return mode
+				}
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) && b.log != nil {
+				b.log.Warn("load dingtalk chat reply mode", zap.Error(err), zap.String("conversation_id", cid))
+			}
+		}
+	}
+	return b.ReplyMode()
 }
 
 func canonicalReplyMode(v string) string {

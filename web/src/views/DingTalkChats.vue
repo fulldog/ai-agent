@@ -26,7 +26,7 @@
         </el-form-item>
       </el-form>
       <div class="toolbar-summary">
-        共 {{ filtered.length }} 个会话。每个群可单独设置前置提示词和上下文条数，保存后下一条消息生效。
+        共 {{ filtered.length }} 个会话。回复模式和模型留空时跟随全局默认，保存后下一条消息生效。
       </div>
     </div>
 
@@ -122,6 +122,39 @@
             </el-select>
           </template>
         </el-table-column>
+        <el-table-column label="回复模式" min-width="220">
+          <template #default="{ row }">
+            <el-select
+              :model-value="row.reply_mode || ''"
+              style="width: 100%"
+              @change="saveReplyMode(row, $event)"
+            >
+              <el-option :label="defaultReplyLabel" value="" />
+              <el-option v-for="opt in replyModeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="模型" min-width="240">
+          <template #default="{ row }">
+            <el-select
+              :model-value="llmValue(row)"
+              filterable
+              clearable
+              placeholder="默认模型"
+              style="width: 100%"
+              @change="saveLLM(row, $event)"
+            >
+              <el-option-group v-for="g in modelGroupsFor(row)" :key="g.provider" :label="groupLabel(g)">
+                <el-option
+                  v-for="m in g.models"
+                  :key="g.provider + '::' + m"
+                  :label="m"
+                  :value="g.provider + '::' + m"
+                />
+              </el-option-group>
+            </el-select>
+          </template>
+        </el-table-column>
         <el-table-column label="最近消息" width="180">
           <template #default="{ row }">{{ formatTime(row.last_seen_at) }}</template>
         </el-table-column>
@@ -152,7 +185,7 @@ import { ElMessage } from "element-plus";
 import { ChatDotRound, Collection, Link } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
-import type { AgentTool, Corpus, DingTalkChat, Document } from "@/api/types";
+import type { AgentTool, Corpus, DingTalkChat, Document, LLMModelGroup, ReplyModeOption, ReplyModeSetting } from "@/api/types";
 
 interface DictionaryGroup {
   id: string;
@@ -189,6 +222,13 @@ const rows = ref<DingTalkChat[]>([]);
 const corpora = ref<Corpus[]>([]);
 const dictionaryGroups = ref<DictionaryGroup[]>([]);
 const toolCatalog = ref<AgentTool[]>([]);
+const modelGroups = ref<LLMModelGroup[]>([]);
+const replyModeOptions = ref<ReplyModeOption[]>([
+  { value: "chat", label: "对话（CompleteStream）", hint: "钉钉消息走对话 Completions，预检索结果注入 system。" },
+  { value: "agent", label: "钉钉预检索 Agent", hint: "先检索语料，再走 Agent.Run。" },
+  { value: "web", label: "同控制台 Agent 薄包装", hint: "与控制台 Agent 页同一套 Run，不预注入检索结果。" },
+]);
+const globalReplyMode = ref("chat");
 const promptOpen = ref(false);
 const promptSaving = ref(false);
 const promptDraft = ref("");
@@ -212,6 +252,11 @@ const filtered = computed(() => {
 const emptyText = computed(() =>
   nameQuery.value.trim() ? "没有匹配的会话" : "暂无钉钉会话，请先在群里 @ 机器人",
 );
+
+const defaultReplyLabel = computed(() => {
+  const label = replyModeOptions.value.find((opt) => opt.value === globalReplyMode.value)?.label || globalReplyMode.value;
+  return `默认（当前全局：${label}）`;
+});
 
 function search() {
   nameQuery.value = nameInput.value.trim();
@@ -274,6 +319,9 @@ function applyChat(updated: DingTalkChat) {
     corpus_ids: updated.corpus_ids || [],
     tools: updated.tools || [],
     dictionary_document_id: updated.dictionary_document_id || "",
+    reply_mode: updated.reply_mode || "",
+    llm_provider: updated.llm_provider || "",
+    llm_model: updated.llm_model || "",
   };
 }
 
@@ -290,10 +338,22 @@ async function load() {
       corpus_ids: r.corpus_ids || [],
       tools: r.tools || [],
       dictionary_document_id: r.dictionary_document_id || "",
+      reply_mode: r.reply_mode || "",
+      llm_provider: r.llm_provider || "",
+      llm_model: r.llm_model || "",
     }));
     corpora.value = corpusRes.items || [];
     toolCatalog.value = toolRes.items || [];
     dictionaryGroups.value = await loadDictionaryGroups(corpora.value);
+    const [modeRes, modelRes] = await Promise.all([
+      requestJSON<ReplyModeSetting>("/api/v1/dingtalk/reply-mode").catch(() => null),
+      requestJSON<{ groups: LLMModelGroup[] }>("/api/v1/models/available").catch(() => null),
+    ]);
+    if (modeRes) {
+      globalReplyMode.value = modeRes.reply_mode || "chat";
+      if (modeRes.options?.length) replyModeOptions.value = modeRes.options;
+    }
+    modelGroups.value = modelRes?.groups || [];
   } catch (e) {
     ElMessage.error(formatAPIError(e));
   } finally {
@@ -410,6 +470,71 @@ async function saveTools(row: DingTalkChat, selected: string[]) {
       body: JSON.stringify({ tools }),
     });
     applyChat(updated);
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+    await load();
+  }
+}
+
+function groupLabel(g: LLMModelGroup): string {
+  return g.error ? `${g.provider}（列表暂不可用）` : g.provider;
+}
+
+function modelGroupsFor(row: DingTalkChat): LLMModelGroup[] {
+  const groups = modelGroups.value.map((g) => ({
+    ...g,
+    models: [...(g.models || [])],
+  }));
+  const provider = row.llm_provider || "";
+  const model = row.llm_model || "";
+  if (!provider || !model) return groups;
+  let group = groups.find((g) => g.provider === provider);
+  if (!group) {
+    group = { provider, models: [], default_model: "" };
+    groups.push(group);
+  }
+  if (!group.models.includes(model)) group.models.push(model);
+  return groups;
+}
+
+function llmValue(row: DingTalkChat): string {
+  if (!row.llm_provider || !row.llm_model) return "";
+  return `${row.llm_provider}::${row.llm_model}`;
+}
+
+async function saveReplyMode(row: DingTalkChat, mode: string) {
+  const next = mode || "";
+  if (next === (row.reply_mode || "")) return;
+  try {
+    const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/reply-mode`, {
+      method: "PUT",
+      body: JSON.stringify({ reply_mode: next }),
+    });
+    applyChat(updated);
+    ElMessage.success("已保存，下一条消息生效");
+  } catch (e) {
+    ElMessage.error(formatAPIError(e));
+    await load();
+  }
+}
+
+async function saveLLM(row: DingTalkChat, value: string | null | undefined) {
+  const raw = value || "";
+  let provider = "";
+  let model = "";
+  const sep = raw.indexOf("::");
+  if (sep >= 0) {
+    provider = raw.slice(0, sep);
+    model = raw.slice(sep + 2);
+  }
+  if (provider === (row.llm_provider || "") && model === (row.llm_model || "")) return;
+  try {
+    const updated = await requestJSON<DingTalkChat>(`/api/v1/dingtalk/chats/${row.id}/llm`, {
+      method: "PUT",
+      body: JSON.stringify({ provider, model }),
+    });
+    applyChat(updated);
+    ElMessage.success("已保存，下一条消息生效");
   } catch (e) {
     ElMessage.error(formatAPIError(e));
     await load();

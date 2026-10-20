@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ type ChatItem struct {
 	PrefixPrompt         string        `json:"prefix_prompt"`
 	HistoryLimit         int           `json:"history_limit"`
 	Tools                []string      `json:"tools"`
+	ReplyMode            string        `json:"reply_mode"`
+	LLMProvider          string        `json:"llm_provider"`
+	LLMModel             string        `json:"llm_model"`
 	DictionaryDocumentID string        `json:"dictionary_document_id"`
 	CorpusIDs            []uuid.UUID   `json:"corpus_ids"`
 	Corpora              []CorpusBrief `json:"corpora"`
@@ -470,6 +474,100 @@ const MaxHistoryLimit = 200
 // ErrUnknownTool 群工具名不在已注册工具中。
 var ErrUnknownTool = errors.New("unknown tool")
 
+// ErrUnknownLLM 厂商不存在、未启用或未配置密钥。
+var ErrUnknownLLM = errors.New("unknown llm provider")
+
+// ErrInvalidLLMModel 厂商与模型必须同时填写，且模型 id 只含允许的字符。
+var ErrInvalidLLMModel = errors.New("invalid llm model")
+
+var llmModelID = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,128}$`)
+
+// SetChatLLM 保存该会话使用的厂商和模型。两者都空则恢复默认。
+func (b *Bot) SetChatLLM(id uuid.UUID, provider, modelName string) (*ChatItem, error) {
+	if b == nil || b.db == nil {
+		return nil, fmt.Errorf("database not configured")
+	}
+	provider, modelName, err := b.normalizeChatLLM(provider, modelName)
+	if err != nil {
+		return nil, err
+	}
+	var chat model.DingTalkChat
+	if err := b.db.First(&chat, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if err := b.db.Model(&chat).Updates(map[string]any{
+		"llm_provider": provider,
+		"llm_model":    modelName,
+	}).Error; err != nil {
+		return nil, err
+	}
+	chat.LLMProvider = provider
+	chat.LLMModel = modelName
+	item := toChatItem(chat, b.corporaForChat(id))
+	return &item, nil
+}
+
+func (b *Bot) normalizeChatLLM(provider, modelName string) (string, string, error) {
+	provider = strings.TrimSpace(provider)
+	modelName = strings.TrimSpace(modelName)
+	if provider == "" && modelName == "" {
+		return "", "", nil
+	}
+	if provider == "" || modelName == "" || !llmModelID.MatchString(modelName) {
+		return "", "", ErrInvalidLLMModel
+	}
+	name, err := b.lookupLLMProvider(provider)
+	if err != nil {
+		return "", "", err
+	}
+	return name, modelName, nil
+}
+
+func (b *Bot) lookupLLMProvider(provider string) (string, error) {
+	name := strings.ToLower(strings.TrimSpace(provider))
+	switch name {
+	case "dashscope":
+		name = "qwen"
+	case "moonshot":
+		name = "kimi"
+	case "ark", "volcengine":
+		name = "doubao"
+	}
+	if b == nil {
+		return "", ErrUnknownLLM
+	}
+	pc, ok := b.llm.Providers[name]
+	if !ok || !pc.ProviderEnabled() || strings.TrimSpace(pc.APIKey) == "" || strings.TrimSpace(pc.BaseURL) == "" {
+		return "", ErrUnknownLLM
+	}
+	return name, nil
+}
+
+// chatLLM 返回该会话单独指定的厂商和模型。未同时配置时返回空，调用方走默认厂商。
+func (b *Bot) chatLLM(conversationID string) (provider, modelName string) {
+	if b == nil || b.db == nil {
+		return "", ""
+	}
+	cid := strings.TrimSpace(conversationID)
+	if cid == "" {
+		return "", ""
+	}
+	var row model.DingTalkChat
+	err := b.db.Select("llm_provider", "llm_model").Where("conversation_id = ?", cid).First(&row).Error
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) && b.log != nil {
+			b.log.Warn("load dingtalk chat llm", zap.Error(err), zap.String("conversation_id", cid))
+		}
+		return "", ""
+	}
+	provider = strings.TrimSpace(row.LLMProvider)
+	modelName = strings.TrimSpace(row.LLMModel)
+	if provider == "" || modelName == "" {
+		return "", ""
+	}
+	return provider, modelName
+}
+
 // SetChatTools 保存该群额外工具。空数组表示清除。执行时与 agent.default_tools 取并集。
 func (b *Bot) SetChatTools(id uuid.UUID, names []string) (*ChatItem, error) {
 	if b == nil || b.db == nil {
@@ -597,6 +695,9 @@ func toChatItem(row model.DingTalkChat, corpora []model.Corpus) ChatItem {
 		PrefixPrompt:         row.PrefixPrompt,
 		HistoryLimit:         row.HistoryLimit,
 		Tools:                decodeTools(row.Tools),
+		ReplyMode:            row.ReplyMode,
+		LLMProvider:          row.LLMProvider,
+		LLMModel:             row.LLMModel,
 		DictionaryDocumentID: dictionaryDocumentID(row.DictionaryDocumentID),
 		CorpusIDs:            ids,
 		Corpora:              briefs,

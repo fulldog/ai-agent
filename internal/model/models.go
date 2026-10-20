@@ -279,6 +279,9 @@ type DingTalkChat struct {
 	PrefixPrompt         string     `gorm:"type:text;not null;default:'';comment:群前置提示词，回复前注入系统提示" json:"prefix_prompt"`
 	HistoryLimit         int        `gorm:"not null;default:0;comment:钉钉回复带入的历史消息条数，0表示不带历史" json:"history_limit"`
 	Tools                string     `gorm:"type:text;not null;default:'';comment:群额外工具，JSON字符串数组，执行时与默认工具取并集" json:"-"`
+	ReplyMode            string     `gorm:"type:text;not null;default:'';comment:回复模式 chat/agent/web，空则跟随全局" json:"reply_mode"`
+	LLMProvider          string     `gorm:"type:text;not null;default:'';comment:LLM厂商，空则用默认厂商" json:"llm_provider"`
+	LLMModel             string     `gorm:"type:text;not null;default:'';comment:LLM模型，空则用厂商默认模型" json:"llm_model"`
 	DictionaryDocumentID *uuid.UUID `gorm:"type:uuid;index;comment:数据字典文档ID，单选一篇语料" json:"dictionary_document_id,omitempty"`
 	LastSeenAt           time.Time  `gorm:"index;comment:最近一次收到消息时间" json:"last_seen_at"`
 	CreatedAt            time.Time  `gorm:"comment:创建时间" json:"created_at"`

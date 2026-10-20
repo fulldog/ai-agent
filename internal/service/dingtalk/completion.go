@@ -19,6 +19,7 @@ const streamMinInterval = 300 * time.Millisecond
 func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	historyLimit := b.chatHistoryLimit(data.ConversationID)
+	provider, modelName := b.chatLLM(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -42,6 +43,8 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 		ToolsOnly:        true,
 		SkipRAG:          skipRAG,
 		RequestID:        tr.requestID,
+		Provider:         provider,
+		Model:            modelName,
 		LogLLMRequest: func(provider, model string, messages []llm.Message) {
 			turns := llmTurnLogs(messages, b.previewMax)
 			b.recordStep(tr, stepLLMRequest, eventLLMRequest, map[string]any{
@@ -101,6 +104,7 @@ func (b *Bot) completeViaChat(ctx context.Context, data *botCallback, tr *msgTra
 func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, ragQuery string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, hits []rag.Hit, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	historyLimit := b.chatHistoryLimit(data.ConversationID)
+	provider, modelName := b.chatLLM(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -111,6 +115,8 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 		ConversationID:   &cid,
 		UID:              uid,
 		Input:            ragQuery,
+		Provider:         provider,
+		Model:            modelName,
 		CorpusID:         corpusID,
 		CorpusIDs:        corpusIDs,
 		TopK:             b.ragTop,
@@ -220,6 +226,7 @@ func (b *Bot) completeViaAgent(ctx context.Context, data *botCallback, tr *msgTr
 func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *msgTrace, conv *model.Conversation, uid, input string, corpusID *uuid.UUID, corpusIDs []uuid.UUID, enableSearch, skipRAG bool) {
 	prefix, skipQuery := b.chatPrefix(data.ConversationID)
 	historyLimit := b.chatHistoryLimit(data.ConversationID)
+	provider, modelName := b.chatLLM(data.ConversationID)
 	streamer := b.newStreamer(ctx, data, tr)
 	var acc strings.Builder
 	lastFlush := time.Now()
@@ -235,6 +242,8 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		ConversationID: &cid,
 		UID:            uid,
 		Input:          input,
+		Provider:       provider,
+		Model:          modelName,
 		CorpusID:       corpusID,
 		CorpusIDs:      corpusIDs,
 		TopK:           topK,

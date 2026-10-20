@@ -66,6 +66,7 @@ func Setup(application *app.App) *gin.Engine {
 	v1.Use(middleware.UserID())
 	{
 		v1.GET("/models", modelsH.List) // 已配置的 LLM 厂商列表（不含密钥）
+		v1.GET("/models/available", modelsH.Available)
 
 		// 无库可用：文件分析、意图分析
 		v1.POST("/chat/analyze", chatH.Analyze)
@@ -112,6 +113,8 @@ func Setup(application *app.App) *gin.Engine {
 			dbGroup.PUT("/dingtalk/chats/:id/prefix", dingH.SetChatPrefix)
 			dbGroup.PUT("/dingtalk/chats/:id/history-limit", dingH.SetChatHistoryLimit)
 			dbGroup.PUT("/dingtalk/chats/:id/tools", dingH.SetChatTools)
+			dbGroup.PUT("/dingtalk/chats/:id/reply-mode", dingH.SetChatReplyMode)
+			dbGroup.PUT("/dingtalk/chats/:id/llm", dingH.SetChatLLM)
 
 			dbGroup.POST("/rag/search", ragH.Search)
 

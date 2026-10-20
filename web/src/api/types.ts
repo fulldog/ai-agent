@@ -91,6 +91,9 @@ export interface DingTalkChat {
   prefix_prompt: string;
   history_limit: number;
   tools: string[];
+  reply_mode: string;
+  llm_provider: string;
+  llm_model: string;
   dictionary_document_id: string;
   corpus_ids: string[];
   corpora: { id: string; name: string }[];
@@ -229,6 +232,13 @@ export interface ReplyModeSetting {
   reply_mode: string;
   from_store: boolean;
   options: ReplyModeOption[];
+}
+
+export interface LLMModelGroup {
+  provider: string;
+  models: string[];
+  default_model: string;
+  error?: string;
 }
 
 export interface AnalyzeResult {

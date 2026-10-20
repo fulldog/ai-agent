@@ -238,6 +238,77 @@ func (h *DingTalkHandler) SetChatTools(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h *DingTalkHandler) SetChatReplyMode(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var req struct {
+		ReplyMode string `json:"reply_mode"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	item, err := h.Bot.SetChatReplyMode(id, req.ReplyMode)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "dingtalk chat not found")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrInvalidReplyMode) {
+			writeError(c, http.StatusBadRequest, "bad_request", "回复模式只能是对话、Agent 或 Web")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h *DingTalkHandler) SetChatLLM(c *gin.Context) {
+	if h == nil || h.Bot == nil {
+		writeError(c, http.StatusServiceUnavailable, "unavailable", "dingtalk not configured")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", "invalid id")
+		return
+	}
+	var req struct {
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "bad_request", err.Error())
+		return
+	}
+	item, err := h.Bot.SetChatLLM(id, req.Provider, req.Model)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			writeError(c, http.StatusNotFound, "not_found", "dingtalk chat not found")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrUnknownLLM) {
+			writeError(c, http.StatusBadRequest, "bad_request", "模型厂商不可用")
+			return
+		}
+		if errors.Is(err, dingtalk.ErrInvalidLLMModel) {
+			writeError(c, http.StatusBadRequest, "bad_request", "模型名称不合法")
+			return
+		}
+		writeError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func parseOptionalUUID(raw string) (*uuid.UUID, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
