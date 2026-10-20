@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/webapp/go-app/ai-agent/internal/middleware"
+	"github.com/webapp/go-app/ai-agent/internal/service/llmprice"
 	"gorm.io/gorm"
 )
 
@@ -17,6 +18,7 @@ type tokenBucket struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	TotalTokens      int64 `json:"total_tokens"`
+	CostNano         int64 `json:"cost_nano"`
 }
 
 type tokenUsageItem struct {
@@ -74,8 +76,15 @@ func bucketOf(calls, prompt, completion int64) tokenBucket {
 	}
 }
 
+func priceBucket(model string, b tokenBucket) tokenBucket {
+	b.CostNano = llmprice.Cost(model, b.PromptTokens, b.CompletionTokens)
+	return b
+}
+
 func addBucket(a, b tokenBucket) tokenBucket {
-	return bucketOf(a.Calls+b.Calls, a.PromptTokens+b.PromptTokens, a.CompletionTokens+b.CompletionTokens)
+	sum := bucketOf(a.Calls+b.Calls, a.PromptTokens+b.PromptTokens, a.CompletionTokens+b.CompletionTokens)
+	sum.CostNano = a.CostNano + b.CostNano
+	return sum
 }
 
 func queryTokenUsage(db *gorm.DB, uid string, day, week, month time.Time) ([]tokenUsageScan, error) {
@@ -134,10 +143,10 @@ func (h *LogsHandler) TokenUsage(c *gin.Context) {
 		item := tokenUsageItem{
 			Provider: s.Provider,
 			Model:    s.Model,
-			All:      bucketOf(s.Calls, s.PromptTokens, s.CompletionTokens),
-			Day:      bucketOf(s.DayCalls, s.DayPromptTokens, s.DayCompletionTokens),
-			Week:     bucketOf(s.WeekCalls, s.WeekPromptTokens, s.WeekCompletionTokens),
-			Month:    bucketOf(s.MonthCalls, s.MonthPromptTokens, s.MonthCompletionTokens),
+			All:      priceBucket(s.Model, bucketOf(s.Calls, s.PromptTokens, s.CompletionTokens)),
+			Day:      priceBucket(s.Model, bucketOf(s.DayCalls, s.DayPromptTokens, s.DayCompletionTokens)),
+			Week:     priceBucket(s.Model, bucketOf(s.WeekCalls, s.WeekPromptTokens, s.WeekCompletionTokens)),
+			Month:    priceBucket(s.Model, bucketOf(s.MonthCalls, s.MonthPromptTokens, s.MonthCompletionTokens)),
 		}
 		items = append(items, item)
 		totals.All = addBucket(totals.All, item.All)

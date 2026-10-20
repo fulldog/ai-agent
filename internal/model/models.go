@@ -227,10 +227,12 @@ type LLMCallLog struct {
 	Status           string     `gorm:"type:text;comment:状态:ok/error" json:"status"`
 	PromptTokens     int        `gorm:"comment:prompt token数" json:"prompt_tokens"`
 	CompletionTokens int        `gorm:"comment:completion token数" json:"completion_tokens"`
-	LatencyMs        int64      `gorm:"comment:耗时毫秒" json:"latency_ms"`
-	RequestSummary   string     `gorm:"type:text;comment:请求摘要" json:"request_summary,omitempty"`
-	ErrorMessage     string     `gorm:"type:text;comment:错误信息" json:"error_message,omitempty"`
-	CreatedAt        time.Time  `gorm:"index;comment:创建时间" json:"created_at"`
+	// CostNano 按公开标价估算的花费，单位纳元。不入库，由 token 现算。
+	CostNano       int64     `gorm:"-" json:"cost_nano"`
+	LatencyMs      int64     `gorm:"comment:耗时毫秒" json:"latency_ms"`
+	RequestSummary string    `gorm:"type:text;comment:请求摘要" json:"request_summary,omitempty"`
+	ErrorMessage   string    `gorm:"type:text;comment:错误信息" json:"error_message,omitempty"`
+	CreatedAt      time.Time `gorm:"index;comment:创建时间" json:"created_at"`
 }
 
 func (LLMCallLog) TableName() string { return "llm_call_logs" }

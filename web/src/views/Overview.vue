@@ -65,7 +65,7 @@
         <div class="panel usage-card">
           <div class="muted">{{ card.title }}</div>
           <div class="usage-num">{{ formatTokens(card.bucket.total_tokens) }}</div>
-          <div class="muted">输入 {{ formatTokens(card.bucket.prompt_tokens) }} · 输出 {{ formatTokens(card.bucket.completion_tokens) }} · {{ card.bucket.calls }} 次</div>
+          <div class="muted">输入 {{ formatTokens(card.bucket.prompt_tokens) }} · 输出 {{ formatTokens(card.bucket.completion_tokens) }} · {{ card.bucket.calls }} 次 · {{ formatCost(card.bucket) }}</div>
         </div>
       </el-col>
     </el-row>
@@ -106,7 +106,7 @@ import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
 import type { TokenBucket, TokenUsage } from "@/api/types";
 
-const emptyBucket = (): TokenBucket => ({ calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+const emptyBucket = (): TokenBucket => ({ calls: 0, prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_nano: 0 });
 
 const models = useModelsStore();
 const usage = ref<TokenUsage | null>(null);
@@ -136,9 +136,22 @@ function formatTokens(n: number): string {
   return (n || 0).toLocaleString("zh-CN");
 }
 
+function formatCost(b: TokenBucket): string {
+  const tokens = (b?.prompt_tokens || 0) + (b?.completion_tokens || 0);
+  return formatYuan(b?.cost_nano || 0, tokens);
+}
+
+function formatYuan(nano: number, tokens: number): string {
+  if (!nano) return tokens > 0 ? "—" : "¥0.00";
+  const yuan = nano / 1e9;
+  const maxDigits = yuan >= 0.01 ? 2 : 6;
+  return "¥" + yuan.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: maxDigits });
+}
+
 function tokenCell(b: TokenBucket): string {
-  if (!b || !b.total_tokens) return "0";
-  return `${formatTokens(b.total_tokens)}（入 ${formatTokens(b.prompt_tokens)} / 出 ${formatTokens(b.completion_tokens)}）`;
+  const cost = formatCost(b);
+  if (!b || !b.total_tokens) return `0 · ${cost}`;
+  return `${formatTokens(b.total_tokens)}（入 ${formatTokens(b.prompt_tokens)} / 出 ${formatTokens(b.completion_tokens)}） · ${cost}`;
 }
 
 async function loadUsage() {

@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/llmprice"
 	"gorm.io/gorm"
 )
 
@@ -103,6 +104,10 @@ func (h *LogsHandler) GetRequest(c *gin.Context) {
 	out := requestLogDetail{RequestLog: row, LLMCalls: []model.LLMCallLog{}}
 	if row.RequestID != "" {
 		_ = h.DB.Where("request_id = ?", row.RequestID).Order("created_at asc").Find(&out.LLMCalls).Error
+	}
+	for i := range out.LLMCalls {
+		call := &out.LLMCalls[i]
+		call.CostNano = llmprice.Cost(call.Model, int64(call.PromptTokens), int64(call.CompletionTokens))
 	}
 	c.JSON(http.StatusOK, out)
 }

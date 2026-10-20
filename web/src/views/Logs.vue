@@ -180,6 +180,9 @@
             <el-table-column label="tokens" min-width="140">
               <template #default="{ row }">{{ row.prompt_tokens }} / {{ row.completion_tokens }}</template>
             </el-table-column>
+            <el-table-column label="花费" width="120">
+              <template #default="{ row }">{{ formatCallCost(row) }}</template>
+            </el-table-column>
           </el-table>
         </template>
       </template>
@@ -194,7 +197,7 @@ import { Connection, DataLine, Filter, Timer } from "@element-plus/icons-vue";
 import { requestJSON, formatAPIError } from "@/api/client";
 import PageHero, { type HeroItem } from "@/components/PageHero.vue";
 import { useModelsStore } from "@/stores/models";
-import type { RequestLog } from "@/api/types";
+import type { LLMCallLog, RequestLog } from "@/api/types";
 
 interface PipelineStep {
   step: number;
@@ -413,6 +416,15 @@ function prettyMaybeJSON(s?: string): string {
   } catch {
     return s;
   }
+}
+
+function formatCallCost(row: LLMCallLog): string {
+  const tokens = (row.prompt_tokens || 0) + (row.completion_tokens || 0);
+  const nano = row.cost_nano || 0;
+  if (!nano) return tokens > 0 ? "—" : "¥0.00";
+  const yuan = nano / 1e9;
+  const maxDigits = yuan >= 0.01 ? 2 : 6;
+  return "¥" + yuan.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: maxDigits });
 }
 
 function formatTime(v: string): string {

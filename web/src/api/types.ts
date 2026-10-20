@@ -14,6 +14,7 @@ export interface TokenBucket {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cost_nano?: number;
 }
 
 export interface TokenUsageItem {
@@ -130,6 +131,7 @@ export interface LLMCallLog {
   status: string;
   prompt_tokens: number;
   completion_tokens: number;
+  cost_nano?: number;
   latency_ms: number;
   request_summary?: string;
   error_message?: string;
