@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -35,5 +36,24 @@ func TestSaveExecutedSQL(t *testing.T) {
 	}
 	if len(msgs) != 1 || msgs[0].Role != "tool" || !strings.Contains(msgs[0].Content, sqlText) {
 		t.Fatalf("%+v", msgs)
+	}
+	got, err := LatestExecutedSQL(db, id)
+	if err != nil || got != sqlText {
+		t.Fatalf("latest %q %v", got, err)
+	}
+	if err := db.Model(&model.Message{}).Where("conversation_id = ?", id).Update("created_at", msgs[0].CreatedAt.Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
+	newer := "SELECT VendorName FROM Srm_VendorInfo"
+	if err := SaveExecutedSQL(db, id, newer); err != nil {
+		t.Fatal(err)
+	}
+	got, err = LatestExecutedSQL(db, id)
+	if err != nil || got != newer {
+		t.Fatalf("newer %q %v", got, err)
+	}
+	empty, err := LatestExecutedSQL(db, uuid.New())
+	if err != nil || empty != "" {
+		t.Fatalf("missing %q %v", empty, err)
 	}
 }

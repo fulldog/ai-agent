@@ -71,3 +71,9 @@ func unboundDirectChat(conversationType string, bound int) bool {
 func continueWithHistory(hits []rag.Hit, forceOnline, hasHistory bool) bool {
 	return hasHistory && isCorpusMiss(hits, forceOnline)
 }
+
+// stopForCorpusMiss 语料未命中、未要求联网、没有历史、也没有 dbconn 时直接结束。
+// 挂了 dbconn 时继续交给模型，由模型决定是否查库。
+func stopForCorpusMiss(hits []rag.Hit, forceOnline, hasHistory, hasDBConn bool) bool {
+	return isCorpusMiss(hits, forceOnline) && !hasHistory && !hasDBConn
+}

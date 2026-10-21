@@ -79,8 +79,11 @@ type RunInput struct {
 	HistoryLimit *int
 	// ToolsOnly 为 true 时只用 Tools，不并入 agent.default_tools。空列表表示本轮不挂工具。
 	ToolsOnly bool
-	RequestID string
-	Stream    bool
+	// RequireTool 为 true 时，只要挂了工具就强制首轮 function call。
+	// 钉钉 web 模式不把摘录写入提示，需要模型自己检索。
+	RequireTool bool
+	RequestID   string
+	Stream      bool
 }
 
 type RunResult struct {
@@ -172,6 +175,14 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		}
 	}
 	system = AppendDictionary(system, in.Dictionary)
+	if in.ConversationID != nil {
+		sqlText, serr := LatestExecutedSQL(s.db, *in.ConversationID)
+		if serr != nil && s.llmLog != nil {
+			s.llmLog.Warn("load executed sql", zap.Error(serr), zap.String("request_id", in.RequestID))
+		} else {
+			system = AppendExecutedSQL(system, sqlText)
+		}
+	}
 	msgs := initialMessages(system, history, in.Input)
 	enableSearch := in.EnableSearch && strings.EqualFold(providerName, "qwen")
 	toolEnv := &tools.Env{
@@ -218,14 +229,15 @@ func (s *Service) Run(ctx context.Context, in RunInput, emit func(Event) error) 
 		chatReq := llm.ChatRequest{
 			Model: modelName, Messages: msgs, Tools: toolSpecs, EnableSearch: enableSearch,
 		}
-		// 原文写明不要查库，或本轮跳过检索时，允许直接回复，不强制 function call。
+		// 有可用摘录时不强制调用。摘录为空且挂了 dbconn 时才强制，避免业务问题不查库。
+		// web 模式 RequireTool：摘录故意不注入，只要挂了工具就强制首轮调用。
 		allowClarify := in.PrefixSkipsQuery || in.SkipRAG
-		// 在至少成功走过一轮工具前，每步都强制 function call（防止网关丢掉 required 后空口推诿）。
-		if len(toolSpecs) > 0 && !usedTool && !allowClarify {
+		forceTool := !usedTool && ForceFirstToolCall(toolSpecs, in.RAGHits, allowClarify, in.RequireTool)
+		if forceTool {
 			chatReq.ToolChoice = "required"
 		}
-		// 尚未跑过工具时不把正文 delta 推到钉钉：否则「未启用工具」会先刷到卡片。
-		suppressDelta := len(toolSpecs) > 0 && !usedTool && !allowClarify
+		// 强制调用时不把正文 delta 推到钉钉：否则「未启用工具」会先刷到卡片。
+		suppressDelta := forceTool
 		streamEmit := func(ev llm.StreamEvent) error {
 			if suppressDelta || ev.Content == "" || emit == nil {
 				return nil

@@ -365,7 +365,7 @@ type CompleteResult struct {
 }
 
 func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResult, error) {
-	conv, _, llmMsgs, err := s.prepare(ctx, in)
+	conv, _, llmMsgs, hits, err := s.prepare(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -377,15 +377,15 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 		in.LogLLMRequest(providerName, modelName, llmMsgs)
 	}
 	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
-	resp, err := s.toolLoop(ctx, in, call, llmMsgs, nil)
+	resp, err := s.toolLoop(ctx, in, call, llmMsgs, hits, nil)
 	if llm.IsInspectionFailed(err) && (s.wantRAG(in) || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
 		retry.RAGExplicit = true
 		retry.RAGHits = nil
-		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
-			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, nil)
+		if _, _, retryMsgs, retryHits, perr := s.prepare(ctx, retry); perr == nil {
+			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, retryHits, nil)
 		}
 	}
 	if err != nil {
@@ -416,7 +416,7 @@ func (s *Service) Complete(ctx context.Context, in CompleteInput) (*CompleteResu
 }
 
 func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta func(string) error) (*CompleteResult, error) {
-	conv, _, llmMsgs, err := s.prepare(ctx, in)
+	conv, _, llmMsgs, hits, err := s.prepare(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -435,15 +435,15 @@ func (s *Service) CompleteStream(ctx context.Context, in CompleteInput, onDelta 
 		onDelta = func(string) error { return nil }
 	}
 	call := callContext{conv: conv, client: client, provider: providerName, model: modelName}
-	resp, err := s.toolLoop(ctx, in, call, llmMsgs, onDelta)
+	resp, err := s.toolLoop(ctx, in, call, llmMsgs, hits, onDelta)
 	if llm.IsInspectionFailed(err) && (s.wantRAG(in) || len(in.RAGHits) > 0) {
 		s.llmLog.Warn("retry llm stream without rag after content inspection")
 		retry := in
 		retry.RAGEnabled = false
 		retry.RAGExplicit = true
 		retry.RAGHits = nil
-		if _, _, retryMsgs, perr := s.prepare(ctx, retry); perr == nil {
-			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, onDelta)
+		if _, _, retryMsgs, retryHits, perr := s.prepare(ctx, retry); perr == nil {
+			resp, err = s.toolLoop(ctx, retry, call, retryMsgs, retryHits, onDelta)
 		}
 	}
 	if err != nil {
@@ -480,7 +480,7 @@ func chatRequest(in CompleteInput, providerName, modelName string, msgs []llm.Me
 	}
 }
 
-func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Conversation, []model.Message, []llm.Message, error) {
+func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Conversation, []model.Message, []llm.Message, []rag.Hit, error) {
 	var conv *model.Conversation
 	var err error
 	if in.Admin {
@@ -489,13 +489,13 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		conv, err = s.GetConversation(in.ConversationID, in.UID)
 	}
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	var history []model.Message
 	if limit, include := agent.HistoryWindow(in.HistoryLimit, s.maxHistory()); include {
 		history, err = s.listRecentMessages(conv.ID, limit)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 	var llmMsgs []llm.Message
@@ -536,6 +536,14 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		}
 	}
 	system = agent.AppendDictionary(system, in.Dictionary)
+	if conv != nil {
+		sqlText, serr := agent.LatestExecutedSQL(s.db, conv.ID)
+		if serr != nil && s.llmLog != nil {
+			s.llmLog.Warn("load executed sql", zap.Error(serr), zap.String("request_id", in.RequestID))
+		} else {
+			system = agent.AppendExecutedSQL(system, sqlText)
+		}
+	}
 	if system != "" {
 		llmMsgs = append(llmMsgs, llm.Message{Role: "system", Content: system})
 	}
@@ -546,7 +554,7 @@ func (s *Service) prepare(ctx context.Context, in CompleteInput) (*model.Convers
 		llmMsgs = append(llmMsgs, llm.Message{Role: m.Role, Content: m.Content})
 	}
 	llmMsgs = append(llmMsgs, llm.Message{Role: "user", Content: in.Message})
-	return conv, history, llmMsgs, nil
+	return conv, history, llmMsgs, hits, nil
 }
 
 // 单次直传分析时，文件正文最大 rune 数（超出截断，避免撑爆上下文）。

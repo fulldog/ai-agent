@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/webapp/go-app/ai-agent/internal/model"
+	"github.com/webapp/go-app/ai-agent/internal/service/dbconn"
 	"github.com/webapp/go-app/ai-agent/internal/service/llm"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 )
@@ -14,7 +15,7 @@ const (
 	baseAgentPrompt = "你是有用的 AI 助手。需要准确信息时请调用工具，并根据工具结果作答。回答简洁直接，先给结论；不要套话、不要重复问题或工具原文。"
 	// toolsReadyPrompt 有工具 Spec 时追加：防止模型跟语料说「去工具函数管理开启」。
 	toolsReadyPrompt  = "下方「当前可用工具」已由服务端挂载到本次请求，可直接 function call，无需用户去任何「工具函数管理」或后台开关。禁止回答「未启用工具/请先开启工具」之类推诿；知识摘录仅供参考，与工具可用性无关。"
-	dbconnAgentPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：要核实数据必须调用 dbconn，不要沿用历史查询结果，也不要凭猜测作答。会话绑定了数据字典时，query 会在执行前按该字典预检并修正表名和列名；预检失败就不会查库，按返回的表名和列名改写后再调用。需要字典全文用 action=schema。禁止编造表名或列名。缺标签时先按名称查库，根据本次查询结果再决定是否追问。知识摘录未覆盖时再用 knowledge_search 查口径。不要只把 SQL 写在回复里而不调用工具。"
+	dbconnAgentPrompt = "若问题涉及供应商、付款、订单、业务数据或表结构：要核实数据必须调用 dbconn，不要沿用历史查询结果，也不要凭猜测作答。会话绑定了数据字典时，系统提示里已附带字典。附带的是全文就直接写 query，不要先调用 schema。附带的是规则和表目录时，先用 action=schema 并指定 table 看字段，再写 query。query 会在执行前按该字典预检并修正表名和列名；预检失败就不会查库，按返回的表名和列名改写后再调用。禁止编造表名或列名。缺标签时先按名称查库，根据本次查询结果再决定是否追问。知识摘录未覆盖时再用 knowledge_search 查口径。不要只把 SQL 写在回复里而不调用工具。"
 	fileAgentPrompt   = ""
 	//fileAgentPrompt = "用户要求导出、下载或生成 Excel/表格文件时：数据来自本次 dbconn query 的，调用 generate_file 只传 filename 和 from_query=true，不要把查询结果再写进参数；中文列名写在 SELECT 别名里。不是查询结果的小表才传 columns 和 rows。拿到下载链接后，回复里必须带上该链接，不要只说文件已生成。"
 	ragOnlyHint = "【说明】下列知识摘录是本次必须遵循的流程与口径。若与「当前可用工具」冲突，以工具调用为准，不要根据摘录要求用户去开启工具。"
@@ -22,6 +23,28 @@ const (
 
 func requireFirstTool(hits []rag.Hit) bool {
 	return len(sanitizeRAGHits(hits)) == 0
+}
+
+// ForceFirstToolCall 报告本步是否应强制 function call。
+// 原文要求不要查库，或本轮跳过检索时，不强制。
+// requireAny 为 true 时，只要挂了工具就强制（钉钉 web 不预注入摘录，要模型自己检索）。
+// 否则只在没有可用摘录、且挂了 dbconn 时强制，避免业务数据问题不查库就作答。
+func ForceFirstToolCall(specs []llm.ToolSpec, hits []rag.Hit, allowClarify, requireAny bool) bool {
+	if allowClarify || len(specs) == 0 {
+		return false
+	}
+	if requireAny {
+		return true
+	}
+	if !requireFirstTool(hits) {
+		return false
+	}
+	for _, spec := range specs {
+		if spec.Function.Name == "dbconn" {
+			return true
+		}
+	}
+	return false
 }
 
 // PrefixSkipsQuery 报告群前置提示词原文是否要求本轮不要查库。
@@ -79,14 +102,40 @@ func mergeAgentSystem(base string, hits []rag.Hit) string {
 
 const dictionaryLead = "【数据字典】下面是本会话的表结构全文。写 SQL 时表名、列名、关联只能来自这里，禁止编造。已附带本字典时直接写 query，不要先调用 schema。"
 
-// AppendDictionary 把会话配置的数据字典原文接到系统提示末尾，供写 SQL 前阅读。
+const dictionaryCatalogLead = "【数据字典】下面是本会话的写 SQL 规则和表目录，不含各表字段。要用的表先调用 dbconn，action=schema 且指定 table，不要不带 table 拉取全文。表名只能来自这里，禁止编造。"
+
+const executedSQLLead = "【最近执行的 SQL】这是本会话上一条实际执行的语句。追问要改条件、字段或排序时，在它上面改写并重新调用 dbconn。不要把历史查询结果当作本次数据。"
+
+// AppendDictionary 把会话配置的数据字典接到系统提示末尾，供写 SQL 前阅读。
+// 字典较短时附全文；较长且能分出表时只附规则和表目录。
 func AppendDictionary(system, dictionary string) string {
-	return system
 	dictionary = strings.TrimSpace(dictionary)
 	if dictionary == "" {
 		return system
 	}
-	block := dictionaryLead + "\n\n" + dictionary
+	body, full := dbconn.PromptDictionary(dictionary)
+	if strings.TrimSpace(body) == "" {
+		return system
+	}
+	lead := dictionaryLead
+	if !full {
+		lead = dictionaryCatalogLead
+	}
+	block := lead + "\n\n" + body
+	system = strings.TrimSpace(system)
+	if system == "" {
+		return block
+	}
+	return system + "\n\n" + block
+}
+
+// AppendExecutedSQL 把上一条实际执行的语句接到系统提示末尾。
+func AppendExecutedSQL(system, sqlText string) string {
+	sqlText = strings.TrimSpace(sqlText)
+	if sqlText == "" {
+		return system
+	}
+	block := executedSQLLead + "\n\n```sql\n" + sqlText + "\n```"
 	system = strings.TrimSpace(system)
 	if system == "" {
 		return block

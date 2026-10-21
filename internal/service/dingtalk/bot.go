@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -459,12 +460,14 @@ func (b *Bot) handle(parent context.Context, data *botCallback, tr *msgTrace) {
 	if herr != nil {
 		b.log.Warn("lookup dingtalk history", zap.Error(herr), zap.String("request_id", tr.requestID))
 	}
-	// chat/agent：无 RAG、未要求联网、无历史 → 结束。web 交给工具循环自行检索。未绑定语料库的单聊不走这条早退。
+	// chat/agent：无 RAG、未要求联网、无历史、且未挂 dbconn → 结束。
+	// 挂了 dbconn 时继续，让模型决定是否查库。web 交给工具循环自行检索。未绑定语料库的单聊不走这条早退。
 	convID := ""
 	if data != nil {
 		convID = data.ConversationID
 	}
-	if !skipRAG && !b.useWebAgentFor(convID) && isCorpusMiss(hits, forceOnline) && !hasHistory {
+	hasDB := slices.Contains(b.chatTools(convID), "dbconn")
+	if !skipRAG && !b.useWebAgentFor(convID) && stopForCorpusMiss(hits, forceOnline, hasHistory, hasDB) {
 		tr.outcome = "corpus_miss"
 		tr.reply = corpusMissReply
 		_ = b.failReply(ctx, data, corpusMissReply, tr)

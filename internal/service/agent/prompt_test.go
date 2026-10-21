@@ -56,6 +56,56 @@ func TestAppendDictionary(t *testing.T) {
 	}
 }
 
+func TestAppendDictionaryUsesCatalogWhenLong(t *testing.T) {
+	t.Parallel()
+	var b strings.Builder
+	b.WriteString("# 规则\n\n查当前数据加 IsDelete = 0。\n\n## 表目录\n\n- Srm_VendorInfo 供应商\n\n")
+	b.WriteString("### Srm_VendorInfo\n\n供应商基本信息表。\n\n")
+	for i := 0; i < 400; i++ {
+		b.WriteString("- VendorNameShort varchar(128) NN | 供应商名称简称\n")
+	}
+	got := AppendDictionary("规则", b.String())
+	if !strings.Contains(got, dictionaryCatalogLead) || !strings.Contains(got, "IsDelete = 0") || !strings.Contains(got, "Srm_VendorInfo") {
+		t.Fatalf("catalog missing, len=%d", len(got))
+	}
+	if strings.Contains(got, "VendorNameShort") {
+		t.Fatal("long dictionary should omit column details")
+	}
+}
+
+func TestAppendExecutedSQL(t *testing.T) {
+	t.Parallel()
+	if got := AppendExecutedSQL("规则", "  "); got != "规则" {
+		t.Fatalf("blank: %q", got)
+	}
+	got := AppendExecutedSQL("规则", "SELECT 1")
+	if !strings.Contains(got, "最近执行的 SQL") || !strings.Contains(got, "SELECT 1") || !strings.HasPrefix(got, "规则") {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestForceFirstToolCall(t *testing.T) {
+	t.Parallel()
+	db := []llm.ToolSpec{{Function: llm.ToolSpecFunc{Name: "dbconn"}}}
+	search := []llm.ToolSpec{{Function: llm.ToolSpecFunc{Name: "knowledge_search"}}}
+	hits := []rag.Hit{{Content: "供应商付款须先问标签"}}
+	if ForceFirstToolCall(db, hits, false, false) {
+		t.Fatal("usable hits should not force dbconn")
+	}
+	if !ForceFirstToolCall(db, nil, false, false) {
+		t.Fatal("empty hits with dbconn should force")
+	}
+	if ForceFirstToolCall(search, nil, false, false) {
+		t.Fatal("knowledge search alone should not force")
+	}
+	if ForceFirstToolCall(db, nil, true, false) {
+		t.Fatal("allowClarify skips the force")
+	}
+	if !ForceFirstToolCall(search, hits, false, true) {
+		t.Fatal("requireAny forces any mounted tool")
+	}
+}
+
 func TestMergeAgentSystemAndInitialMessages(t *testing.T) {
 	t.Parallel()
 	if mergeAgentSystem("base", nil) != "base" {

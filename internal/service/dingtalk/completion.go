@@ -256,6 +256,7 @@ func (b *Bot) completeViaWebAgent(ctx context.Context, data *botCallback, tr *ms
 		Dictionary:       b.chatDictionary(data.ConversationID),
 		Tools:            b.chatTools(data.ConversationID),
 		ToolsOnly:        true,
+		RequireTool:      true,
 		SkipRAG:          skipRAG,
 		RequestID:        tr.requestID,
 		Stream:           true,

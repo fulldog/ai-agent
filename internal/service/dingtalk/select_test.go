@@ -120,6 +120,25 @@ func TestIsCorpusMiss(t *testing.T) {
 	}
 }
 
+func TestStopForCorpusMiss(t *testing.T) {
+	t.Parallel()
+	if !stopForCorpusMiss(nil, false, false, false) {
+		t.Fatal("first turn without dbconn should stop")
+	}
+	if stopForCorpusMiss(nil, false, false, true) {
+		t.Fatal("dbconn should keep a data question alive")
+	}
+	if stopForCorpusMiss(nil, false, true, false) {
+		t.Fatal("history should continue")
+	}
+	if stopForCorpusMiss(nil, true, false, false) {
+		t.Fatal("forced online should continue")
+	}
+	if stopForCorpusMiss([]rag.Hit{{Content: "x"}}, false, false, false) {
+		t.Fatal("hits should continue")
+	}
+}
+
 func TestContinueWithHistory(t *testing.T) {
 	t.Parallel()
 	if continueWithHistory(nil, false, false) {
