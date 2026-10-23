@@ -42,7 +42,9 @@ func (s *streamer) update(content string, finalize bool) error {
 		return nil
 	}
 	// 流式中间帧不加语料脚注，避免末尾摘要反复跳动；finalize 由 finish 统一装饰。
-	content = s.bot.withReplyTag(s.bot.sanitizeOutbound(content))
+	// 模型自己写的多行来源先并成一行，实例标记始终留在最后一行。
+	content = mergeSourceLines(s.bot.sanitizeOutbound(content))
+	content = s.bot.withReplyTag(content)
 	err := s.bot.api.streamCard(context.Background(), s.outTrack, content, finalize, false)
 	if err != nil {
 		s.bot.log.Warn("stream card", zap.Error(err))
@@ -154,7 +156,7 @@ func (b *Bot) failReply(ctx context.Context, data *botCallback, text string, tr 
 	return b.sendOutbound(ctx, data, text)
 }
 
-// decorateOutbound 出站统一装饰：拦截推诿 → 语料来源脚注 → 实例 reply_tag。
+// decorateOutbound 出站统一装饰：拦截推诿 → 合并来源行 → 实例 reply_tag 放在最后一行。
 func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
 	text = b.sanitizeOutbound(text)
 	note := ""
@@ -162,6 +164,7 @@ func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
 		note = tr.sourceNote
 	}
 	text = appendSourceNote(text, note)
+	text = mergeSourceLines(text)
 	return b.withReplyTag(text)
 }
 
@@ -358,12 +361,187 @@ func appendSourceNote(text, note string) string {
 	return strings.TrimRight(text, "\n") + "\n\n" + note
 }
 
+// mergeSourceLines 把正文里每一行「来源：」收成脚注末尾的一行。
+// 同一语料库的编号标题会去重后按出现顺序接在一起。
+func mergeSourceLines(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	var body []string
+	var parts []string
+	for _, line := range strings.Split(text, "\n") {
+		rest, ok := sourcePayload(strings.TrimSpace(line))
+		if !ok {
+			body = append(body, line)
+			continue
+		}
+		parts = append(parts, splitSourceParts(rest)...)
+	}
+	merged := joinSourceParts(parts)
+	bodyText := collapseExtraBlanks(strings.TrimSpace(strings.Join(body, "\n")))
+	if merged == "" {
+		return bodyText
+	}
+	if bodyText == "" {
+		return "来源：" + merged
+	}
+	return bodyText + "\n\n来源：" + merged
+}
+
+func sourcePayload(line string) (string, bool) {
+	for _, prefix := range []string{"来源：", "来源:"} {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix)), true
+		}
+	}
+	return "", false
+}
+
+func splitSourceParts(payload string) []string {
+	payload = strings.ReplaceAll(payload, ";", "；")
+	raw := strings.Split(payload, "；")
+	out := make([]string, 0, len(raw))
+	for _, part := range raw {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+type sourcePiece struct {
+	name     string
+	titles   []string
+	numbered bool
+}
+
+func joinSourceParts(parts []string) string {
+	var order []sourcePiece
+	index := map[string]int{}
+	for _, part := range parts {
+		name, titles, numbered := parseSourcePart(part)
+		if name == "" {
+			continue
+		}
+		key := "l:" + name
+		if numbered {
+			key = "n:" + name
+		}
+		if i, ok := index[key]; ok {
+			if numbered {
+				order[i].titles = appendUniqueTitles(order[i].titles, titles)
+			}
+			continue
+		}
+		index[key] = len(order)
+		order = append(order, sourcePiece{name: name, titles: append([]string(nil), titles...), numbered: numbered})
+	}
+	out := make([]string, 0, len(order))
+	for _, p := range order {
+		if p.numbered {
+			out = append(out, p.name+numberedTitles(p.titles))
+			continue
+		}
+		out = append(out, p.name)
+	}
+	return strings.Join(out, "；")
+}
+
+func parseSourcePart(part string) (name string, titles []string, numbered bool) {
+	part = strings.TrimSpace(part)
+	if part == "" {
+		return "", nil, false
+	}
+	open, closeLen := "", 0
+	switch {
+	case strings.HasSuffix(part, "）"):
+		open, closeLen = "（", len("）")
+	case strings.HasSuffix(part, ")"):
+		open, closeLen = "(", 1
+	default:
+		return part, nil, false
+	}
+	i := strings.LastIndex(part, open)
+	if i <= 0 {
+		return part, nil, false
+	}
+	name = strings.TrimSpace(part[:i])
+	inner := strings.TrimSpace(part[i+len(open) : len(part)-closeLen])
+	titles = splitNumberedTitles(inner)
+	if name == "" || len(titles) == 0 {
+		return part, nil, false
+	}
+	return name, titles, true
+}
+
+func splitNumberedTitles(inner string) []string {
+	rest := strings.TrimSpace(inner)
+	var out []string
+	for expect := 1; rest != ""; expect++ {
+		n, titleAt, ok := leadingNumberDot(rest)
+		if !ok || n != expect {
+			return nil
+		}
+		rest = rest[titleAt:]
+		next := len(rest)
+		if j := strings.Index(rest, " "+strconv.Itoa(expect+1)+"."); j >= 0 {
+			next = j
+		}
+		title := strings.TrimSpace(rest[:next])
+		if title == "" {
+			return nil
+		}
+		out = append(out, title)
+		if next == len(rest) {
+			break
+		}
+		rest = strings.TrimSpace(rest[next:])
+	}
+	return out
+}
+
+func leadingNumberDot(s string) (n int, titleAt int, ok bool) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 || i >= len(s) || s[i] != '.' {
+		return 0, 0, false
+	}
+	n, err := strconv.Atoi(s[:i])
+	if err != nil {
+		return 0, 0, false
+	}
+	return n, i + 1, true
+}
+
+func appendUniqueTitles(dst, src []string) []string {
+	seen := map[string]struct{}{}
+	for _, t := range dst {
+		seen[t] = struct{}{}
+	}
+	for _, t := range src {
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		dst = append(dst, t)
+	}
+	return dst
+}
+
+func collapseExtraBlanks(s string) string {
+	for strings.Contains(s, "\n\n\n") {
+		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
+	}
+	return s
+}
+
 func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) error {
 	if data == nil {
 		return fmt.Errorf("nil callback")
 	}
-	// tag 已在 finish/failReply 加上；此处再幂等一次防漏。
-	text = b.withReplyTag(text)
 	title := "AI 回复"
 	var atIDs []string
 	if uid := strings.TrimSpace(data.SenderStaffID); uid != "" && isGroup(data.ConversationType) {
@@ -371,6 +549,8 @@ func (b *Bot) sendOutbound(ctx context.Context, data *botCallback, text string) 
 		// 仅出站加 @，不进 persistOutbound，避免历史里刷 staffId。
 		text = appendMarkdownAt(text, uid)
 	}
+	// 标记放在 @ 之后，保证它是最后一行。
+	text = b.withReplyTag(text)
 	if err := replyWebhook(ctx, data.SessionWebhook, title, text, atIDs); err == nil {
 		return nil
 	} else if b.log != nil {
@@ -408,9 +588,18 @@ func (b *Bot) withReplyTag(text string) string {
 		return text
 	}
 	marker := "〔" + tag + "〕"
-	if strings.Contains(text, marker) {
-		return text
+	text = stripReplyMarker(text, marker)
+	if text == "" {
+		return marker
 	}
-	text = strings.TrimRight(text, "\n")
 	return text + "\n\n" + marker
+}
+
+// stripReplyMarker 去掉正文里已有的实例标记，方便重新放到最后一行。
+func stripReplyMarker(text, marker string) string {
+	if marker == "" || !strings.Contains(text, marker) {
+		return strings.TrimRight(text, "\n")
+	}
+	text = strings.ReplaceAll(text, marker, "")
+	return collapseExtraBlanks(strings.TrimSpace(text))
 }

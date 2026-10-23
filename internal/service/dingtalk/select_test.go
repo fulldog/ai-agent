@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/webapp/go-app/ai-agent/internal/config"
 	"github.com/webapp/go-app/ai-agent/internal/model"
 	"github.com/webapp/go-app/ai-agent/internal/service/rag"
 	"go.uber.org/zap"
@@ -175,6 +176,34 @@ func TestAppendSourceNote(t *testing.T) {
 	}
 	if got := appendSourceNote("x", ""); got != "x" {
 		t.Fatalf("empty note: %q", got)
+	}
+}
+
+func TestMergeSourceLinesKeepsTagLast(t *testing.T) {
+	t.Parallel()
+	in := strings.Join([]string{
+		"SRM 模块不支持查询余额。",
+		"SRM 仅管理供应商建档、评级、政策、合同及付款申请流程，不涉及资金账户或余额数据。余额相关数据存储在 T_VendorMoneyEx（大账户备款）等外部表中，不在 SRM 的 33 张表范围内，需通过账单或天玑充值等其他系统查询。",
+		"来源：SRM模块说明 §1、§5.6；SRM数据字典-表目录",
+		"来源：SRM供应商系统-鸡哥（1.SRM模块说明.md 2.SRM接口调用链路.md 3.SRM接口请求响应.md）",
+		"〔lianshan_test〕",
+		"来源：SRM供应商系统-鸡哥（1.SRM模块说明.md 2.SRM接口调用链路.md）",
+		"来源：SRM供应商系统-鸡哥（1.供应商动态管理规则V1.0 2.供应商管理规则 V2.0 3.SRM模块说明.md）",
+	}, "\n")
+	b := &Bot{cfg: config.DingTalkConfig{ReplyTag: "lianshan_test"}}
+	got := b.decorateOutbound(&msgTrace{sourceNote: "来源：SRM供应商系统-鸡哥（1.SRM模块说明.md）"}, in)
+	wantNote := "来源：SRM模块说明 §1、§5.6；SRM数据字典-表目录；SRM供应商系统-鸡哥（1.SRM模块说明.md 2.SRM接口调用链路.md 3.SRM接口请求响应.md 4.供应商动态管理规则V1.0 5.供应商管理规则 V2.0）"
+	if strings.Count(got, "来源：") != 1 || !strings.Contains(got, wantNote) {
+		t.Fatalf("merged note:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "〔lianshan_test〕") {
+		t.Fatalf("tag should be the last line:\n%s", got)
+	}
+	if strings.Count(got, "〔lianshan_test〕") != 1 {
+		t.Fatalf("tag once:\n%s", got)
+	}
+	if !strings.HasPrefix(got, "SRM 模块不支持查询余额。") {
+		t.Fatalf("body:\n%s", got)
 	}
 }
 
