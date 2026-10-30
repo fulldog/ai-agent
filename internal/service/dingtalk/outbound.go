@@ -42,9 +42,14 @@ func (s *streamer) update(content string, finalize bool) error {
 		return nil
 	}
 	// 流式中间帧不加语料脚注，避免末尾摘要反复跳动；finalize 由 finish 统一装饰。
-	// 模型自己写的多行来源先并成一行，实例标记始终留在最后一行。
-	content = mergeSourceLines(s.bot.sanitizeOutbound(content))
-	content = s.bot.withReplyTag(content)
+	content = s.bot.sanitizeOutbound(content)
+	if outboundDecorations {
+		// 模型自己写的多行来源先并成一行，实例标记始终留在最后一行。
+		content = mergeSourceLines(content)
+		content = s.bot.withReplyTag(content)
+	} else {
+		content = s.bot.stripOutboundDecorations(content)
+	}
 	err := s.bot.api.streamCard(context.Background(), s.outTrack, content, finalize, false)
 	if err != nil {
 		s.bot.log.Warn("stream card", zap.Error(err))
@@ -156,9 +161,15 @@ func (b *Bot) failReply(ctx context.Context, data *botCallback, text string, tr 
 	return b.sendOutbound(ctx, data, text)
 }
 
+// outboundDecorations 暂时关闭钉钉回复末尾的来源脚注和实例标记。恢复时改回 true。
+const outboundDecorations = false
+
 // decorateOutbound 出站统一装饰：拦截推诿 → 合并来源行 → 实例 reply_tag 放在最后一行。
 func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
 	text = b.sanitizeOutbound(text)
+	if !outboundDecorations {
+		return b.stripOutboundDecorations(text)
+	}
 	note := ""
 	if tr != nil {
 		note = tr.sourceNote
@@ -166,6 +177,36 @@ func (b *Bot) decorateOutbound(tr *msgTrace, text string) string {
 	text = appendSourceNote(text, note)
 	text = mergeSourceLines(text)
 	return b.withReplyTag(text)
+}
+
+// stripOutboundDecorations 去掉正文里的「来源：」行和实例标记。
+func (b *Bot) stripOutboundDecorations(text string) string {
+	return b.stripReplyTag(dropSourceLines(text))
+}
+
+func dropSourceLines(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	var body []string
+	for _, line := range strings.Split(text, "\n") {
+		if _, ok := sourcePayload(strings.TrimSpace(line)); ok {
+			continue
+		}
+		body = append(body, line)
+	}
+	return collapseExtraBlanks(strings.TrimSpace(strings.Join(body, "\n")))
+}
+
+func (b *Bot) stripReplyTag(text string) string {
+	if b == nil {
+		return text
+	}
+	tag := strings.TrimSpace(b.cfg.ReplyTag)
+	if tag == "" {
+		return strings.TrimRight(text, "\n")
+	}
+	return stripReplyMarker(text, "〔"+tag+"〕")
 }
 
 type corpusSourceGroup struct {
@@ -582,6 +623,9 @@ func appendMarkdownAt(text, staffID string) string {
 func (b *Bot) withReplyTag(text string) string {
 	if b == nil {
 		return text
+	}
+	if !outboundDecorations {
+		return b.stripReplyTag(text)
 	}
 	tag := strings.TrimSpace(b.cfg.ReplyTag)
 	if tag == "" {
